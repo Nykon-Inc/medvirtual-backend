@@ -727,8 +727,8 @@ export class InvoiceService {
    * display) and the org's invoice configuration — used by nearly every other method
    * in this service that needs the "full" invoice, not just the bare Invoice row.
    */
-  async findOne(id: string) {
-    return await this.prisma.invoice.findUnique({
+  async findOne(id: string, options: { withStripeCustomer?: boolean } = {}) {
+    const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: {
         currentVersion: {
@@ -748,6 +748,30 @@ export class InvoiceService {
         },
       },
     });
+
+    // Opt-in rather than always-on: findOne is the "full invoice" fetch used by
+    // PDF rendering, email sending and the status/version paths, and none of
+    // those need Stripe. Loading the customer unconditionally would put a
+    // network round trip — and a dependency on Stripe being reachable — into
+    // every one of them.
+    if (!options.withStripeCustomer || !invoice?.organization) {
+      return invoice;
+    }
+
+    // Never fails the invoice fetch: findCustomerForOrganization returns null
+    // when Stripe is unconfigured, no customer id is assigned yet, the customer
+    // was deleted, or the API call errors.
+    const stripeCustomer = await this.stripeService.findCustomerForOrganization(
+      invoice.organization.id,
+    );
+
+    return {
+      ...invoice,
+      organization: {
+        ...invoice.organization,
+        stripeCustomer,
+      },
+    };
   }
 
   /** Full version history for an invoice (newest first) — the "revision history" view. */

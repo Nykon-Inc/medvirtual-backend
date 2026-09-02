@@ -1402,7 +1402,12 @@ export class StripeService implements OnModuleInit {
 
   /** Name + email of the org's Stripe customer record, for display on the invoice's
    * "Billed to" card (the account Stripe actually bills/emails, which can differ from
-   * the organization's own contact info). */
+   * the organization's own contact info).
+   *
+   * Throws on every failure mode, deliberately: the frontend's "Billed to" card and
+   * the PDF renderer's waitForResponse both key off the 400 (see generatePdf), so a
+   * silent null here would change that contract. Use findCustomerForOrganization below
+   * when a missing customer should not be an error. */
   public async getBillingContact(organizationId: string) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not initialized');
@@ -1430,6 +1435,43 @@ export class StripeService implements OnModuleInit {
       name: customer.name || null,
       email: customer.email || null,
     };
+  }
+
+  /**
+   * Retrieves the full Stripe customer linked to an organization, or null.
+   *
+   * The non-throwing counterpart to getBillingContact above: this one decorates a
+   * response that must still succeed when Stripe cannot answer. It returns null —
+   * rather than raising — when Stripe is unconfigured, when the org has no invoice
+   * configuration, when no stripe_customer_id is assigned yet, when the customer was
+   * deleted on Stripe's side, or when the API call itself fails.
+   */
+  public async findCustomerForOrganization(organizationId: string) {
+    if (!this.stripe) return null;
+
+    const invoiceConfig = await this.prisma.invoiceConfiguration.findUnique({
+      where: { organization_id: organizationId },
+      select: { stripe_customer_id: true },
+    });
+
+    const stripeCustomerId = invoiceConfig?.stripe_customer_id;
+    if (!stripeCustomerId) return null;
+
+    try {
+      const customer = await this.safeStripeCall(() =>
+        this.stripe.customers.retrieve(stripeCustomerId),
+      );
+      // A customer deleted in Stripe still resolves, as a stub with deleted:true
+      // and none of the fields a caller would want.
+      return customer.deleted ? null : customer;
+    } catch (err) {
+      this.logger.warn(
+        `Could not retrieve Stripe customer ${stripeCustomerId} for org ${organizationId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   /** Lists an org's saved Stripe payment methods for the billing portal, flagging which
