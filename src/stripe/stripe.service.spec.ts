@@ -38,6 +38,20 @@ jest.mock('stripe', () => {
   });
 });
 
+// Must stay in sync with REQUIRED_EVENTS in initiateWebhookHandler — an endpoint whose
+// event list differs is treated as misconfigured and recreated.
+const REQUIRED_EVENTS = [
+  'customer.created',
+  'invoice.paid',
+  'invoice.overdue',
+  'invoice.voided',
+  'invoice.finalized',
+  'payment_intent.succeeded',
+  'invoice.payment_failed',
+  'payment_method.attached',
+  'checkout.session.completed',
+];
+
 describe('StripeService', () => {
   let service: StripeService;
   let redisMock: any;
@@ -119,6 +133,145 @@ describe('StripeService', () => {
         'MEDVIRTUAL:LOCAL:stripe_webhook_secret',
         'whsec_123'
       );
+      // The endpoint id must be cached too, otherwise the next boot can't tell
+      // whether the cached secret belongs to the endpoint it finds.
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'MEDVIRTUAL:LOCAL:stripe_webhook_endpoint_id',
+        'wh_123'
+      );
+    });
+
+    it('reuses an existing endpoint when the cached secret belongs to it', async () => {
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_existing',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+        ],
+      });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_existing')
+          : Promise.resolve('wh_existing'),
+      );
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).not.toHaveBeenCalled();
+      expect(mockWebhookEndpointsCreate).not.toHaveBeenCalled();
+    });
+
+    it('PRIMARY REGRESSION: recreates the endpoint when the cached secret is from a different endpoint', async () => {
+      // The staging failure mode: a cached secret was treated as proof of health
+      // regardless of which endpoint it came from, so a stale secret made every
+      // delivery fail signature verification while boot logged "correctly configured".
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_current',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+        ],
+      });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_stale')
+          : Promise.resolve('wh_deleted_long_ago'),
+      );
+      mockWebhookEndpointsCreate.mockResolvedValueOnce({
+        id: 'wh_fresh',
+        secret: 'whsec_fresh',
+      });
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_current');
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'MEDVIRTUAL:LOCAL:stripe_webhook_secret',
+        'whsec_fresh',
+      );
+    });
+
+    it('PRIMARY REGRESSION: collapses duplicate endpoints sharing the target URL', async () => {
+      // Endpoints created by hand in the dashboard (no metadata) or by an older
+      // server label were invisible to the metadata-only cleanup and survived,
+      // signing a share of deliveries with a secret we never hold.
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_managed',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+          {
+            id: 'wh_manual',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: {},
+          },
+        ],
+      });
+      redisMock.get.mockResolvedValue('whsec_cached');
+      mockWebhookEndpointsCreate.mockResolvedValueOnce({
+        id: 'wh_single',
+        secret: 'whsec_single',
+      });
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_managed');
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_manual');
+      expect(mockWebhookEndpointsCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('follows pagination so an endpoint beyond the first page is not duplicated', async () => {
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList
+        .mockResolvedValueOnce({
+          data: [
+            { id: 'wh_other', url: 'https://elsewhere.test/webhooks/stripe', metadata: {} },
+          ],
+          has_more: true,
+        })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'wh_page2',
+              url: 'https://webhook.test/webhooks/stripe',
+              status: 'enabled',
+              enabled_events: REQUIRED_EVENTS,
+              metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+            },
+          ],
+          has_more: false,
+        });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_page2')
+          : Promise.resolve('wh_page2'),
+      );
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsList).toHaveBeenCalledTimes(2);
+      expect(mockWebhookEndpointsList).toHaveBeenLastCalledWith({
+        limit: 100,
+        starting_after: 'wh_other',
+      });
+      expect(mockWebhookEndpointsCreate).not.toHaveBeenCalled();
     });
   });
 
