@@ -315,6 +315,7 @@ model Candidate {
   id                         String           @id @default(uuid())
   hubspot_id                 String           @unique
   hubstaff_id                                                     String?                 @unique
+  hubspot_vaid               String?
   email                      String
   first_name                 String?
   last_name                  String?
