@@ -174,6 +174,7 @@ export const candidadeToDbDictionary: Record<string, string | string[]> = {
   issue_resolution: 'issue_resolution',
   total_score_sales__account_manager: 'total_score_sales__account_manager',
   notes_sales__account_manager: 'notes_sales__account_manager',
+  vaid: 'vaid'
 };
 
 export const dbToCandidateDictionary: Record<string, string> =

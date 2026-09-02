@@ -12,8 +12,19 @@ export class StripeController {
   @Get('stripe/customers')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('system_super_admin', 'system_admin')
-  async listCustomers(@Query('search') search?: string) {
-    return this.stripeService.listCustomers(search);
+  async listCustomers(
+    @Query('search') search?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    if (parsedLimit !== undefined && !Number.isFinite(parsedLimit)) {
+      throw new BadRequestException('Limit must be a number');
+    }
+    // `cursor` is whatever nextCursor the previous response returned; it has to be
+    // sent back alongside the same `search` value, since list and search cursors
+    // are not interchangeable.
+    return this.stripeService.listCustomers(search, cursor, parsedLimit);
   }
 
   @Post('stripe/customers')

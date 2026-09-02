@@ -735,25 +735,61 @@ export class StripeService implements OnModuleInit {
   }
 
   /** Lists Stripe customers for the admin UI's "link existing customer" picker.
-   * Without `search`, returns the 100 most recent customers (fast, no extra
-   * round-trip). With `search`, uses Stripe's Search API instead of List so
-   * customers outside that first page can still be found by name/email. */
-  public async listCustomers(search?: string) {
+   * Without `search`, pages through customers newest-first. With `search`, uses
+   * Stripe's Search API instead of List so customers outside the first page can
+   * still be found by name/email.
+   *
+   * `cursor` is opaque to the caller but means different things per branch —
+   * a customer id (`starting_after`) when listing, a search page token when
+   * searching — so a cursor must be sent back with the same `search` value it
+   * was issued under. Pass `nextCursor` straight through from the previous
+   * response and that holds automatically. */
+  public async listCustomers(search?: string, cursor?: string, limit = 100) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not initialized');
     }
     const trimmed = search?.trim();
-    const response = trimmed
-      ? await this.stripe.customers.search({
+    // Stripe rejects anything outside 1..100 outright.
+    const pageSize = Math.min(Math.max(Math.trunc(limit) || 100, 1), 100);
+
+    if (trimmed) {
+      const response = await this.safeStripeCall(() =>
+        this.stripe.customers.search({
           query: this.buildCustomerSearchQuery(trimmed),
-          limit: 100,
-        })
-      : await this.stripe.customers.list({ limit: 100 });
-    return response.data.map((c) => ({
+          limit: pageSize,
+          ...(cursor ? { page: cursor } : {}),
+        }),
+      );
+      return {
+        data: response.data.map((c) => this.toCustomerSummary(c)),
+        hasMore: response.has_more,
+        // Search hands back its own page token; unlike List there's nothing to derive.
+        nextCursor: response.next_page ?? null,
+      };
+    }
+
+    const response = await this.safeStripeCall(() =>
+      this.stripe.customers.list({
+        limit: pageSize,
+        ...(cursor ? { starting_after: cursor } : {}),
+      }),
+    );
+    return {
+      data: response.data.map((c) => this.toCustomerSummary(c)),
+      hasMore: response.has_more,
+      // List is cursor-by-object-id: the next page starts after the last row here.
+      nextCursor: response.has_more
+        ? (response.data[response.data.length - 1]?.id ?? null)
+        : null,
+    };
+  }
+
+  private toCustomerSummary(c: StripeCore.Customer) {
+    return {
       id: c.id,
       name: c.name || (c as any).description || c.email || 'Unnamed Customer',
       email: c.email || '',
-    }));
+    };
   }
 
   /** Escapes single quotes so the search term can't break out of the Stripe

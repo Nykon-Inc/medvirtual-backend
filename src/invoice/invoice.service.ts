@@ -1325,8 +1325,8 @@ export class InvoiceService {
       // billing emails need to come from the matching domain/name or they'd look wrong
       // (or land in spam) for Berry Virtual clients.
       const isProduction = process.env.ENVIRONMENT === 'PROD';
-      const fromDomain = businessUnit === 'Berry Virtual' ? 'berryvirtual.com' : 'medvirtual.ai';
-      const fromName = businessUnit === 'Berry Virtual' ? 'Berry Virtual Billing' : 'MedVirtual Billing';
+      const fromDomain = 'medvirtual.ai';
+      const fromName = 'MedVirtual Billing';
       const rawFrom = `${fromName} <noreply@${fromDomain}>`;
       const from = isProduction ? rawFrom : `[DEV] ${rawFrom}`;
 
