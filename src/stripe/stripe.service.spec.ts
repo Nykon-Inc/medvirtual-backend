@@ -12,6 +12,9 @@ const mockWebhookEndpointsList = jest.fn();
 const mockWebhookEndpointsDel = jest.fn();
 const mockWebhookEndpointsCreate = jest.fn();
 const mockConstructEvent = jest.fn();
+const mockCouponsCreate = jest.fn();
+const mockInvoiceItemsList = jest.fn();
+const mockInvoiceItemsCreate = jest.fn();
 
 jest.mock('stripe', () => {
   return jest.fn().mockImplementation(() => {
@@ -24,9 +27,30 @@ jest.mock('stripe', () => {
       webhooks: {
         constructEvent: mockConstructEvent,
       },
+      coupons: {
+        create: mockCouponsCreate,
+      },
+      invoiceItems: {
+        list: mockInvoiceItemsList,
+        create: mockInvoiceItemsCreate,
+      },
     };
   });
 });
+
+// Must stay in sync with REQUIRED_EVENTS in initiateWebhookHandler — an endpoint whose
+// event list differs is treated as misconfigured and recreated.
+const REQUIRED_EVENTS = [
+  'customer.created',
+  'invoice.paid',
+  'invoice.overdue',
+  'invoice.voided',
+  'invoice.finalized',
+  'payment_intent.succeeded',
+  'invoice.payment_failed',
+  'payment_method.attached',
+  'checkout.session.completed',
+];
 
 describe('StripeService', () => {
   let service: StripeService;
@@ -109,6 +133,309 @@ describe('StripeService', () => {
         'MEDVIRTUAL:LOCAL:stripe_webhook_secret',
         'whsec_123'
       );
+      // The endpoint id must be cached too, otherwise the next boot can't tell
+      // whether the cached secret belongs to the endpoint it finds.
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'MEDVIRTUAL:LOCAL:stripe_webhook_endpoint_id',
+        'wh_123'
+      );
+    });
+
+    it('reuses an existing endpoint when the cached secret belongs to it', async () => {
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_existing',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+        ],
+      });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_existing')
+          : Promise.resolve('wh_existing'),
+      );
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).not.toHaveBeenCalled();
+      expect(mockWebhookEndpointsCreate).not.toHaveBeenCalled();
+    });
+
+    it('PRIMARY REGRESSION: recreates the endpoint when the cached secret is from a different endpoint', async () => {
+      // The staging failure mode: a cached secret was treated as proof of health
+      // regardless of which endpoint it came from, so a stale secret made every
+      // delivery fail signature verification while boot logged "correctly configured".
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_current',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+        ],
+      });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_stale')
+          : Promise.resolve('wh_deleted_long_ago'),
+      );
+      mockWebhookEndpointsCreate.mockResolvedValueOnce({
+        id: 'wh_fresh',
+        secret: 'whsec_fresh',
+      });
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_current');
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'MEDVIRTUAL:LOCAL:stripe_webhook_secret',
+        'whsec_fresh',
+      );
+    });
+
+    it('PRIMARY REGRESSION: collapses duplicate endpoints sharing the target URL', async () => {
+      // Endpoints created by hand in the dashboard (no metadata) or by an older
+      // server label were invisible to the metadata-only cleanup and survived,
+      // signing a share of deliveries with a secret we never hold.
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList.mockResolvedValueOnce({
+        data: [
+          {
+            id: 'wh_managed',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+          },
+          {
+            id: 'wh_manual',
+            url: 'https://webhook.test/webhooks/stripe',
+            status: 'enabled',
+            enabled_events: REQUIRED_EVENTS,
+            metadata: {},
+          },
+        ],
+      });
+      redisMock.get.mockResolvedValue('whsec_cached');
+      mockWebhookEndpointsCreate.mockResolvedValueOnce({
+        id: 'wh_single',
+        secret: 'whsec_single',
+      });
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_managed');
+      expect(mockWebhookEndpointsDel).toHaveBeenCalledWith('wh_manual');
+      expect(mockWebhookEndpointsCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('follows pagination so an endpoint beyond the first page is not duplicated', async () => {
+      await (service as any).initializeStripe();
+      mockWebhookEndpointsList
+        .mockResolvedValueOnce({
+          data: [
+            { id: 'wh_other', url: 'https://elsewhere.test/webhooks/stripe', metadata: {} },
+          ],
+          has_more: true,
+        })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'wh_page2',
+              url: 'https://webhook.test/webhooks/stripe',
+              status: 'enabled',
+              enabled_events: REQUIRED_EVENTS,
+              metadata: { server: 'local:MEDVIRTUAL:LOCAL' },
+            },
+          ],
+          has_more: false,
+        });
+      redisMock.get.mockImplementation((key: string) =>
+        key.endsWith('stripe_webhook_secret')
+          ? Promise.resolve('whsec_page2')
+          : Promise.resolve('wh_page2'),
+      );
+
+      await service.initiateWebhookHandler();
+
+      expect(mockWebhookEndpointsList).toHaveBeenCalledTimes(2);
+      expect(mockWebhookEndpointsList).toHaveBeenLastCalledWith({
+        limit: 100,
+        starting_after: 'wh_other',
+      });
+      expect(mockWebhookEndpointsCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('buildDeterministicInvoiceItems', () => {
+    const buildInvoice = (lineItems: any[]) => ({
+      reference: 'INV-1',
+      currentVersion: { line_items: lineItems },
+    });
+
+    it('sends the gross amount and a discountCents when the line has a discount', async () => {
+      const invoice = buildInvoice([
+        { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+      ]);
+
+      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+
+      expect(result).toEqual([
+        {
+          internalItemId: 'INV-1:line-1',
+          amountCents: 50000,
+          description: 'Staff A',
+          type: 'LINE_ITEM',
+          discountCents: 5000,
+        },
+      ]);
+    });
+
+    it('keeps the netted amount and omits discountCents for a surcharge', async () => {
+      const invoice = buildInvoice([
+        { id: 'line-1', final_total: 550, adjustment_amount: 50, description: 'Staff A' },
+      ]);
+
+      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+
+      expect(result).toEqual([
+        {
+          internalItemId: 'INV-1:line-1',
+          amountCents: 55000,
+          description: 'Staff A',
+          type: 'LINE_ITEM',
+        },
+      ]);
+    });
+
+    it('keeps existing behavior unchanged when there is no adjustment', async () => {
+      const invoice = buildInvoice([
+        { id: 'line-1', final_total: 500, adjustment_amount: 0, description: 'Staff A' },
+      ]);
+
+      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+
+      expect(result).toEqual([
+        {
+          internalItemId: 'INV-1:line-1',
+          amountCents: 50000,
+          description: 'Staff A',
+          type: 'LINE_ITEM',
+        },
+      ]);
+    });
+
+    it('skips a line whose gross amount rounds to zero', async () => {
+      const invoice = buildInvoice([
+        { id: 'line-1', final_total: 0, adjustment_amount: 0, description: 'Staff A' },
+      ]);
+
+      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('attachStripeInvoiceItems', () => {
+    beforeEach(async () => {
+      await (service as any).initializeStripe();
+      (service as any).prisma = { invoice: { update: jest.fn() } };
+      // safeStripeCall rate-limits through acquireToken(), which increments/expires
+      // a per-second Redis bucket — stub it so calls pass straight through.
+      redisMock.incr = jest.fn().mockResolvedValue(1);
+      redisMock.expire = jest.fn().mockResolvedValue(1);
+    });
+
+    it('creates a coupon and attaches it as a discount for a discounted line item', async () => {
+      const invoice = {
+        id: 'invoice-1',
+        reference: 'INV-1',
+        stripe_invoice_id: 'in_123',
+        currentVersion: {
+          line_items: [
+            { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+          ],
+        },
+      };
+
+      mockInvoiceItemsList.mockResolvedValueOnce({ data: [] });
+      mockCouponsCreate.mockResolvedValueOnce({ id: 'coupon_abc' });
+      mockInvoiceItemsCreate.mockResolvedValueOnce({ id: 'ii_1' });
+
+      await service.attachStripeInvoiceItems(invoice, 'cus_123');
+
+      expect(mockCouponsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ amount_off: 5000, currency: 'usd', duration: 'once' }),
+        expect.objectContaining({
+          idempotencyKey: 'line-discount-coupon-INV-1-INV-1:line-1',
+        }),
+      );
+      expect(mockInvoiceItemsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 50000,
+          discounts: [{ coupon: 'coupon_abc' }],
+        }),
+        expect.objectContaining({
+          idempotencyKey: 'invoice-items-INV-1-INV-1:line-1',
+        }),
+      );
+    });
+
+    it('does not create a coupon for a line item without a discount', async () => {
+      const invoice = {
+        id: 'invoice-1',
+        reference: 'INV-1',
+        stripe_invoice_id: 'in_123',
+        currentVersion: {
+          line_items: [
+            { id: 'line-1', final_total: 500, adjustment_amount: 0, description: 'Staff A' },
+          ],
+        },
+      };
+
+      mockInvoiceItemsList.mockResolvedValueOnce({ data: [] });
+      mockInvoiceItemsCreate.mockResolvedValueOnce({ id: 'ii_1' });
+
+      await service.attachStripeInvoiceItems(invoice, 'cus_123');
+
+      expect(mockCouponsCreate).not.toHaveBeenCalled();
+      expect(mockInvoiceItemsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 50000 }),
+        expect.anything(),
+      );
+      const [createArgs] = mockInvoiceItemsCreate.mock.calls[0];
+      expect(createArgs).not.toHaveProperty('discounts');
+    });
+
+    it('skips already-attached items on retry without creating a duplicate coupon', async () => {
+      const invoice = {
+        id: 'invoice-1',
+        reference: 'INV-1',
+        stripe_invoice_id: 'in_123',
+        currentVersion: {
+          line_items: [
+            { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+          ],
+        },
+      };
+
+      // The item is already on the Stripe invoice from a prior attempt.
+      mockInvoiceItemsList.mockResolvedValueOnce({
+        data: [{ metadata: { internal_item_id: 'INV-1:line-1' } }],
+      });
+
+      await service.attachStripeInvoiceItems(invoice, 'cus_123');
+
+      expect(mockCouponsCreate).not.toHaveBeenCalled();
+      expect(mockInvoiceItemsCreate).not.toHaveBeenCalled();
     });
   });
 });

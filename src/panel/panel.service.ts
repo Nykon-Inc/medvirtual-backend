@@ -216,7 +216,7 @@ export class PanelService {
   async getPanelData(dateFrom?: string, dateTo?: string): Promise<any> {
     const dateFilterCreated: any = {};
     if (dateFrom) dateFilterCreated.gte = new Date(dateFrom);
-    if (dateTo) dateFilterCreated.lte = new Date(dateTo);
+    if (dateTo) dateFilterCreated.lte = new Date(`${dateTo}T23:59:59.999Z`);
     const hasDateFilter = Object.keys(dateFilterCreated).length > 0;
 
     const selectCandidates = {
@@ -463,9 +463,7 @@ export class PanelService {
 
     const HrCount = await this.prisma.hireRequest.count({
       where: {
-        status: {
-          not: { in: [HireRequestStatus.deleted, HireRequestStatus.cancelled] },
-        },
+        status: { not: HireRequestStatus.deleted },
         ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
       },
     });

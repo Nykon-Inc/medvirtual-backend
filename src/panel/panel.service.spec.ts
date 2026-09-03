@@ -285,6 +285,7 @@ describe('PanelService', () => {
   it('should apply date filters correctly', async () => {
     const dateFrom = '2023-01-01';
     const dateTo = '2023-01-31';
+    const dateToEnd = new Date(`${dateTo}T23:59:59.999Z`);
 
     // Setup mocks to return empty/zero values to avoid execution errors
     (prisma.uSER.count as jest.Mock).mockResolvedValue(0); 
@@ -306,7 +307,7 @@ describe('PanelService', () => {
     // Verify activeClientUsers date filter
     expect(prisma.uSER.count).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({
-             createdAt: { gte: new Date(dateFrom), lte: new Date(dateTo) }
+             createdAt: { gte: new Date(dateFrom), lte: dateToEnd }
         })
     }));
 
@@ -329,7 +330,7 @@ describe('PanelService', () => {
         where: expect.objectContaining({
              createdAt: {
                 gte: new Date(dateFrom),
-                lte: new Date(dateTo)
+                lte: dateToEnd
              }
         })
     }));
@@ -339,7 +340,7 @@ describe('PanelService', () => {
     // not by an unrelated entity's creation date.
     expect(prisma.candidateAuditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({
-            createdAt: { gte: new Date(dateFrom), lte: new Date(dateTo) }
+            createdAt: { gte: new Date(dateFrom), lte: dateToEnd }
         })
     }));
 
@@ -347,7 +348,7 @@ describe('PanelService', () => {
     // candidate was actually selected as winner), not by HireRequest.createdAt.
     expect(prisma.panelCandidate.count).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({
-            updatedAt: { gte: new Date(dateFrom), lte: new Date(dateTo) }
+            updatedAt: { gte: new Date(dateFrom), lte: dateToEnd }
         })
     }));
   });

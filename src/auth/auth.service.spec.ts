@@ -260,11 +260,12 @@ describe('AuthService - signIn', () => {
       last_name: 'User',
       role: 'admin',
       affiliate_profile_id: null,
+      onboarding_tour_dismissed: true,
     };
     userMock.findByEmail.mockResolvedValue(userObj);
     prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Berry Virtual', 
-      status: 'active' 
+      business_unit: 'Berry Virtual',
+      status: 'active'
     });
 
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -287,6 +288,7 @@ describe('AuthService - signIn', () => {
         clientId: 'org1',
         business_unit: 'Berry Virtual',
         affiliate_profile_id: null,
+        onboarding_tour_dismissed: true,
       },
     });
     expect(prisma.session.updateMany).toHaveBeenCalledWith({

@@ -790,6 +790,7 @@ export class BusinessUnitsService {
           // makes for webhook-driven candidate creation.
           email: candidateData.email ?? `unknown+${hubspotId}@medvirtual.ai`,
           processing_status: 'pending',
+          pipeline_status_origin: candidateData.pipeline_status,
         } as Prisma.CandidateCreateInput,
         update: { ...candidateData },
       });

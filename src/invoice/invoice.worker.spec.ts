@@ -5,12 +5,16 @@ import { HubstaffService } from '../hubstaff/hubstaff.service';
 import { PusherService } from '../pusher/pusher.service';
 import { StripeService } from '../stripe/stripe.service';
 import { ConfigService } from '@nestjs/config';
+import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
+import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
 describe('InvoiceWorker', () => {
   let worker: InvoiceWorker;
   let prismaMock: any;
   let hubstaffMock: any;
+  let positionRateConfigMock: any;
+  let businessUnitContextMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -40,6 +44,14 @@ describe('InvoiceWorker', () => {
       getHubstaffDailyActivityForInvoice: jest.fn().mockResolvedValue([]),
     };
 
+    positionRateConfigMock = {
+      findAllUnpaginated: jest.fn().mockResolvedValue([]),
+    };
+
+    businessUnitContextMock = {
+      poolFor: jest.fn().mockResolvedValue('medical'),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InvoiceWorker,
@@ -48,6 +60,8 @@ describe('InvoiceWorker', () => {
         { provide: PusherService, useValue: {} },
         { provide: StripeService, useValue: {} },
         { provide: ConfigService, useValue: {} },
+        { provide: PositionRateConfigService, useValue: positionRateConfigMock },
+        { provide: BusinessUnitContext, useValue: businessUnitContextMock },
       ],
     }).compile();
 
@@ -210,6 +224,58 @@ describe('InvoiceWorker', () => {
       // expected total = 120 * 23.076923076923077 = 2769.230769230769
       const expected = new Decimal(120).mul(new Decimal((4000 * 12) / 52 / 40));
       expect(serviceAmount.toNumber()).toBeCloseTo(expected.toNumber(), 2);
+    });
+
+    it('falls back to the position/business-unit floor price — not a hardcoded $12 — when staff has no salary and candidate has no hourly_pay_rate', async () => {
+      const payload = {
+        organization_id: 'org_id',
+        billing_start_date: '2026-06-01',
+        billing_end_date: '2026-06-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      };
+
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Jane Doe' },
+      ]);
+
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_1',
+          candidate: {
+            hubstaff_id: '123',
+            hourly_pay_rate: null,
+            approved_positions_pairing: ['Medical VA'],
+            languages: [],
+            employment_type: null,
+            business_unit: 'medvirtual',
+          },
+          salary: null,
+          hubspot_deployment_type: 'Full-Time',
+        },
+      ]);
+
+      positionRateConfigMock.findAllUnpaginated.mockResolvedValue([
+        {
+          position: 'Medical VA',
+          medical_floor_price_english: 18,
+          non_medical_floor_price_english: 18,
+          medical_floor_price_bilingual: 20,
+          non_medical_floor_price_bilingual: 20,
+          medical_margin_per_hour: 2,
+          non_medical_margin_per_hour: 2,
+        },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, payload);
+
+      const calls = prismaMock.invoiceLineItem.create.mock.calls;
+      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      expect(primaryLineCall).toBeDefined();
+
+      // floor (18) + margin (2) = $20/hr — not the old hardcoded $12/hr fallback.
+      expect(primaryLineCall[0].data.hourly_rate.toNumber()).toBe(20);
+      expect(primaryLineCall[0].data.hourly_rate.toNumber()).not.toBe(12);
     });
   });
 });

@@ -315,9 +315,26 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
                 ...(org.hubspot_id ? [{ hubspot_organization_id: org.hubspot_id }] : []),
               ],
             },
-            include: { candidate: true },
+            include: {
+              candidate: {
+                include: {
+                  // Needed by InvoiceWorker.fallbackHourlyRate to pick the bilingual vs.
+                  // english floor price when a worker has no salary/hourly_pay_rate.
+                  languages: true,
+                },
+              },
+            },
           })
         : [];
+
+    // Fallback bill rate source for workers with neither a salary nor a candidate
+    // hourly_pay_rate on file — same position+business-unit floor price calculation
+    // InvoiceWorker uses when generating the original prebill (see fallbackHourlyRate),
+    // computed once per batch to avoid N+1 lookups in the loop below.
+    const positionConfigMap = await this.invoiceWorker.buildPositionConfigMap();
+    const candidatePoolMap = await this.invoiceWorker.buildCandidatePoolMap(
+      staffRecords.map((s) => ({ business_unit: s.candidate?.business_unit ?? null })),
+    );
 
     // --- Actual Hubstaff activities ---
     const activities = await this.hubstaff.getHubstaffDailyActivityForInvoice({
@@ -434,17 +451,14 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       const actualHours = totalPayableHours;
       const hasOvertime = actualHours > requiredHours + 4;
 
-      // NOTE(bug risk): this default/fallback rate is $25/hr, but InvoiceWorker's
-      // equivalent fallback (used when generating the original prebill estimate) is
-      // $12/hr — see invoice.worker.ts's `hourlyRate = new Decimal(12)`. For any worker
-      // with no salary and no candidate.hourly_pay_rate on file, this mismatch alone
-      // will manufacture a false debit here (actual computed at $25/hr vs. the $12/hr
-      // the client was originally prebilled), even if their real hours didn't change.
-      // Flagging rather than silently changing — worth confirming with whoever owns
-      // this logic whether $25 or $12 is the intended fallback for reconciliation.
+      // Default fallback for a worker with neither a salary nor a candidate
+      // hourly_pay_rate on file — position+business-unit floor price via
+      // InvoiceWorker.fallbackHourlyRate, the same source used when generating the
+      // original prebill estimate, so prebill and reconciliation never diverge.
+      const fallbackRate = this.invoiceWorker.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap);
       let primaryHours = actualHours;
       let overtimeHours = 0;
-      let hourlyRate = new Decimal(25);
+      let hourlyRate = new Decimal(fallbackRate);
       let overtimeHourlyRate = new Decimal(0);
       let lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
       let overtimeTotal = new Decimal(0);
@@ -476,9 +490,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
           overtimeHourlyRate = new Decimal(rate);
           overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
         } else {
-          hourlyRate = new Decimal(25);
+          hourlyRate = new Decimal(fallbackRate);
           lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-          overtimeHourlyRate = new Decimal(25);
+          overtimeHourlyRate = new Decimal(fallbackRate);
           overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
         }
       } else {
@@ -504,6 +518,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
           }
         } else if (candidate && candidate.hourly_pay_rate) {
           hourlyRate = new Decimal(Number(candidate.hourly_pay_rate));
+          lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
+        } else {
+          hourlyRate = new Decimal(fallbackRate);
           lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
         }
       }

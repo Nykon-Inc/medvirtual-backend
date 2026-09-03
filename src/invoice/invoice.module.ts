@@ -10,6 +10,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PusherModule } from '../pusher/pusher.module';
 import { HubstaffModule } from '../hubstaff/hubstaff.module';
 import { MailModule } from '../mail/mail.module';
+import { PositionRateConfigModule } from '../position-rate-config/position-rate-config.module';
+import { BusinessUnitsModule } from '../business-units/business-units.module';
 import { queuesEnabledSync } from '../common/app-config';
 
 // With queues disabled, both the queue registrations and the worker providers
@@ -33,6 +35,8 @@ const workerProviders = QUEUES
     PusherModule,
     HubstaffModule,
     MailModule,
+    PositionRateConfigModule,
+    BusinessUnitsModule,
     ...(QUEUES
       ? [
           BullModule.registerQueue(

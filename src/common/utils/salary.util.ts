@@ -1,5 +1,10 @@
 import { getApprovedPositionLabel } from '../dictionaries/approved-positions-pairing-dictionary';
 
+/** Minimal shape needed to resolve a candidate pool via BusinessUnitContext.poolFor. */
+export interface PoolResolver {
+  poolFor(hubspotValueOrSlug: string): Promise<CandidatePool | null>;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const FULL_TIME_HOURS_PER_MONTH = 176;
 const PART_TIME_HOURS_PER_MONTH = 88;
@@ -99,6 +104,35 @@ export function buildConfigMap<
   T extends PositionRateConfigLike & { position: string },
 >(configs: T[]): Map<string, T> {
   return new Map(configs.map((c) => [c.position, c]));
+}
+
+/**
+ * Resolves the `candidate_pool` for every distinct `business_unit` present in
+ * `candidates`, in one batch — so a subsequent synchronous `.map()` calling
+ * `computeCandidateRates` can look pools up without ever `await`-ing inside
+ * the loop. Unknown/missing business units fall back to `'medical'`.
+ */
+export async function buildCandidatePoolMap(
+  candidates: { business_unit: string | null }[],
+  poolResolver: PoolResolver,
+): Promise<Map<string, CandidatePool>> {
+  const distinctBUs = Array.from(
+    new Set(
+      candidates
+        .map((c) => c.business_unit)
+        .filter((bu): bu is string => !!bu),
+    ),
+  );
+  const entries = await Promise.all(
+    distinctBUs.map(
+      async (bu) =>
+        [bu, (await poolResolver.poolFor(bu)) ?? 'medical'] as [
+          string,
+          CandidatePool,
+        ],
+    ),
+  );
+  return new Map(entries);
 }
 
 export function computeCandidateRates(

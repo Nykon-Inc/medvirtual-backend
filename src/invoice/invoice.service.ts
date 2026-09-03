@@ -727,8 +727,8 @@ export class InvoiceService {
    * display) and the org's invoice configuration — used by nearly every other method
    * in this service that needs the "full" invoice, not just the bare Invoice row.
    */
-  async findOne(id: string) {
-    return await this.prisma.invoice.findUnique({
+  async findOne(id: string, options: { withStripeCustomer?: boolean } = {}) {
+    const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: {
         currentVersion: {
@@ -748,6 +748,30 @@ export class InvoiceService {
         },
       },
     });
+
+    // Opt-in rather than always-on: findOne is the "full invoice" fetch used by
+    // PDF rendering, email sending and the status/version paths, and none of
+    // those need Stripe. Loading the customer unconditionally would put a
+    // network round trip — and a dependency on Stripe being reachable — into
+    // every one of them.
+    if (!options.withStripeCustomer || !invoice?.organization) {
+      return invoice;
+    }
+
+    // Never fails the invoice fetch: findCustomerForOrganization returns null
+    // when Stripe is unconfigured, no customer id is assigned yet, the customer
+    // was deleted, or the API call errors.
+    const stripeCustomer = await this.stripeService.findCustomerForOrganization(
+      invoice.organization.id,
+    );
+
+    return {
+      ...invoice,
+      organization: {
+        ...invoice.organization,
+        stripeCustomer,
+      },
+    };
   }
 
   /** Full version history for an invoice (newest first) — the "revision history" view. */
@@ -923,6 +947,19 @@ export class InvoiceService {
           response.status() === 200,
         { timeout: 40000 },
       );
+
+      // The "Billed to" card also fires a client-side call for the org's Stripe billing
+      // contact once the invoice loads. Wait for it too so the PDF doesn't get captured
+      // mid-fetch — but don't hard-fail PDF generation if the org has no Stripe customer
+      // linked (that call 400s and is simply skipped by the frontend).
+      await page
+        .waitForResponse(
+          (response) =>
+            response.url().includes('/billing-contact') &&
+            (response.status() === 200 || response.status() === 400),
+          { timeout: 10000 },
+        )
+        .catch(() => {});
 
       const divSelector = ".invoice-template";
 
@@ -1288,8 +1325,8 @@ export class InvoiceService {
       // billing emails need to come from the matching domain/name or they'd look wrong
       // (or land in spam) for Berry Virtual clients.
       const isProduction = process.env.ENVIRONMENT === 'PROD';
-      const fromDomain = businessUnit === 'Berry Virtual' ? 'berryvirtual.com' : 'medvirtual.ai';
-      const fromName = businessUnit === 'Berry Virtual' ? 'Berry Virtual Billing' : 'MedVirtual Billing';
+      const fromDomain = 'medvirtual.ai';
+      const fromName = 'MedVirtual Billing';
       const rawFrom = `${fromName} <noreply@${fromDomain}>`;
       const from = isProduction ? rawFrom : `[DEV] ${rawFrom}`;
 

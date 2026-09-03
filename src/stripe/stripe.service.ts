@@ -24,6 +24,16 @@ import {
 } from '../common/app-config';
 import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { createHash } from 'crypto';
+
+/**
+ * Stable, non-reversible short identifier for a signing secret, safe to log. Lets a
+ * signature failure be diagnosed ("is the secret we hold the one in the dashboard?")
+ * by comparing fingerprints, without ever writing secret material to the logs.
+ */
+function secretFingerprint(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex').slice(0, 8);
+}
 
 /**
  * All direct integration with the Stripe API for the invoicing feature. InvoiceService
@@ -139,8 +149,12 @@ export class StripeService implements OnModuleInit {
     }
 
     // Signing secret is cached in Redis (not env vars) since it's generated dynamically
-    // by Stripe each time the webhook endpoint is (re)created below.
+    // by Stripe each time the webhook endpoint is (re)created below. The endpoint id is
+    // cached alongside it: a cached secret is only trustworthy as the secret *of a
+    // specific endpoint*, and Stripe never returns the secret again after creation, so
+    // the id is the only way to tell "our secret" from a leftover one.
     const secretKey = `${keyPrefix(this.configService)}stripe_webhook_secret`;
+    const endpointIdKey = `${keyPrefix(this.configService)}stripe_webhook_endpoint_id`;
     const server = webhookServerLabel(this.configService);
 
     const webhookBaseUrl = this.configService.get<string>('WEBHOOK_URL') || '';
@@ -174,28 +188,54 @@ export class StripeService implements OnModuleInit {
       ];
 
     try {
-      const list = await this.stripe.webhookEndpoints.list({ limit: 100 });
-      let existingWebhook: any = null;
+      const allEndpoints = await this.listAllWebhookEndpoints();
 
-      // Clean up endpoints for the same server with different URLs, and check if target already exists
-      for (const item of list.data) {
-        const itemServer = item.metadata?.server;
-        if (itemServer === server) {
-          if (item.url === webhookUrl) {
-            existingWebhook = item;
-          } else {
-            // Delete old/different webhook URL for the same environment
-            this.logger.log(
-              `Deleting obsolete webhook endpoint for server ${server}: ${item.url}`,
-            );
-            await this.stripe.webhookEndpoints.del(item.id);
-          }
+      // Endpoints are matched by URL, not by metadata.server. The URL belongs to exactly
+      // one deployment, so anything pointing at it is ours to manage — including endpoints
+      // created by hand in the dashboard or by an older build using a different server
+      // label. Those used to be invisible here and survive forever, delivering the same
+      // events signed with a secret we don't hold: a permanently failing fraction of
+      // deliveries, reported by Stripe as "no signatures found matching".
+      const sameUrl = allEndpoints.filter((item) => item.url === webhookUrl);
+
+      // Still clean up this environment's own endpoints left at a stale URL (e.g. after
+      // an ngrok or staging hostname change), which URL matching alone wouldn't catch.
+      for (const item of allEndpoints) {
+        if (item.metadata?.server === server && item.url !== webhookUrl) {
+          this.logger.log(
+            `Deleting obsolete webhook endpoint for server ${server}: ${item.url}`,
+          );
+          await this.stripe.webhookEndpoints.del(item.id);
         }
       }
 
+      let existingWebhook: any = null;
+
+      if (sameUrl.length > 1) {
+        // Duplicates on one URL can never all be verifiable — we hold at most one secret.
+        this.logger.warn(
+          `Found ${sameUrl.length} Stripe webhook endpoints for URL ${webhookUrl} (${sameUrl
+            .map((e) => e.id)
+            .join(', ')}). Deleting all and creating a single managed endpoint.`,
+        );
+        for (const item of sameUrl) {
+          await this.stripe.webhookEndpoints.del(item.id);
+        }
+      } else {
+        existingWebhook = sameUrl[0] ?? null;
+      }
+
       if (existingWebhook) {
-        // Check if status is enabled, events match exactly, and we have the secret in Redis
-        const redisSecret = await this.redisClient.get(secretKey);
+        // A cached secret is only usable if it belongs to *this* endpoint. Comparing the
+        // cached endpoint id is the only available check: Stripe returns `secret` on
+        // creation and never again. Without it a stale secret (endpoint recreated in the
+        // dashboard, Stripe key repointed at another account or mode, Redis carrying a
+        // value from an earlier endpoint) is treated as proof of health, and every
+        // delivery fails signature verification while boot logs "correctly configured".
+        const [redisSecret, cachedEndpointId] = await Promise.all([
+          this.redisClient.get(secretKey),
+          this.redisClient.get(endpointIdKey),
+        ]);
 
         const enabledEvents = existingWebhook.enabled_events || [];
         const eventsMatch =
@@ -203,21 +243,23 @@ export class StripeService implements OnModuleInit {
           enabledEvents.every((e: string) =>
             (REQUIRED_EVENTS as string[]).includes(e),
           );
+        const secretBelongsToEndpoint =
+          !!redisSecret && cachedEndpointId === existingWebhook.id;
 
         if (
           existingWebhook.status === 'enabled' &&
           eventsMatch &&
-          redisSecret
+          secretBelongsToEndpoint
         ) {
           this.logger.log(
-            `Stripe webhook for URL ${webhookUrl} already exists and is correctly configured. Skipping creation.`,
+            `Stripe webhook for URL ${webhookUrl} already exists and is correctly configured (endpoint=${existingWebhook.id}). Skipping creation.`,
           );
           return existingWebhook;
         }
 
         // Otherwise, delete the existing one and recreate it to get a new secret and correct config
         this.logger.log(
-          `Existing webhook for ${webhookUrl} is misconfigured or lacks Redis secret. Re-creating...`,
+          `Existing webhook for ${webhookUrl} needs re-creating (endpoint=${existingWebhook.id}, status=${existingWebhook.status}, eventsMatch=${eventsMatch}, cachedSecret=${!!redisSecret}, cachedEndpointId=${cachedEndpointId ?? 'none'}).`,
         );
         await this.stripe.webhookEndpoints.del(existingWebhook.id);
       }
@@ -236,8 +278,15 @@ export class StripeService implements OnModuleInit {
 
       if (newWebhook && newWebhook.secret) {
         await this.redisClient.set(secretKey, newWebhook.secret);
+        await this.redisClient.set(endpointIdKey, newWebhook.id);
         this.logger.log(
-          `Stored Stripe webhook signing secret in Redis under key: ${secretKey}`,
+          `Stored Stripe webhook signing secret in Redis under key: ${secretKey} (endpoint=${newWebhook.id}, secretFingerprint=${secretFingerprint(newWebhook.secret)})`,
+        );
+      } else {
+        // Without a secret cached, handleWebhook falls back to STRIPE_SIGNING_SECRET,
+        // which won't match a freshly created endpoint. Make that loud.
+        this.logger.error(
+          `Stripe returned no signing secret for the newly created endpoint ${newWebhook?.id}. Inbound webhooks will fail verification.`,
         );
       }
 
@@ -248,6 +297,31 @@ export class StripeService implements OnModuleInit {
       );
       throw err;
     }
+  }
+
+  /**
+   * Every webhook endpoint on the account, following pagination. A single page of 100
+   * was enough until endpoints started accumulating (one per developer per tunnel URL);
+   * once the target endpoint falls off page one it looks absent, and each boot creates
+   * another duplicate for the same URL.
+   */
+  private async listAllWebhookEndpoints(): Promise<any[]> {
+    const endpoints: any[] = [];
+    let startingAfter: string | undefined;
+
+    // Bounded so a pagination bug can never spin the boot path forever.
+    for (let page = 0; page < 20; page++) {
+      const list = await this.stripe.webhookEndpoints.list({
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      const data = list?.data ?? [];
+      endpoints.push(...data);
+      if (!list?.has_more || data.length === 0) break;
+      startingAfter = data[data.length - 1].id;
+    }
+
+    return endpoints;
   }
 
   /**
@@ -262,7 +336,9 @@ export class StripeService implements OnModuleInit {
     }
 
     const redisSecretKey = `${keyPrefix(this.configService)}stripe_webhook_secret`;
+    const redisEndpointIdKey = `${keyPrefix(this.configService)}stripe_webhook_endpoint_id`;
 
+    let secretSource = `redis:${redisSecretKey}`;
     let webhookSecret = await this.redisClient.get(redisSecretKey);
     if (!webhookSecret) {
       this.logger.warn(
@@ -270,6 +346,7 @@ export class StripeService implements OnModuleInit {
       );
       webhookSecret =
         this.configService.get<string>('STRIPE_SIGNING_SECRET') || '';
+      secretSource = 'env:STRIPE_SIGNING_SECRET';
     }
 
     if (!webhookSecret) {
@@ -286,8 +363,18 @@ export class StripeService implements OnModuleInit {
         webhookSecret,
       );
     } catch (err) {
+      // Stripe's message blames the raw body, which is almost never the cause here (the
+      // controller rejects a missing rawBody separately). It is nearly always a secret
+      // that doesn't belong to the endpoint that signed this delivery, so log enough to
+      // tell those apart: which secret we used, its fingerprint to compare against the
+      // dashboard, and the endpoint we believe we own.
+      const cachedEndpointId = await this.redisClient
+        .get(redisEndpointIdKey)
+        .catch(() => null);
       this.logger.error(
-        `Webhook signature verification failed: ${err.message}`,
+        `Webhook signature verification failed: ${err.message} ` +
+          `[secretSource=${secretSource}, secretFingerprint=${secretFingerprint(webhookSecret)}, ` +
+          `managedEndpoint=${cachedEndpointId ?? 'unknown'}, rawBodyBytes=${rawBody?.length ?? 0}]`,
       );
       throw new BadRequestException(`Webhook Error: ${err.message}`);
     }
@@ -734,17 +821,69 @@ export class StripeService implements OnModuleInit {
     );
   }
 
-  /** Lists Stripe customers for the admin UI's "link existing customer" picker. */
-  public async listCustomers() {
+  /** Lists Stripe customers for the admin UI's "link existing customer" picker.
+   * Without `search`, pages through customers newest-first. With `search`, uses
+   * Stripe's Search API instead of List so customers outside the first page can
+   * still be found by name/email.
+   *
+   * `cursor` is opaque to the caller but means different things per branch —
+   * a customer id (`starting_after`) when listing, a search page token when
+   * searching — so a cursor must be sent back with the same `search` value it
+   * was issued under. Pass `nextCursor` straight through from the previous
+   * response and that holds automatically. */
+  public async listCustomers(search?: string, cursor?: string, limit = 100) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not initialized');
     }
-    const response = await this.stripe.customers.list({ limit: 100 });
-    return response.data.map((c) => ({
+    const trimmed = search?.trim();
+    // Stripe rejects anything outside 1..100 outright.
+    const pageSize = Math.min(Math.max(Math.trunc(limit) || 100, 1), 100);
+
+    if (trimmed) {
+      const response = await this.safeStripeCall(() =>
+        this.stripe.customers.search({
+          query: this.buildCustomerSearchQuery(trimmed),
+          limit: pageSize,
+          ...(cursor ? { page: cursor } : {}),
+        }),
+      );
+      return {
+        data: response.data.map((c) => this.toCustomerSummary(c)),
+        hasMore: response.has_more,
+        // Search hands back its own page token; unlike List there's nothing to derive.
+        nextCursor: response.next_page ?? null,
+      };
+    }
+
+    const response = await this.safeStripeCall(() =>
+      this.stripe.customers.list({
+        limit: pageSize,
+        ...(cursor ? { starting_after: cursor } : {}),
+      }),
+    );
+    return {
+      data: response.data.map((c) => this.toCustomerSummary(c)),
+      hasMore: response.has_more,
+      // List is cursor-by-object-id: the next page starts after the last row here.
+      nextCursor: response.has_more
+        ? (response.data[response.data.length - 1]?.id ?? null)
+        : null,
+    };
+  }
+
+  private toCustomerSummary(c: StripeCore.Customer) {
+    return {
       id: c.id,
       name: c.name || (c as any).description || c.email || 'Unnamed Customer',
       email: c.email || '',
-    }));
+    };
+  }
+
+  /** Escapes single quotes so the search term can't break out of the Stripe
+   * Search Query Language string literal it's interpolated into. */
+  private buildCustomerSearchQuery(term: string): string {
+    const escaped = term.replace(/'/g, "\\'");
+    return `name~'${escaped}' OR email~'${escaped}'`;
   }
 
   /** Creates a new Stripe customer — used when linking an org to Stripe for the first
@@ -1124,6 +1263,7 @@ export class StripeService implements OnModuleInit {
       amountCents: number;
       description: string;
       type: 'LINE_ITEM';
+      discountCents?: number;
     }>
   > {
     const result: Array<{
@@ -1131,25 +1271,35 @@ export class StripeService implements OnModuleInit {
       amountCents: number;
       description: string;
       type: 'LINE_ITEM';
+      discountCents?: number;
     }> = [];
 
     const lineItems = invoice.currentVersion?.line_items || [];
 
     for (const item of lineItems) {
-      const amount = Number(item.final_total || 0);
-      if (Math.round(amount * 100) === 0) {
+      const finalTotal = Number(item.final_total || 0);
+      const adjustmentAmount = Number(item.adjustment_amount || 0);
+      const isDiscount = adjustmentAmount < 0;
+
+      // When the line carries a real discount, Stripe must see the GROSS amount and
+      // apply the discount itself via a coupon — otherwise the discount would be
+      // subtracted twice (once in our own final_total, again by Stripe).
+      const grossAmount = isDiscount ? finalTotal - adjustmentAmount : finalTotal;
+
+      if (Math.round(grossAmount * 100) === 0) {
         continue;
       }
 
       result.push({
         internalItemId: `${invoice.reference}:${item.id}`,
-        amountCents: Math.round(amount * 100),
+        amountCents: Math.round(grossAmount * 100),
         description: this.stripHtml(item.description || 'Line Item'),
         type: 'LINE_ITEM',
+        ...(isDiscount && {
+          discountCents: Math.round(Math.abs(adjustmentAmount) * 100),
+        }),
       });
     }
-
-    const version = invoice.currentVersion;
 
     return result;
   }
@@ -1202,6 +1352,31 @@ export class StripeService implements OnModuleInit {
         continue;
       }
 
+      // A negative per-line adjustment becomes its own single-use Stripe coupon,
+      // attached directly to this invoice item — Stripe then renders it as a
+      // discount sub-line under this specific item (applied before any
+      // whole-invoice discount, which is handled separately in
+      // createStripeInvoiceOnly). idempotencyKey is tied to our own
+      // internalItemId so a retry reuses the same coupon instead of minting a
+      // new (orphaned) one each time.
+      const discounts: Array<{ coupon: string }> = [];
+      if (item.discountCents && item.discountCents > 0) {
+        const coupon = await this.safeStripeCall(() =>
+          this.stripe.coupons.create(
+            {
+              amount_off: item.discountCents,
+              currency: 'usd',
+              duration: 'once',
+              name: `Line discount - ${item.description}`,
+            },
+            {
+              idempotencyKey: `line-discount-coupon-${invoice.reference}-${item.internalItemId}`,
+            },
+          ),
+        );
+        discounts.push({ coupon: coupon.id });
+      }
+
       await this.safeStripeCall(() =>
         this.stripe.invoiceItems.create(
           {
@@ -1210,6 +1385,7 @@ export class StripeService implements OnModuleInit {
             currency: 'usd',
             amount: item.amountCents,
             description: item.description,
+            ...(discounts.length > 0 && { discounts }),
             metadata: {
               internal_item_id: item.internalItemId,
               type: item.type,
@@ -1345,6 +1521,80 @@ export class StripeService implements OnModuleInit {
       this.stripe.invoices.retrieve(stripeInvoiceId),
     );
     return { url: invoice.hosted_invoice_url || null };
+  }
+
+  /** Name + email of the org's Stripe customer record, for display on the invoice's
+   * "Billed to" card (the account Stripe actually bills/emails, which can differ from
+   * the organization's own contact info).
+   *
+   * Throws on every failure mode, deliberately: the frontend's "Billed to" card and
+   * the PDF renderer's waitForResponse both key off the 400 (see generatePdf), so a
+   * silent null here would change that contract. Use findCustomerForOrganization below
+   * when a missing customer should not be an error. */
+  public async getBillingContact(organizationId: string) {
+    if (!this.stripe) {
+      throw new BadRequestException('Stripe is not initialized');
+    }
+
+    const invoiceConfig = await this.prisma.invoiceConfiguration.findUnique({
+      where: { organization_id: organizationId },
+    });
+
+    if (!invoiceConfig || !invoiceConfig.stripe_customer_id) {
+      throw new BadRequestException(
+        'Stripe customer ID not found for this organization',
+      );
+    }
+
+    const customer = await this.safeStripeCall(() =>
+      this.stripe.customers.retrieve(invoiceConfig.stripe_customer_id as string),
+    );
+
+    if (customer.deleted) {
+      throw new BadRequestException('Stripe customer has been deleted');
+    }
+
+    return {
+      name: customer.name || null,
+      email: customer.email || null,
+    };
+  }
+
+  /**
+   * Retrieves the full Stripe customer linked to an organization, or null.
+   *
+   * The non-throwing counterpart to getBillingContact above: this one decorates a
+   * response that must still succeed when Stripe cannot answer. It returns null —
+   * rather than raising — when Stripe is unconfigured, when the org has no invoice
+   * configuration, when no stripe_customer_id is assigned yet, when the customer was
+   * deleted on Stripe's side, or when the API call itself fails.
+   */
+  public async findCustomerForOrganization(organizationId: string) {
+    if (!this.stripe) return null;
+
+    const invoiceConfig = await this.prisma.invoiceConfiguration.findUnique({
+      where: { organization_id: organizationId },
+      select: { stripe_customer_id: true },
+    });
+
+    const stripeCustomerId = invoiceConfig?.stripe_customer_id;
+    if (!stripeCustomerId) return null;
+
+    try {
+      const customer = await this.safeStripeCall(() =>
+        this.stripe.customers.retrieve(stripeCustomerId),
+      );
+      // A customer deleted in Stripe still resolves, as a stub with deleted:true
+      // and none of the fields a caller would want.
+      return customer.deleted ? null : customer;
+    } catch (err) {
+      this.logger.warn(
+        `Could not retrieve Stripe customer ${stripeCustomerId} for org ${organizationId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   /** Lists an org's saved Stripe payment methods for the billing portal, flagging which

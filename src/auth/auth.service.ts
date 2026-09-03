@@ -186,6 +186,7 @@ export class AuthService {
         clientId: user.organization_id,
         business_unit: business_unit,
         affiliate_profile_id: affiliateId,
+        onboarding_tour_dismissed: user.onboarding_tour_dismissed,
       },
     };
   }

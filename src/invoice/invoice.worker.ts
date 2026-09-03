@@ -10,6 +10,15 @@ import { DateTime } from 'luxon';
 import { StripeService } from '../stripe/stripe.service';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
+import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
+import { BusinessUnitContext } from '../business-units/business-unit-context.service';
+import {
+  buildConfigMap,
+  buildCandidatePoolMap,
+  computeCandidateRates,
+  CandidateLike,
+  CandidatePool,
+} from '../common/utils/salary.util';
 
 /**
  * BullMQ worker that does the actual heavy lifting of invoice generation — everything
@@ -33,6 +42,8 @@ export class InvoiceWorker extends WorkerHost {
     private readonly pusher: PusherService,
     private readonly stripeService: StripeService,
     private readonly configService: ConfigService,
+    private readonly positionRateConfigService: PositionRateConfigService,
+    private readonly businessUnitContext: BusinessUnitContext,
   ) {
     super();
   }
@@ -53,6 +64,35 @@ export class InvoiceWorker extends WorkerHost {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+  }
+
+  /**
+   * Last-resort hourly rate for a worker with neither a salary nor a candidate
+   * hourly_pay_rate on file — the position+business-unit floor price (same calculation
+   * used across candidates/hire-requests), rather than a hardcoded number. Falls back to
+   * 0 only if the candidate has no resolvable business unit/position at all.
+   */
+  public fallbackHourlyRate(
+    candidate: CandidateLike | null,
+    positionConfigMap: ReturnType<typeof buildConfigMap>,
+    candidatePoolMap: Map<string, CandidatePool>,
+  ): number {
+    if (!candidate) return 0;
+    const pool = candidatePoolMap.get(candidate.business_unit ?? '') ?? 'medical';
+    return computeCandidateRates(candidate, positionConfigMap, pool).bill_rate_hourly;
+  }
+
+  /** Builds the position-rate config lookup used by fallbackHourlyRate — fetched once
+   * per batch by callers (this worker's own generateInvoiceRecord, and
+   * InvoicePrebillReconciliationWorker) rather than per-worker inside a loop. */
+  public async buildPositionConfigMap() {
+    const configs = await this.positionRateConfigService.findAllUnpaginated();
+    return buildConfigMap(configs);
+  }
+
+  /** Builds the business_unit → candidate_pool lookup used by fallbackHourlyRate. */
+  public async buildCandidatePoolMap(candidates: { business_unit: string | null }[]) {
+    return buildCandidatePoolMap(candidates, this.businessUnitContext);
   }
 
   /** Counts Mon-Fri days (inclusive) in a date range — the baseline "how many days
@@ -326,7 +366,13 @@ export class InvoiceWorker extends WorkerHost {
         ],
       },
       include: {
-        candidate: true,
+        candidate: {
+          include: {
+            // Needed by computeCandidateRates (via fallbackHourlyRate) to pick the
+            // bilingual vs. english floor price when a worker has no salary/hourly_pay_rate.
+            languages: true,
+          },
+        },
         tickets: {
           where: {
             type: {
@@ -343,6 +389,15 @@ export class InvoiceWorker extends WorkerHost {
         },
       },
     }) : [];
+
+    // Fallback bill rate source for workers with neither a salary nor a candidate
+    // hourly_pay_rate on file — reuses the same position+business-unit floor price
+    // calculation as the rest of the app (candidates/hire-requests) instead of a
+    // hardcoded number, computed once per batch to avoid N+1 lookups in the loop below.
+    const positionConfigMap = await this.buildPositionConfigMap();
+    const candidatePoolMap = await this.buildCandidatePoolMap(
+      staffRecords.map((s) => ({ business_unit: s.candidate?.business_unit ?? null })),
+    );
 
     // Aggregate per-worker total tracked seconds for the period — tracked/overall are
     // fed into userSummary either from a flat prebill assumption or real Hubstaff
@@ -566,7 +621,9 @@ export class InvoiceWorker extends WorkerHost {
         const actualHours = totalPayableHours;
         const hasOvertime = actualHours > requiredHours + 4;
 
-        let hourlyRate = new Decimal(12); // Default fallback
+        let hourlyRate = new Decimal(
+          this.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap),
+        ); // Default fallback — position+BU floor price, used when no salary/hourly_pay_rate applies below
         let lineTotal = hours.mul(hourlyRate);
         let primaryHours = actualHours;
 
@@ -638,12 +695,14 @@ export class InvoiceWorker extends WorkerHost {
             overtimeHourlyRate = new Decimal(rate);
             overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
           } else {
-            // No salary AND no candidate hourly rate on file — last-resort hardcoded
-            // fallback rates ($12/hr base, $25/hr overtime) rather than failing invoice
-            // generation entirely for a worker with incomplete pay-rate data.
-            hourlyRate = new Decimal(12);
+            // No salary AND no candidate hourly rate on file — last-resort fallback using
+            // the position+business-unit floor price (same rate for base and overtime)
+            // rather than failing invoice generation entirely for a worker with
+            // incomplete pay-rate data.
+            const fallbackRate = this.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap);
+            hourlyRate = new Decimal(fallbackRate);
             lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-            overtimeHourlyRate = new Decimal(25);
+            overtimeHourlyRate = new Decimal(fallbackRate);
             overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
           }
         } else {
@@ -703,6 +762,14 @@ export class InvoiceWorker extends WorkerHost {
             }
           } else if (candidate && candidate.hourly_pay_rate) {
             hourlyRate = new Decimal(Number(candidate.hourly_pay_rate));
+            lineTotal = hours.mul(hourlyRate);
+          } else {
+            // No salary AND no candidate hourly rate on file — same position+BU floor
+            // price fallback as the overtime branch above (hourlyRate already holds it
+            // from initialization, but set explicitly here for clarity).
+            hourlyRate = new Decimal(
+              this.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap),
+            );
             lineTotal = hours.mul(hourlyRate);
           }
         }

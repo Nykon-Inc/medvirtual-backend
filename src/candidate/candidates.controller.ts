@@ -114,15 +114,17 @@ export class CandidatesController {
     type: Boolean,
     description: 'If true, returns all candidates without pagination',
   })
-  @ApiQuery({
-    name: 'scorecard_fields',
-    required: false,
-    type: String,
-    description:
-      'Comma-separated list of VA score card fields to filter by (candidates must have a value for each field)',
-    example:
-      'speaks_clearly_and_professionally,stable_internet_connection__min__20_mbps_',
-  })
+  // Deactivated in favor of `core_skills_fields` — see ApiQuery below. Param
+  // is still accepted (and silently ignored) for backward compatibility.
+  // @ApiQuery({
+  //   name: 'scorecard_fields',
+  //   required: false,
+  //   type: String,
+  //   description:
+  //     'Comma-separated list of VA score card fields to filter by (candidates must have a value for each field)',
+  //   example:
+  //     'speaks_clearly_and_professionally,stable_internet_connection__min__20_mbps_',
+  // })
   @ApiQuery({
     name: 'tools',
     required: false,
@@ -138,12 +140,12 @@ export class CandidatesController {
     example: 'Athena,eClinicalWorks',
   })
   @ApiQuery({
-    name: 'core_skills_count',
+    name: 'core_skills_fields',
     required: false,
     type: String,
     description:
-      'Minimum number of skills the candidate must have (1-10). Omitted or 0 disables the filter.',
-    example: '5',
+      'Comma-separated list of "field:value" pairs to filter Core Skills (VA Score Card extended) by exact value. Restricted to system_admin/system_super_admin.',
+    example: 'quickbooks:5,claim_generation:8',
   })
   @ApiResponse({
     status: 200,
@@ -170,7 +172,7 @@ export class CandidatesController {
     @Query('scorecard_fields') scorecard_fields: string,
     @Query('tools') tools: string,
     @Query('medical_tools') medical_tools: string,
-    @Query('core_skills_count') core_skills_count: string,
+    @Query('core_skills_fields') core_skills_fields: string,
   ) {
     const result = await this.candidatesService.findAll(
       user,
@@ -191,7 +193,7 @@ export class CandidatesController {
       scorecard_fields,
       tools,
       medical_tools,
-      core_skills_count,
+      core_skills_fields,
     );
     return result;
   }
@@ -271,15 +273,17 @@ export class CandidatesController {
     type: Boolean,
     description: 'If true, returns all candidates without pagination',
   })
-  @ApiQuery({
-    name: 'scorecard_fields',
-    required: false,
-    type: String,
-    description:
-      'Comma-separated list of VA score card fields to filter by (candidates must have a value for each field)',
-    example:
-      'speaks_clearly_and_professionally,stable_internet_connection__min__20_mbps_',
-  })
+  // Deactivated in favor of `core_skills_fields` — see ApiQuery below. Param
+  // is still accepted (and silently ignored) for backward compatibility.
+  // @ApiQuery({
+  //   name: 'scorecard_fields',
+  //   required: false,
+  //   type: String,
+  //   description:
+  //     'Comma-separated list of VA score card fields to filter by (candidates must have a value for each field)',
+  //   example:
+  //     'speaks_clearly_and_professionally,stable_internet_connection__min__20_mbps_',
+  // })
   @ApiQuery({
     name: 'tools',
     required: false,
@@ -295,12 +299,12 @@ export class CandidatesController {
     example: 'Athena,eClinicalWorks',
   })
   @ApiQuery({
-    name: 'core_skills_count',
+    name: 'core_skills_fields',
     required: false,
     type: String,
     description:
-      'Minimum number of skills the candidate must have (1-10). Omitted or 0 disables the filter.',
-    example: '5',
+      'Comma-separated list of "field:value" pairs to filter Core Skills (VA Score Card extended) by exact value. Restricted to system_admin/system_super_admin.',
+    example: 'quickbooks:5,claim_generation:8',
   })
   @ApiResponse({
     status: 200,
@@ -327,7 +331,7 @@ export class CandidatesController {
     @Query('scorecard_fields') scorecard_fields: string,
     @Query('tools') tools: string,
     @Query('medical_tools') medical_tools: string,
-    @Query('core_skills_count') core_skills_count: string,
+    @Query('core_skills_fields') core_skills_fields: string,
   ) {
     const result = await this.candidatesService.findAllForAlliance(
       user,
@@ -348,7 +352,7 @@ export class CandidatesController {
       scorecard_fields,
       tools,
       medical_tools,
-      core_skills_count,
+      core_skills_fields,
     );
     return result;
   }
@@ -799,6 +803,26 @@ export class CandidatesController {
     return {
       status: 200,
       message: 'VA Score Card fields synced successfully',
+      data: result,
+    };
+  }
+
+  @Get('sync-core-skills')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Sync Core Skills fields from HubSpot',
+    description:
+      'Fetches all Core Skills fields (VA Score Card extended — Bookkeeping, Medical/Dental Admin, Medical/Dental Biller, Sales Executive, SDR, Sales & Account Manager) from HubSpot and updates available candidates in the database. One-way sync: HubSpot → Platform.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Core Skills fields synced successfully',
+  })
+  async syncCoreSkillsFields() {
+    const result = await this.candidatesService.syncCoreSkillsFields();
+    return {
+      status: 200,
+      message: 'Core Skills fields synced successfully',
       data: result,
     };
   }

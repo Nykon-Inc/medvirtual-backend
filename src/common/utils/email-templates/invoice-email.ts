@@ -129,7 +129,7 @@ export function getInvoiceEmail(status: string, variables: InvoiceEmailVariables
       </div>
 
       <div style="text-align: left; margin: 30px 0;">
-        <a href="${frontendUrl}/invoices/${invoiceId}" style="display: inline-block; background-color: ${theme.primaryColor}; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 30px; font-weight: 600; font-size: 16px; transition: background-color 0.2s ease;">
+        <a href="${frontendUrl}/modules/talent/client/invoices?invoice_id=${invoiceId}" style="display: inline-block; background-color: ${theme.primaryColor}; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 30px; font-weight: 600; font-size: 16px; transition: background-color 0.2s ease;">
           View Invoice
         </a>
       </div>

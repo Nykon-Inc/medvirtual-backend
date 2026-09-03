@@ -54,6 +54,7 @@ export class HandlerObjectCreation {
         candidateData.pipeline_status = String(candidateData.pipeline_status)
           .split(';')[0]
           .trim();
+        candidateData.pipeline_status_origin = candidateData.pipeline_status;
       }
       if (candidateData.employment_type) {
         candidateData.employment_type = String(candidateData.employment_type)

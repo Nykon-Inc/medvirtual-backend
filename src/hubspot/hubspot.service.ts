@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Client } from '@hubspot/api-client';
+import { Client, DEFAULT_LIMITER_OPTIONS } from '@hubspot/api-client';
 import { FilterOperatorEnum } from '@hubspot/api-client/lib/codegen/crm/objects';
 import axios from 'axios';
 import {
@@ -165,8 +165,25 @@ export class HubspotService {
     @Inject(forwardRef(() => CandidatesService))
     private readonly candidate: CandidatesService,
   ) {
+    // Constructed with only an accessToken, the HubSpot client applies NEITHER
+    // its rate limiter NOR its retry decorator — both are opt-in via config (see
+    // Client.getDecorators). That left every call in this service issuing
+    // unthrottled requests with no 429 handling, which is what tripped the
+    // Search API's per-second cap during the Hubstaff members sync.
+    //
+    // DEFAULT_LIMITER_OPTIONS paces to ~9 req/s with max 6 in flight, matching
+    // HubSpot's general API allowance. Search is stricter (4/s) and shares this
+    // one limiter with every other endpoint, so rather than throttling all
+    // traffic down to search speed we let search occasionally 429 and lean on
+    // the retry decorator — it special-cases the "You have reached your secondly
+    // limit." search error with a 1s × attempt backoff.
+    //
+    // NOTE: decorators are registered on a process-wide singleton
+    // (ApiDecoratorService), so these settings apply to every Client instance.
     this.hubspotClient = new Client({
       accessToken: process.env.HUBSPOT_ACCESS_TOKEN,
+      limiterOptions: DEFAULT_LIMITER_OPTIONS,
+      numberOfApiCallRetries: 6, // max allowed by the client (0-6)
     });
   }
 
@@ -820,6 +837,10 @@ export class HubspotService {
         );
         const candidateData = mapHubspotToDb(result.properties);
 
+        if (candidateData.pipeline_status) {
+          candidateData.pipeline_status_origin = candidateData.pipeline_status;
+        }
+
         if (
           candidateData.approved_positions_pairing &&
           typeof candidateData.approved_positions_pairing === 'string'
@@ -1386,14 +1407,28 @@ export class HubspotService {
     return true;
   }
 
-    async fetchPropertiesAndCandidates(vaIds?: string[]): Promise<{ candidates: any[] }> {
+    /**
+     * Looks up HubSpot candidate records, optionally filtered to a set of VA IDs.
+     *
+     * `properties` overrides the default payload, which is the full ~54-key
+     * candidate dictionary. Callers that only need to resolve identity — e.g. the
+     * Hubstaff sync, which reads `vaid` and `hs_object_id` and discards the rest —
+     * should pass a minimal list instead of paying for every property per record.
+     *
+     * Throttling and 429 retries are handled centrally by the HubSpot client's
+     * limiter/retry decorators (configured in the constructor), not here.
+     */
+    async fetchPropertiesAndCandidates(
+        vaIds?: string[],
+        properties?: string[],
+    ): Promise<{ candidates: any[] }> {
         const customObject = process.env.HUBSPOT_CUSTOM_OBJECT;
         if (!customObject) {
             throw new NotFoundException('Custom Object is not defined on the environment variables');
         }
 
         try {
-            const requestedProperties = [...Object.keys(candidadeToDbDictionary), 'vaid'];
+            const requestedProperties = properties ?? [...Object.keys(candidadeToDbDictionary), 'vaid'];
             let allCandidates: any[] = [];
 
             if (vaIds && vaIds.length > 0) {

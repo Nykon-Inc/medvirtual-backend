@@ -54,10 +54,7 @@ import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,
 } from './candidate-audit.service';
-import {
-  CandidateAuditFieldGroup,
-  CandidateAuditSource,
-} from '@prisma/client';
+import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
 
 const NON_MEDICAL_POOL = 'non_medical';
 
@@ -71,40 +68,213 @@ const HUBSPOT_SOURCED_PROPERTY_FIELDS = new Set([
   'medical_tools',
 ]);
 
-const VA_SCORECARD_FIELDS = new Set([
-  'active_listening_and_comprehension_demonstrated',
-  'adaptability_to_different_client_personalities_and_workflows',
-  'can_articulate_experience_clearly_to_clients',
-  'can_multitask_between_systems_or_windows_efficiently',
-  'client_readiness___fit_evaluator_notes',
-  'comfortable_with_basic_tools__google_workspace__zoom__ehr_software_',
-  'comfortable_with_camera_on_setup',
-  'communication_skills_evaluator_notes',
-  'confident_on_video_and_phone_calls',
-  'cultural_alignment_with_us_healthcare_environment',
-  'demonstrates_problem_solving_and_tech_adaptability',
-  'demonstrates_stability_and_commitment',
-  'demonstrates_understanding_of_medical_terminology_and_procedures',
-  'exhibits_confidence_and_empathy_in_roleplay_scenarios',
-  'familiarity_with_emr_ehr_systems__kareo__athena__eclinicalworks__etc__',
-  'for_bilinguals__fluent_and_accurate_in_both_english_and_spanish',
-  'grammar__vocabulary__and_tone_are_appropriate_for_us_clients',
-  'handles_feedback_constructively',
-  'has_functioning_headset__webcam__and_backup_device',
-  'knowledge_of_hipaa_compliance_and_confidentiality',
-  'medical_knowledge_evaluator_notes',
-  'no_medical_industry_experience',
-  'positive_attitude_and_professional_demeanor',
-  'prior_experience_in_healthcare_or_medical_va_roles',
-  'professionalism___work_readiness_evaluator_notes',
-  'punctual_and_responsive_during_recruitment_stages',
-  'remote_work_discipline_and_time_management',
-  'speaks_clearly_and_professionally',
-  'stable_internet_connection__min__20_mbps_',
-  'technical_competence_evaluator_notes',
-  'tier_level',
-  'total_points',
-  'understands_workflow_in_medical_offices___telehealth_environments',
+// Deactivated in favor of the new Core Skills filter (CORE_SKILLS_FIELDS
+// below). Kept as reference/rollback — the underlying data/sync is untouched,
+// only the `scorecard_fields` filter/endpoint param was disabled.
+// const VA_SCORECARD_FIELDS = new Set([
+//   'active_listening_and_comprehension_demonstrated',
+//   'adaptability_to_different_client_personalities_and_workflows',
+//   'can_articulate_experience_clearly_to_clients',
+//   'can_multitask_between_systems_or_windows_efficiently',
+//   'client_readiness___fit_evaluator_notes',
+//   'comfortable_with_basic_tools__google_workspace__zoom__ehr_software_',
+//   'comfortable_with_camera_on_setup',
+//   'communication_skills_evaluator_notes',
+//   'confident_on_video_and_phone_calls',
+//   'cultural_alignment_with_us_healthcare_environment',
+//   'demonstrates_problem_solving_and_tech_adaptability',
+//   'demonstrates_stability_and_commitment',
+//   'demonstrates_understanding_of_medical_terminology_and_procedures',
+//   'exhibits_confidence_and_empathy_in_roleplay_scenarios',
+//   'familiarity_with_emr_ehr_systems__kareo__athena__eclinicalworks__etc__',
+//   'for_bilinguals__fluent_and_accurate_in_both_english_and_spanish',
+//   'grammar__vocabulary__and_tone_are_appropriate_for_us_clients',
+//   'handles_feedback_constructively',
+//   'has_functioning_headset__webcam__and_backup_device',
+//   'knowledge_of_hipaa_compliance_and_confidentiality',
+//   'medical_knowledge_evaluator_notes',
+//   'no_medical_industry_experience',
+//   'positive_attitude_and_professional_demeanor',
+//   'prior_experience_in_healthcare_or_medical_va_roles',
+//   'professionalism___work_readiness_evaluator_notes',
+//   'punctual_and_responsive_during_recruitment_stages',
+//   'remote_work_discipline_and_time_management',
+//   'speaks_clearly_and_professionally',
+//   'stable_internet_connection__min__20_mbps_',
+//   'technical_competence_evaluator_notes',
+//   'tier_level',
+//   'total_points',
+//   'understands_workflow_in_medical_offices___telehealth_environments',
+// ]);
+
+// System-role-only Core Skills filter (`core_skills_fields` query param).
+// Mirrors the 6 HubSpot VA Score Card extended sections (Bookkeeping,
+// Medical/Dental Admin, Medical/Dental Biller, Sales Executive, SDR, Sales &
+// Account Manager). Values are compared with EXACT equality (not "≥"), and
+// role-gated to system_admin/system_super_admin in findAll/findAllForAlliance.
+const CORE_SKILLS_FIELDS = new Set([
+  // Bookkeeping Core Skills
+  'quickbooks',
+  'other_accounting_software',
+  'chart_of_accounts_setup___maintenance',
+  'transaction_categorization',
+  'bank__credit_card_reconciliations',
+  'accounts_payable_ap',
+  'accounts_receivable_ar',
+  'payroll_posting__reconciliation_not_processing_unless_required',
+  'payroll_posting',
+  'monthend_close',
+  'journal_entries__adjustments',
+  'balance_sheet',
+  'pl',
+  'accrual_vs_cash_understanding',
+  'prepare_books_for_cpatax_handoff',
+  'client_communication',
+  'account_reconciliation',
+  'financial_analysis',
+  'financial_reporting',
+  // Medical/Dental Core Skills (Admin)
+  'patient_scheduling__calendar_management',
+  'insurance_verification_eligibility__benefits',
+  'prior_authorizations__referrals',
+  'inbound_call_handling__patient_support',
+  'outbound_calls_recalls_noshows_followups',
+  'emrehr_data_entry__chart_updating',
+  'patient_intake__demographics_documentation_accuracy',
+  'referrals_sending_receiving_tracking',
+  // Medical/Dental Core Skills (Biller) — rating (0-10) fields only; the
+  // non-rating fields (role_type, patient_phone_communication, etc.) are
+  // synced/read but intentionally excluded from this filter set.
+  'cpt__icd10_coding',
+  'charge_entry',
+  'claim_generation',
+  'claim_submission',
+  'denial_management',
+  'insurance_followup',
+  'ar_management',
+  'payment_posting',
+  'identifying_underpayments',
+  // Sales Core Skills (Sales Executive)
+  'consultative_selling',
+  'fullcycle_sales',
+  'objection_handling__negotiation',
+  'virtual_demos__presentations',
+  'pipeline_management',
+  'closing_sales',
+  // Sales Core Skills (SDR)
+  'lead_research__qualification',
+  'crm_proficiency',
+  'outbound_prospecting_emaillvcalls',
+  'cold_calling',
+  'appointment_setting',
+  'kpi_awareness__tracking',
+  // Sales Core Skills (Sales & Account Manager)
+  'client_relationship_management',
+  'retention_strategy',
+  'upsell__crosssell',
+  'account_onboarding',
+  'issue_resolution',
+  // Medical/Dental Core Skills (Biller) — non-rating fields. HubSpot types
+  // these as booleancheckbox/select/number rather than a 0-10 rating, but the
+  // filter mechanism is identical (exact string equality), so they share this
+  // Set. `notes_*` fields are the only Core Skills properties intentionally
+  // excluded from filtering (free text). See docs/hubspot-core-skills-fields.md.
+  'n2_years_healthcare_billing_experience',
+  'total_years_on_healthcare_billing_experience',
+  'patient_phone_communication',
+  'role_type',
+  'insurance_verification_knowledge',
+  'prior_authorizations_experience',
+]);
+
+// All ~92 Core Skills properties synced from HubSpot (superset of
+// CORE_SKILLS_FIELDS above — also includes gates, totals, notes and the
+// non-rating fields that are read-only/sync-only in this first entry).
+const CORE_SKILLS_SYNC_FIELDS = [
+  // Bookkeeping Core Skills (gate: bookkeeping)
+  'quickbooks',
+  'other_accounting_software',
+  'chart_of_accounts_setup___maintenance',
+  'transaction_categorization',
+  'bank__credit_card_reconciliations',
+  'accounts_payable_ap',
+  'accounts_receivable_ar',
+  'payroll_posting__reconciliation_not_processing_unless_required',
+  'payroll_posting',
+  'monthend_close',
+  'journal_entries__adjustments',
+  'balance_sheet',
+  'pl',
+  'accrual_vs_cash_understanding',
+  'prepare_books_for_cpatax_handoff',
+  'client_communication',
+  'account_reconciliation',
+  'financial_analysis',
+  'financial_reporting',
+  'total_score_bookkeeping',
+  'notes_bookkeeping',
+  // Medical/Dental Core Skills (Admin) (gate: medical__dental_admin)
+  'patient_scheduling__calendar_management',
+  'insurance_verification_eligibility__benefits',
+  'prior_authorizations__referrals',
+  'inbound_call_handling__patient_support',
+  'outbound_calls_recalls_noshows_followups',
+  'emrehr_data_entry__chart_updating',
+  'patient_intake__demographics_documentation_accuracy',
+  'referrals_sending_receiving_tracking',
+  'total_score_medical__dental_admin',
+  'notes_medical__dental_admin',
+  // Medical/Dental Core Skills (Biller) (gate: medical__dental_biller)
+  'n2_years_healthcare_billing_experience',
+  'total_years_on_healthcare_billing_experience',
+  'patient_phone_communication',
+  'role_type',
+  'insurance_verification_knowledge',
+  'prior_authorizations_experience',
+  'cpt__icd10_coding',
+  'charge_entry',
+  'claim_generation',
+  'claim_submission',
+  'denial_management',
+  'insurance_followup',
+  'ar_management',
+  'payment_posting',
+  'identifying_underpayments',
+  'medicaldental_biller_total_percentage_score',
+  'notes_medical__dental_biller',
+  // Sales Core Skills (Sales Executive) (gate: sales_executive)
+  'consultative_selling',
+  'fullcycle_sales',
+  'objection_handling__negotiation',
+  'virtual_demos__presentations',
+  'pipeline_management',
+  'closing_sales',
+  'total_score_sales_executive',
+  'notes_sales_executive',
+  // Sales Core Skills (SDR) (gate: sales_development_representative_sdr)
+  'lead_research__qualification',
+  'crm_proficiency',
+  'outbound_prospecting_emaillvcalls',
+  'cold_calling',
+  'appointment_setting',
+  'kpi_awareness__tracking',
+  'total_score_sales_development_representative_sdr',
+  'notes_sales_development_representative_sdr',
+  // Sales Core Skills (Sales & Account Manager) (gate: sales__account_manager)
+  'client_relationship_management',
+  'retention_strategy',
+  'upsell__crosssell',
+  'account_onboarding',
+  'issue_resolution',
+  'total_score_sales__account_manager',
+  'notes_sales__account_manager',
+];
+
+// Roles allowed to use the `core_skills_fields` filter — mirrors the
+// frontend's `showAdminFilters` gate (UserRoles.SYSTEM_ADMIN / SYSTEM_OWNER).
+const CORE_SKILLS_FILTER_ROLES = new Set([
+  'system_admin',
+  'system_super_admin',
 ]);
 
 /**
@@ -242,7 +412,7 @@ export class CandidatesService {
     scorecard_fields?: string,
     tools?: string,
     medical_tools?: string,
-    core_skills_count?: string,
+    core_skills_fields?: string,
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -293,13 +463,39 @@ export class CandidatesService {
     const combinedFilters: Record<string, any>[] = [];
     let positionsFilter: Record<string, any> | null = null;
 
-    const scorecardFilters: Record<string, any>[] = scorecard_fields
-      ? scorecard_fields
-          .split(',')
-          .map((f) => f.trim())
-          .filter((f) => VA_SCORECARD_FIELDS.has(f))
-          .flatMap((f) => [{ [f]: { not: null } }, { [f]: { not: 'false' } }])
-      : [];
+    // VA Scorecard filter deactivated in favor of Core Skills (see
+    // VA_SCORECARD_FIELDS above). `scorecard_fields` is accepted but ignored.
+    // const scorecardFilters: Record<string, any>[] = scorecard_fields
+    //   ? scorecard_fields
+    //       .split(',')
+    //       .map((f) => f.trim())
+    //       .filter((f) => VA_SCORECARD_FIELDS.has(f))
+    //       .flatMap((f) => [{ [f]: { not: null } }, { [f]: { not: 'false' } }])
+    //   : [];
+    void scorecard_fields;
+    const scorecardFilters: Record<string, any>[] = [];
+
+    // Core Skills filter — system_admin/system_super_admin only, exact-value
+    // match per field (e.g. "quickbooks:5" -> candidates with quickbooks === "5").
+    const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
+    const coreSkillsFilters: Record<string, any>[] =
+      core_skills_fields && isCoreSkillsFilterAllowed
+        ? core_skills_fields
+            .split(',')
+            .map((pair) => pair.trim())
+            .filter(Boolean)
+            .map((pair) => {
+              const [field, value] = pair.split(':').map((p) => p.trim());
+              return { field, value };
+            })
+            .filter(
+              ({ field, value }) =>
+                field && value !== undefined && CORE_SKILLS_FIELDS.has(field),
+            )
+            .map(({ field, value }) => ({
+              [field]: { equals: String(value) },
+            }))
+        : [];
 
     const availabilityArray = availability
       ? availability
@@ -402,25 +598,6 @@ export class CandidatesService {
       });
     }
 
-    // "Core skills" filters candidates by HOW MANY skills they have (min N).
-    // Prisma cannot filter on a relation count (CandidateSkillListRelationFilter
-    // only exposes every/some/none), so the matching ids are pre-resolved here.
-    const coreSkillsCount = Number(core_skills_count);
-    if (
-      Number.isInteger(coreSkillsCount) &&
-      coreSkillsCount > 0 &&
-      coreSkillsCount <= 10
-    ) {
-      const groupedBySkillCount = await this.prisma.candidateSkill.groupBy({
-        by: ['candidate_id'],
-        where: { skill_name: { not: 'N/A' } },
-        having: { candidate_id: { _count: { gte: coreSkillsCount } } },
-      });
-      combinedFilters.push({
-        id: { in: groupedBySkillCount.map((row) => row.candidate_id) },
-      });
-    }
-
     // Calculate limit date
     let experienceFilter = {};
     if (years_of_experience) {
@@ -501,6 +678,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -534,6 +712,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -567,6 +746,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -600,6 +780,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -608,6 +789,7 @@ export class CandidatesService {
     };
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -661,6 +843,78 @@ export class CandidatesService {
       tier_level: true,
       total_points: true,
       understands_workflow_in_medical_offices___telehealth_environments: true,
+      // Core Skills fields (HubSpot VA Score Card extended)
+      quickbooks: true,
+      other_accounting_software: true,
+      chart_of_accounts_setup___maintenance: true,
+      transaction_categorization: true,
+      bank__credit_card_reconciliations: true,
+      accounts_payable_ap: true,
+      accounts_receivable_ar: true,
+      payroll_posting__reconciliation_not_processing_unless_required: true,
+      payroll_posting: true,
+      monthend_close: true,
+      journal_entries__adjustments: true,
+      balance_sheet: true,
+      pl: true,
+      accrual_vs_cash_understanding: true,
+      prepare_books_for_cpatax_handoff: true,
+      client_communication: true,
+      account_reconciliation: true,
+      financial_analysis: true,
+      financial_reporting: true,
+      total_score_bookkeeping: true,
+      notes_bookkeeping: true,
+      patient_scheduling__calendar_management: true,
+      insurance_verification_eligibility__benefits: true,
+      prior_authorizations__referrals: true,
+      inbound_call_handling__patient_support: true,
+      outbound_calls_recalls_noshows_followups: true,
+      emrehr_data_entry__chart_updating: true,
+      patient_intake__demographics_documentation_accuracy: true,
+      referrals_sending_receiving_tracking: true,
+      total_score_medical__dental_admin: true,
+      notes_medical__dental_admin: true,
+      n2_years_healthcare_billing_experience: true,
+      total_years_on_healthcare_billing_experience: true,
+      patient_phone_communication: true,
+      role_type: true,
+      insurance_verification_knowledge: true,
+      prior_authorizations_experience: true,
+      cpt__icd10_coding: true,
+      charge_entry: true,
+      claim_generation: true,
+      claim_submission: true,
+      denial_management: true,
+      insurance_followup: true,
+      ar_management: true,
+      payment_posting: true,
+      identifying_underpayments: true,
+      medicaldental_biller_total_percentage_score: true,
+      notes_medical__dental_biller: true,
+      consultative_selling: true,
+      fullcycle_sales: true,
+      objection_handling__negotiation: true,
+      virtual_demos__presentations: true,
+      pipeline_management: true,
+      closing_sales: true,
+      total_score_sales_executive: true,
+      notes_sales_executive: true,
+      lead_research__qualification: true,
+      crm_proficiency: true,
+      outbound_prospecting_emaillvcalls: true,
+      cold_calling: true,
+      appointment_setting: true,
+      kpi_awareness__tracking: true,
+      total_score_sales_development_representative_sdr: true,
+      notes_sales_development_representative_sdr: true,
+      client_relationship_management: true,
+      retention_strategy: true,
+      upsell__crosssell: true,
+      account_onboarding: true,
+      issue_resolution: true,
+      total_score_sales__account_manager: true,
+      notes_sales__account_manager: true,
       languages: {
         select: {
           name: true,
@@ -799,6 +1053,7 @@ export class CandidatesService {
         );
         return {
           ...candidate,
+          vaid: candidate.hubspot_vaid,
           approved_positions_pairing:
             (candidate.approved_positions_pairing &&
               candidate.approved_positions_pairing.map((position) =>
@@ -879,7 +1134,7 @@ export class CandidatesService {
     scorecard_fields?: string,
     tools?: string,
     medical_tools?: string,
-    core_skills_count?: string,
+    core_skills_fields?: string,
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -910,13 +1165,39 @@ export class CandidatesService {
     const combinedFilters: Record<string, any>[] = [];
     let positionsFilter: Record<string, any> | null = null;
 
-    const scorecardFilters: Record<string, any>[] = scorecard_fields
-      ? scorecard_fields
-          .split(',')
-          .map((f) => f.trim())
-          .filter((f) => VA_SCORECARD_FIELDS.has(f))
-          .flatMap((f) => [{ [f]: { not: null } }, { [f]: { not: 'false' } }])
-      : [];
+    // VA Scorecard filter deactivated in favor of Core Skills (see
+    // VA_SCORECARD_FIELDS above). `scorecard_fields` is accepted but ignored.
+    // const scorecardFilters: Record<string, any>[] = scorecard_fields
+    //   ? scorecard_fields
+    //       .split(',')
+    //       .map((f) => f.trim())
+    //       .filter((f) => VA_SCORECARD_FIELDS.has(f))
+    //       .flatMap((f) => [{ [f]: { not: null } }, { [f]: { not: 'false' } }])
+    //   : [];
+    void scorecard_fields;
+    const scorecardFilters: Record<string, any>[] = [];
+
+    // Core Skills filter — system_admin/system_super_admin only, exact-value
+    // match per field (e.g. "quickbooks:5" -> candidates with quickbooks === "5").
+    const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
+    const coreSkillsFilters: Record<string, any>[] =
+      core_skills_fields && isCoreSkillsFilterAllowed
+        ? core_skills_fields
+            .split(',')
+            .map((pair) => pair.trim())
+            .filter(Boolean)
+            .map((pair) => {
+              const [field, value] = pair.split(':').map((p) => p.trim());
+              return { field, value };
+            })
+            .filter(
+              ({ field, value }) =>
+                field && value !== undefined && CORE_SKILLS_FIELDS.has(field),
+            )
+            .map(({ field, value }) => ({
+              [field]: { equals: String(value) },
+            }))
+        : [];
 
     const availabilityArray = availability
       ? availability
@@ -1019,25 +1300,6 @@ export class CandidatesService {
       });
     }
 
-    // "Core skills" filters candidates by HOW MANY skills they have (min N).
-    // Prisma cannot filter on a relation count (CandidateSkillListRelationFilter
-    // only exposes every/some/none), so the matching ids are pre-resolved here.
-    const coreSkillsCount = Number(core_skills_count);
-    if (
-      Number.isInteger(coreSkillsCount) &&
-      coreSkillsCount > 0 &&
-      coreSkillsCount <= 10
-    ) {
-      const groupedBySkillCount = await this.prisma.candidateSkill.groupBy({
-        by: ['candidate_id'],
-        where: { skill_name: { not: 'N/A' } },
-        having: { candidate_id: { _count: { gte: coreSkillsCount } } },
-      });
-      combinedFilters.push({
-        id: { in: groupedBySkillCount.map((row) => row.candidate_id) },
-      });
-    }
-
     // Calculate limit date
     let experienceFilter = {};
     if (years_of_experience) {
@@ -1115,6 +1377,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -1145,6 +1408,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -1175,6 +1439,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -1205,6 +1470,7 @@ export class CandidatesService {
             ...(combinedFilters.length > 0 ? combinedFilters : []),
             ...(positionsFilter ? [positionsFilter] : []),
             ...scorecardFilters,
+            ...coreSkillsFilters,
           ],
           ...experienceFilter,
           ...searchFilter,
@@ -1266,6 +1532,78 @@ export class CandidatesService {
       tier_level: true,
       total_points: true,
       understands_workflow_in_medical_offices___telehealth_environments: true,
+      // Core Skills fields (HubSpot VA Score Card extended)
+      quickbooks: true,
+      other_accounting_software: true,
+      chart_of_accounts_setup___maintenance: true,
+      transaction_categorization: true,
+      bank__credit_card_reconciliations: true,
+      accounts_payable_ap: true,
+      accounts_receivable_ar: true,
+      payroll_posting__reconciliation_not_processing_unless_required: true,
+      payroll_posting: true,
+      monthend_close: true,
+      journal_entries__adjustments: true,
+      balance_sheet: true,
+      pl: true,
+      accrual_vs_cash_understanding: true,
+      prepare_books_for_cpatax_handoff: true,
+      client_communication: true,
+      account_reconciliation: true,
+      financial_analysis: true,
+      financial_reporting: true,
+      total_score_bookkeeping: true,
+      notes_bookkeeping: true,
+      patient_scheduling__calendar_management: true,
+      insurance_verification_eligibility__benefits: true,
+      prior_authorizations__referrals: true,
+      inbound_call_handling__patient_support: true,
+      outbound_calls_recalls_noshows_followups: true,
+      emrehr_data_entry__chart_updating: true,
+      patient_intake__demographics_documentation_accuracy: true,
+      referrals_sending_receiving_tracking: true,
+      total_score_medical__dental_admin: true,
+      notes_medical__dental_admin: true,
+      n2_years_healthcare_billing_experience: true,
+      total_years_on_healthcare_billing_experience: true,
+      patient_phone_communication: true,
+      role_type: true,
+      insurance_verification_knowledge: true,
+      prior_authorizations_experience: true,
+      cpt__icd10_coding: true,
+      charge_entry: true,
+      claim_generation: true,
+      claim_submission: true,
+      denial_management: true,
+      insurance_followup: true,
+      ar_management: true,
+      payment_posting: true,
+      identifying_underpayments: true,
+      medicaldental_biller_total_percentage_score: true,
+      notes_medical__dental_biller: true,
+      consultative_selling: true,
+      fullcycle_sales: true,
+      objection_handling__negotiation: true,
+      virtual_demos__presentations: true,
+      pipeline_management: true,
+      closing_sales: true,
+      total_score_sales_executive: true,
+      notes_sales_executive: true,
+      lead_research__qualification: true,
+      crm_proficiency: true,
+      outbound_prospecting_emaillvcalls: true,
+      cold_calling: true,
+      appointment_setting: true,
+      kpi_awareness__tracking: true,
+      total_score_sales_development_representative_sdr: true,
+      notes_sales_development_representative_sdr: true,
+      client_relationship_management: true,
+      retention_strategy: true,
+      upsell__crosssell: true,
+      account_onboarding: true,
+      issue_resolution: true,
+      total_score_sales__account_manager: true,
+      notes_sales__account_manager: true,
       languages: {
         select: {
           name: true,
@@ -1520,6 +1858,78 @@ export class CandidatesService {
       tier_level: true,
       total_points: true,
       understands_workflow_in_medical_offices___telehealth_environments: true,
+      // Core Skills fields (HubSpot VA Score Card extended)
+      quickbooks: true,
+      other_accounting_software: true,
+      chart_of_accounts_setup___maintenance: true,
+      transaction_categorization: true,
+      bank__credit_card_reconciliations: true,
+      accounts_payable_ap: true,
+      accounts_receivable_ar: true,
+      payroll_posting__reconciliation_not_processing_unless_required: true,
+      payroll_posting: true,
+      monthend_close: true,
+      journal_entries__adjustments: true,
+      balance_sheet: true,
+      pl: true,
+      accrual_vs_cash_understanding: true,
+      prepare_books_for_cpatax_handoff: true,
+      client_communication: true,
+      account_reconciliation: true,
+      financial_analysis: true,
+      financial_reporting: true,
+      total_score_bookkeeping: true,
+      notes_bookkeeping: true,
+      patient_scheduling__calendar_management: true,
+      insurance_verification_eligibility__benefits: true,
+      prior_authorizations__referrals: true,
+      inbound_call_handling__patient_support: true,
+      outbound_calls_recalls_noshows_followups: true,
+      emrehr_data_entry__chart_updating: true,
+      patient_intake__demographics_documentation_accuracy: true,
+      referrals_sending_receiving_tracking: true,
+      total_score_medical__dental_admin: true,
+      notes_medical__dental_admin: true,
+      n2_years_healthcare_billing_experience: true,
+      total_years_on_healthcare_billing_experience: true,
+      patient_phone_communication: true,
+      role_type: true,
+      insurance_verification_knowledge: true,
+      prior_authorizations_experience: true,
+      cpt__icd10_coding: true,
+      charge_entry: true,
+      claim_generation: true,
+      claim_submission: true,
+      denial_management: true,
+      insurance_followup: true,
+      ar_management: true,
+      payment_posting: true,
+      identifying_underpayments: true,
+      medicaldental_biller_total_percentage_score: true,
+      notes_medical__dental_biller: true,
+      consultative_selling: true,
+      fullcycle_sales: true,
+      objection_handling__negotiation: true,
+      virtual_demos__presentations: true,
+      pipeline_management: true,
+      closing_sales: true,
+      total_score_sales_executive: true,
+      notes_sales_executive: true,
+      lead_research__qualification: true,
+      crm_proficiency: true,
+      outbound_prospecting_emaillvcalls: true,
+      cold_calling: true,
+      appointment_setting: true,
+      kpi_awareness__tracking: true,
+      total_score_sales_development_representative_sdr: true,
+      notes_sales_development_representative_sdr: true,
+      client_relationship_management: true,
+      retention_strategy: true,
+      upsell__crosssell: true,
+      account_onboarding: true,
+      issue_resolution: true,
+      total_score_sales__account_manager: true,
+      notes_sales__account_manager: true,
       languages: {
         select: {
           name: true,
@@ -3158,6 +3568,78 @@ export class CandidatesService {
         tier_level: true,
         total_points: true,
         understands_workflow_in_medical_offices___telehealth_environments: true,
+        // Core Skills fields (HubSpot VA Score Card extended)
+        quickbooks: true,
+        other_accounting_software: true,
+        chart_of_accounts_setup___maintenance: true,
+        transaction_categorization: true,
+        bank__credit_card_reconciliations: true,
+        accounts_payable_ap: true,
+        accounts_receivable_ar: true,
+        payroll_posting__reconciliation_not_processing_unless_required: true,
+        payroll_posting: true,
+        monthend_close: true,
+        journal_entries__adjustments: true,
+        balance_sheet: true,
+        pl: true,
+        accrual_vs_cash_understanding: true,
+        prepare_books_for_cpatax_handoff: true,
+        client_communication: true,
+        account_reconciliation: true,
+        financial_analysis: true,
+        financial_reporting: true,
+        total_score_bookkeeping: true,
+        notes_bookkeeping: true,
+        patient_scheduling__calendar_management: true,
+        insurance_verification_eligibility__benefits: true,
+        prior_authorizations__referrals: true,
+        inbound_call_handling__patient_support: true,
+        outbound_calls_recalls_noshows_followups: true,
+        emrehr_data_entry__chart_updating: true,
+        patient_intake__demographics_documentation_accuracy: true,
+        referrals_sending_receiving_tracking: true,
+        total_score_medical__dental_admin: true,
+        notes_medical__dental_admin: true,
+        n2_years_healthcare_billing_experience: true,
+        total_years_on_healthcare_billing_experience: true,
+        patient_phone_communication: true,
+        role_type: true,
+        insurance_verification_knowledge: true,
+        prior_authorizations_experience: true,
+        cpt__icd10_coding: true,
+        charge_entry: true,
+        claim_generation: true,
+        claim_submission: true,
+        denial_management: true,
+        insurance_followup: true,
+        ar_management: true,
+        payment_posting: true,
+        identifying_underpayments: true,
+        medicaldental_biller_total_percentage_score: true,
+        notes_medical__dental_biller: true,
+        consultative_selling: true,
+        fullcycle_sales: true,
+        objection_handling__negotiation: true,
+        virtual_demos__presentations: true,
+        pipeline_management: true,
+        closing_sales: true,
+        total_score_sales_executive: true,
+        notes_sales_executive: true,
+        lead_research__qualification: true,
+        crm_proficiency: true,
+        outbound_prospecting_emaillvcalls: true,
+        cold_calling: true,
+        appointment_setting: true,
+        kpi_awareness__tracking: true,
+        total_score_sales_development_representative_sdr: true,
+        notes_sales_development_representative_sdr: true,
+        client_relationship_management: true,
+        retention_strategy: true,
+        upsell__crosssell: true,
+        account_onboarding: true,
+        issue_resolution: true,
+        total_score_sales__account_manager: true,
+        notes_sales__account_manager: true,
         languages: {
           select: {
             name: true,
@@ -3428,6 +3910,78 @@ export class CandidatesService {
         tier_level: true,
         total_points: true,
         understands_workflow_in_medical_offices___telehealth_environments: true,
+        // Core Skills fields (HubSpot VA Score Card extended)
+        quickbooks: true,
+        other_accounting_software: true,
+        chart_of_accounts_setup___maintenance: true,
+        transaction_categorization: true,
+        bank__credit_card_reconciliations: true,
+        accounts_payable_ap: true,
+        accounts_receivable_ar: true,
+        payroll_posting__reconciliation_not_processing_unless_required: true,
+        payroll_posting: true,
+        monthend_close: true,
+        journal_entries__adjustments: true,
+        balance_sheet: true,
+        pl: true,
+        accrual_vs_cash_understanding: true,
+        prepare_books_for_cpatax_handoff: true,
+        client_communication: true,
+        account_reconciliation: true,
+        financial_analysis: true,
+        financial_reporting: true,
+        total_score_bookkeeping: true,
+        notes_bookkeeping: true,
+        patient_scheduling__calendar_management: true,
+        insurance_verification_eligibility__benefits: true,
+        prior_authorizations__referrals: true,
+        inbound_call_handling__patient_support: true,
+        outbound_calls_recalls_noshows_followups: true,
+        emrehr_data_entry__chart_updating: true,
+        patient_intake__demographics_documentation_accuracy: true,
+        referrals_sending_receiving_tracking: true,
+        total_score_medical__dental_admin: true,
+        notes_medical__dental_admin: true,
+        n2_years_healthcare_billing_experience: true,
+        total_years_on_healthcare_billing_experience: true,
+        patient_phone_communication: true,
+        role_type: true,
+        insurance_verification_knowledge: true,
+        prior_authorizations_experience: true,
+        cpt__icd10_coding: true,
+        charge_entry: true,
+        claim_generation: true,
+        claim_submission: true,
+        denial_management: true,
+        insurance_followup: true,
+        ar_management: true,
+        payment_posting: true,
+        identifying_underpayments: true,
+        medicaldental_biller_total_percentage_score: true,
+        notes_medical__dental_biller: true,
+        consultative_selling: true,
+        fullcycle_sales: true,
+        objection_handling__negotiation: true,
+        virtual_demos__presentations: true,
+        pipeline_management: true,
+        closing_sales: true,
+        total_score_sales_executive: true,
+        notes_sales_executive: true,
+        lead_research__qualification: true,
+        crm_proficiency: true,
+        outbound_prospecting_emaillvcalls: true,
+        cold_calling: true,
+        appointment_setting: true,
+        kpi_awareness__tracking: true,
+        total_score_sales_development_representative_sdr: true,
+        notes_sales_development_representative_sdr: true,
+        client_relationship_management: true,
+        retention_strategy: true,
+        upsell__crosssell: true,
+        account_onboarding: true,
+        issue_resolution: true,
+        total_score_sales__account_manager: true,
+        notes_sales__account_manager: true,
         languages: {
           select: {
             name: true,
@@ -3704,9 +4258,7 @@ export class CandidatesService {
 
         const beforeScoreCard: Record<string, unknown> = {};
         for (const prop of vaScoreCardProperties) {
-          beforeScoreCard[prop] = (candidate as Record<string, unknown>)[
-            prop
-          ];
+          beforeScoreCard[prop] = (candidate as Record<string, unknown>)[prop];
         }
 
         await this.prisma.candidate.update({
@@ -3728,6 +4280,96 @@ export class CandidatesService {
       } catch (error) {
         console.error(
           `Failed to sync VA Score Card fields for candidate ${candidate.id} (HubSpot ID: ${candidate.hubspot_id}):`,
+          error.message,
+        );
+        errorCount++;
+      }
+    }
+
+    return `Sync complete. Updated: ${updatedCount}, Errors: ${errorCount}`;
+  }
+
+  /**
+   * One-way sync (HubSpot → Postgres) for the Core Skills fields — the 6
+   * VA Score Card extended sections (Bookkeeping, Medical/Dental Admin,
+   * Medical/Dental Biller, Sales Executive, SDR, Sales & Account Manager).
+   * Mirrors `syncVaScoreCardFields()` above but for the newer property group.
+   */
+  async syncCoreSkillsFields(): Promise<string> {
+    const coreSkillsProperties = CORE_SKILLS_SYNC_FIELDS;
+
+    const candidates = await this.prisma.candidate.findMany({
+      where: {
+        pipeline_status: {
+          in: ['261075105', '1087596819'],
+        },
+      },
+      select: {
+        id: true,
+        hubspot_id: true,
+        ...coreSkillsProperties.reduce<Record<string, true>>((acc, prop) => {
+          acc[prop] = true;
+          return acc;
+        }, {}),
+      },
+    });
+
+    console.log(
+      `Found ${candidates.length} available candidates to sync Core Skills fields.`,
+    );
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    for (const candidate of candidates) {
+      try {
+        const response = await axios.get(
+          `https://api.hubapi.com/crm/v3/objects/${process.env.HUBSPOT_CUSTOM_OBJECT}/${candidate.hubspot_id}`,
+          {
+            params: {
+              properties: coreSkillsProperties.join(','),
+            },
+            headers: {
+              Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+            },
+          },
+        );
+
+        const properties = response.data.properties;
+        console.log(
+          'Core Skills properties fetched from HubSpot for candidate ID:',
+          candidate.id,
+          properties,
+        );
+
+        const updateData: Record<string, string | null> = {};
+        for (const prop of coreSkillsProperties) {
+          updateData[prop] = properties[prop] || null;
+        }
+
+        const beforeCoreSkills: Record<string, unknown> = {};
+        for (const prop of coreSkillsProperties) {
+          beforeCoreSkills[prop] = (candidate as Record<string, unknown>)[prop];
+        }
+
+        await this.prisma.candidate.update({
+          where: { id: candidate.id },
+          data: updateData,
+        });
+
+        void this.candidateAudit.log({
+          candidateId: candidate.id,
+          hubspotId: candidate.hubspot_id,
+          event: CANDIDATE_AUDIT_EVENTS.VA_SCORECARD_SYNCED,
+          fieldGroup: CandidateAuditFieldGroup.va_scorecard,
+          before: beforeCoreSkills,
+          after: updateData,
+          source: CandidateAuditSource.cron,
+        });
+
+        updatedCount++;
+      } catch (error) {
+        console.error(
+          `Failed to sync Core Skills fields for candidate ${candidate.id} (HubSpot ID: ${candidate.hubspot_id}):`,
           error.message,
         );
         errorCount++;

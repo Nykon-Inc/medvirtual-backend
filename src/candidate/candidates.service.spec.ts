@@ -368,12 +368,47 @@ describe('CandidatesService', () => {
       }
     });
 
-    it('resolves core_skills_count into an id filter via groupBy', async () => {
-      mockPrisma.candidateSkill.groupBy.mockResolvedValue([
-        { candidate_id: 'cand-1' },
-        { candidate_id: 'cand-2' },
-      ]);
+    it('resolves core_skills_fields into an exact-match filter for system_admin users', async () => {
+      const systemAdminUser = {
+        id: 'user-3',
+        organization_id: null,
+        role: 'system_admin',
+      } as any;
 
+      await service.findAll(
+        systemAdminUser,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined, // scorecard_fields
+        undefined, // tools
+        undefined, // medical_tools
+        'quickbooks:5,claim_generation:8',
+      );
+
+      for (const branch of branchesOf()) {
+        const filters = andFiltersOf(branch);
+        expect(filters).toEqual(
+          expect.arrayContaining([
+            { quickbooks: { equals: '5' } },
+            { claim_generation: { equals: '8' } },
+          ]),
+        );
+      }
+    });
+
+    it('ignores core_skills_fields for a non-system role', async () => {
       await service.findAll(
         mockUser,
         undefined,
@@ -392,51 +427,52 @@ describe('CandidatesService', () => {
         undefined,
         undefined,
         undefined,
-        undefined, // medical_tools
-        '3',
+        undefined,
+        'quickbooks:5',
       );
 
-      expect(mockPrisma.candidateSkill.groupBy).toHaveBeenCalledWith({
-        by: ['candidate_id'],
-        where: { skill_name: { not: 'N/A' } },
-        having: { candidate_id: { _count: { gte: 3 } } },
-      });
-
       for (const branch of branchesOf()) {
-        const idFilter = andFiltersOf(branch).find((f: any) => f.id?.in);
-        expect(idFilter).toEqual({ id: { in: ['cand-1', 'cand-2'] } });
+        const filters = andFiltersOf(branch);
+        expect(
+          filters.some((f: any) => f.quickbooks !== undefined),
+        ).toBe(false);
       }
     });
 
-    it('ignores core_skills_count outside the 1-10 range', async () => {
-      const callWith = async (value: string) => {
-        mockPrisma.candidate.findMany.mockClear();
-        await service.findAll(
-          mockUser,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          value,
-        );
-      };
+    it('ignores unknown fields in core_skills_fields', async () => {
+      const systemAdminUser = {
+        id: 'user-4',
+        organization_id: null,
+        role: 'system_super_admin',
+      } as any;
 
-      for (const value of ['0', '11', '-1', 'abc', '2.5']) {
-        await callWith(value);
-        expect(mockPrisma.candidateSkill.groupBy).not.toHaveBeenCalled();
+      await service.findAll(
+        systemAdminUser,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'not_a_real_field:5',
+      );
+
+      for (const branch of branchesOf()) {
+        const filters = andFiltersOf(branch);
+        expect(
+          filters.some((f: any) => f.not_a_real_field !== undefined),
+        ).toBe(false);
       }
     });
   });
@@ -588,6 +624,78 @@ describe('CandidatesService', () => {
           tier_level: true,
           total_points: true,
           understands_workflow_in_medical_offices___telehealth_environments: true,
+          // Core Skills fields (HubSpot VA Score Card extended)
+          quickbooks: true,
+          other_accounting_software: true,
+          chart_of_accounts_setup___maintenance: true,
+          transaction_categorization: true,
+          bank__credit_card_reconciliations: true,
+          accounts_payable_ap: true,
+          accounts_receivable_ar: true,
+          payroll_posting__reconciliation_not_processing_unless_required: true,
+          payroll_posting: true,
+          monthend_close: true,
+          journal_entries__adjustments: true,
+          balance_sheet: true,
+          pl: true,
+          accrual_vs_cash_understanding: true,
+          prepare_books_for_cpatax_handoff: true,
+          client_communication: true,
+          account_reconciliation: true,
+          financial_analysis: true,
+          financial_reporting: true,
+          total_score_bookkeeping: true,
+          notes_bookkeeping: true,
+          patient_scheduling__calendar_management: true,
+          insurance_verification_eligibility__benefits: true,
+          prior_authorizations__referrals: true,
+          inbound_call_handling__patient_support: true,
+          outbound_calls_recalls_noshows_followups: true,
+          emrehr_data_entry__chart_updating: true,
+          patient_intake__demographics_documentation_accuracy: true,
+          referrals_sending_receiving_tracking: true,
+          total_score_medical__dental_admin: true,
+          notes_medical__dental_admin: true,
+          n2_years_healthcare_billing_experience: true,
+          total_years_on_healthcare_billing_experience: true,
+          patient_phone_communication: true,
+          role_type: true,
+          insurance_verification_knowledge: true,
+          prior_authorizations_experience: true,
+          cpt__icd10_coding: true,
+          charge_entry: true,
+          claim_generation: true,
+          claim_submission: true,
+          denial_management: true,
+          insurance_followup: true,
+          ar_management: true,
+          payment_posting: true,
+          identifying_underpayments: true,
+          medicaldental_biller_total_percentage_score: true,
+          notes_medical__dental_biller: true,
+          consultative_selling: true,
+          fullcycle_sales: true,
+          objection_handling__negotiation: true,
+          virtual_demos__presentations: true,
+          pipeline_management: true,
+          closing_sales: true,
+          total_score_sales_executive: true,
+          notes_sales_executive: true,
+          lead_research__qualification: true,
+          crm_proficiency: true,
+          outbound_prospecting_emaillvcalls: true,
+          cold_calling: true,
+          appointment_setting: true,
+          kpi_awareness__tracking: true,
+          total_score_sales_development_representative_sdr: true,
+          notes_sales_development_representative_sdr: true,
+          client_relationship_management: true,
+          retention_strategy: true,
+          upsell__crosssell: true,
+          account_onboarding: true,
+          issue_resolution: true,
+          total_score_sales__account_manager: true,
+          notes_sales__account_manager: true,
           educations: {
             select: {
               degree: true,

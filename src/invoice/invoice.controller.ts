@@ -101,9 +101,14 @@ export class InvoiceController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Fetch a single invoice by ID' })
+  @ApiOperation({
+    summary: 'Fetch a single invoice by ID',
+    description:
+      "Includes organization.stripeCustomer when the org's invoice configuration " +
+      'has a stripe_customer_id assigned; null otherwise.',
+  })
   async findOne(@Param('id') id: string) {
-    return await this.invoiceService.findOne(id);
+    return await this.invoiceService.findOne(id, { withStripeCustomer: true });
   }
 
   @Get(':id/versions')

@@ -315,6 +315,7 @@ model Candidate {
   id                         String           @id @default(uuid())
   hubspot_id                 String           @unique
   hubstaff_id                                                     String?                 @unique
+  hubspot_vaid               String?
   email                      String
   first_name                 String?
   last_name                  String?
@@ -384,6 +385,90 @@ model Candidate {
   tier_level                                                             String?
   total_points                                                           String?
   understands_workflow_in_medical_offices___telehealth_environments      String? @map("understands_workflow_in_medical_offices___telehealth_environmen")
+
+  //Fields from Core Skills (HubSpot VA Score Card extended — p20630393_Virtual_Assistant / med|berry_ta_score_card)
+  //Bookkeeping Core Skills (gate: bookkeeping)
+  quickbooks                                                          String?
+  other_accounting_software                                          String?
+  chart_of_accounts_setup___maintenance                              String?
+  transaction_categorization                                         String?
+  bank__credit_card_reconciliations                                  String?
+  accounts_payable_ap                                                String?
+  accounts_receivable_ar                                             String?
+  payroll_posting__reconciliation_not_processing_unless_required     String?
+  payroll_posting                                                    String?
+  monthend_close                                                     String?
+  journal_entries__adjustments                                       String?
+  balance_sheet                                                      String?
+  pl                                                                  String?
+  accrual_vs_cash_understanding                                      String?
+  prepare_books_for_cpatax_handoff                                   String?
+  client_communication                                               String?
+  account_reconciliation                                             String?
+  financial_analysis                                                 String?
+  financial_reporting                                                String?
+  total_score_bookkeeping                                            String?
+  notes_bookkeeping                                                  String?
+
+  //Medical/Dental Core Skills (Admin) (gate: medical__dental_admin)
+  patient_scheduling__calendar_management                            String?
+  insurance_verification_eligibility__benefits                       String?
+  prior_authorizations__referrals                                    String?
+  inbound_call_handling__patient_support                             String?
+  outbound_calls_recalls_noshows_followups                           String?
+  emrehr_data_entry__chart_updating                                  String?
+  patient_intake__demographics_documentation_accuracy                String?
+  referrals_sending_receiving_tracking                               String?
+  total_score_medical__dental_admin                                  String?
+  notes_medical__dental_admin                                        String?
+
+  //Medical/Dental Core Skills (Biller) (gate: medical__dental_biller)
+  n2_years_healthcare_billing_experience                             String?
+  total_years_on_healthcare_billing_experience                       String?
+  patient_phone_communication                                        String?
+  role_type                                                          String?
+  insurance_verification_knowledge                                   String?
+  prior_authorizations_experience                                    String?
+  cpt__icd10_coding                                                  String?
+  charge_entry                                                       String?
+  claim_generation                                                   String?
+  claim_submission                                                   String?
+  denial_management                                                  String?
+  insurance_followup                                                 String?
+  ar_management                                                      String?
+  payment_posting                                                    String?
+  identifying_underpayments                                          String?
+  medicaldental_biller_total_percentage_score                        String?
+  notes_medical__dental_biller                                       String?
+
+  //Sales Core Skills (Sales Executive) (gate: sales_executive)
+  consultative_selling                                               String?
+  fullcycle_sales                                                    String?
+  objection_handling__negotiation                                    String?
+  virtual_demos__presentations                                       String?
+  pipeline_management                                                String?
+  closing_sales                                                      String?
+  total_score_sales_executive                                        String?
+  notes_sales_executive                                              String?
+
+  //Sales Core Skills (SDR) (gate: sales_development_representative_sdr)
+  lead_research__qualification                                       String?
+  crm_proficiency                                                    String?
+  outbound_prospecting_emaillvcalls                                  String?
+  cold_calling                                                       String?
+  appointment_setting                                                String?
+  kpi_awareness__tracking                                            String?
+  total_score_sales_development_representative_sdr                  String?
+  notes_sales_development_representative_sdr                        String?
+
+  //Sales Core Skills (Sales & Account Manager) (gate: sales__account_manager)
+  client_relationship_management                                     String?
+  retention_strategy                                                 String?
+  upsell__crosssell                                                  String?
+  account_onboarding                                                 String?
+  issue_resolution                                                   String?
+  total_score_sales__account_manager                                 String?
+  notes_sales__account_manager                                       String?
 
   educations             CandidateEducation[]
   experiences            CandidateExperience[]
@@ -1787,10 +1872,12 @@ enum BillingMode {
 
 // How often a new billing cycle (and therefore a new Invoice) is generated for an org.
 // custom = cycle boundaries are set manually per-invoice rather than on a fixed cadence.
+
 enum BillingFrequency {
   weekly
   biweekly
   monthly
+  bimonthly
   custom
 }
 
