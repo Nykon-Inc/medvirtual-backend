@@ -789,6 +789,7 @@ export class CandidatesService {
     };
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -1052,6 +1053,7 @@ export class CandidatesService {
         );
         return {
           ...candidate,
+          vaid: candidate.hubspot_vaid,
           approved_positions_pairing:
             (candidate.approved_positions_pairing &&
               candidate.approved_positions_pairing.map((position) =>
