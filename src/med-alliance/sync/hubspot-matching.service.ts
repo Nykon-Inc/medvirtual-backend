@@ -99,15 +99,24 @@ export class HubspotMatchingService {
         hubspot_synced_at: new Date(),
       });
 
-      // MA-004: re-run eligibility check now that hubspot_id is set.
-      // Only applies to referred orgs — non-referred orgs have no Med Alliance eligibility.
-      if (org.referred_by_affiliate_id) {
-        await this.eligibilityCheck.runAndPersist(
-          organizationId,
-          'system',
-          'sync',
-        );
-      }
+      // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+      // spec doc §4.6): this was a sync-triggered (source='sync') automatic call — MA-004
+      // (active-client duplicate detection) still only ever writes not_eligible/clears a
+      // block and never touches pending_confirmation/eligible/expired, but running it here
+      // with no user/admin actor is exactly the automatic, unattended pattern the plan
+      // removes. MA-004 remains available via the admin-triggered
+      // `POST admin/referred-companies/:id/eligibility-check` endpoint (referred-companies
+      // .controller.ts, source='admin_action') and the user-triggered check at referral
+      // submission time (referred-companies.service.ts, source='user') — both kept, since
+      // those are actor-driven, not background.
+      //
+      // if (org.referred_by_affiliate_id) {
+      //   await this.eligibilityCheck.runAndPersist(
+      //     organizationId,
+      //     'system',
+      //     'sync',
+      //   );
+      // }
 
       return { outcome: 'synced', hubspotCompanyId };
     } catch (err) {
@@ -210,10 +219,16 @@ export class HubspotMatchingService {
       hubspot_synced_at: null,
     };
 
-    // Only set Med Alliance eligibility fields for referred organizations
-    if (isReferred) {
-      updateData.med_alliance_referral_status = 'not_eligible';
-    }
+    // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+    // spec doc §4.6): this used to auto-set med_alliance_referral_status='not_eligible' for
+    // referred orgs on an ambiguous HubSpot company match — a status pre-decision with no
+    // admin involvement. Company eligibility status is now exclusively a manual admin
+    // decision via the Confirm/Block endpoints; an ambiguous match should only halt sync
+    // (hubspot_sync_status above) and open the review case below, not touch eligibility.
+    //
+    // if (isReferred) {
+    //   updateData.med_alliance_referral_status = 'not_eligible';
+    // }
 
     await this.prisma.organization.update({
       where: { id: organizationId },

@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import axios from 'axios';
-import { mapInvoiceToDb, resolvePaidAt } from '../../common/utils/hubspot.util';
+import {
+  mapInvoiceToDb,
+  resolvePaidAt,
+  fetchLineItemsForInvoice,
+} from '../../common/utils/hubspot.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { invoiceToDbDictionary } from '../../common/dictionaries/invoice-dictionary';
 
@@ -137,43 +141,32 @@ export class HandlerInvoiceCreation {
         throw new BadRequestException('Error creating Invoice in the database');
       }
 
-      //Start to get line items details and create them in the database
+      // Line items — fetched via the shared fetchLineItemsForInvoice helper (same one
+      // InvoiceIngestionService uses for the periodic sync path) so both ingestion paths
+      // produce identical shapes for StaffMatchingService to consume. staff_id/match_status
+      // are left null here (default) — matching happens in a later sync pass, not on webhook.
       const lineItemsAssociated = getObject.data.associations?.['line items'];
       if (lineItemsAssociated?.results?.length > 0) {
-        for (const lineItem of lineItemsAssociated.results) {
+        const lineItemIds = lineItemsAssociated.results.map((r: any) => r.id);
+        const lineItemRecords = await fetchLineItemsForInvoice(lineItemIds);
+
+        for (const record of lineItemRecords) {
           try {
-            const lineItemDetails = await retry(() =>
-              axios.get(
-                `https://api.hubapi.com/crm/v3/objects/line_items/${lineItem.id}?properties=amount,description,discount,quantity,name`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
-                    'Content-Type': 'application/json',
-                  },
-                },
-              ),
-            );
-            const lineItemData = {
-              hubspot_id: lineItem.id,
-              quantity: lineItemDetails.data.properties.quantity,
-              amount: lineItemDetails.data.properties.amount,
-              description: lineItemDetails.data.properties.description,
-              name: lineItemDetails.data.properties.name,
-              invoice_id: invoiceCreated.id,
-            };
-            console.log(
-              `Line item data for line item ${lineItem.id}:`,
-              lineItemData,
-            );
             await this.prisma.hubspotLineItemSnapshot.create({
-              data: lineItemData,
+              data: {
+                hubspot_id: record.hubspot_id,
+                name: record.name,
+                description: record.description,
+                quantity: record.quantity,
+                amount: record.amount,
+                discount: record.discount,
+                invoice_id: invoiceCreated.id,
+              },
             });
           } catch (error) {
             console.error(
-              `❌ Error fetching line item ${lineItem.id} details from HubSpot`,
+              `❌ Error creating line item ${record.hubspot_id} in the database`,
             );
-            console.error('Status:', error.response?.status);
-            console.error('Data:', error.response?.data);
             console.error('Message:', error.message);
           }
         }

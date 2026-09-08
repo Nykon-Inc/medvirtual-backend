@@ -164,12 +164,17 @@ export class HandlerOrganizationPropertyChange {
       const now = new Date();
 
       if (value === null) {
-        // deployment_date cleared — company goes back into negotiation, resting on pending.
+        // deployment_date cleared — company goes back into negotiation.
+        // DISABLED (per-collaborator commission plan, company-eligibility-manual-only
+        // change, spec doc §4.6): med_alliance_referral_status is no longer auto-set here
+        // — it's exclusively a manual admin decision via Confirm/Block. referral_stage
+        // itself stays automatic (it's the prerequisite signal that surfaces a company for
+        // the admin's decision, not the decision itself).
         await this.prisma.organization.update({
           where: { id: organization.id },
           data: {
             referral_stage: 'in_negotiation' as any,
-            med_alliance_referral_status: 'pending_confirmation' as any,
+            // med_alliance_referral_status: 'pending_confirmation' as any,
             eligibility_start_at: null,
             med_alliance_block_reason: null,
           },
@@ -181,7 +186,9 @@ export class HandlerOrganizationPropertyChange {
             entity_id: organization.id,
             event: 'deployment_date_cleared',
             old_status: priorStatus,
-            new_status: 'pending_confirmation',
+            // new_status intentionally null — med_alliance_referral_status is no longer
+            // auto-set here (§4.6); only referral_stage/eligibility_start_at changed.
+            new_status: null,
             reason: 'deployment_date removed in HubSpot — reopened for review',
             source: 'sync',
             actor_user_id: null,
@@ -197,12 +204,18 @@ export class HandlerOrganizationPropertyChange {
           (now.getTime() - deployDate.getTime()) / (24 * 60 * 60 * 1000);
 
         if (daysSinceDeploy > 365) {
-          // More than 365 days in the past — expires directly, no decision window.
+          // More than 365 days in the past.
+          // DISABLED (spec doc §4.6): this used to auto-set med_alliance_referral_status
+          // ='expired' directly, skipping the admin's decision window entirely — the most
+          // damaging of the three branches, since the company never got a pending_confirmation
+          // state to react to. Status is now exclusively a manual admin decision. referral_stage
+          // /eligibility_start_at stay automatic — they surface the company as deployed so the
+          // admin's Confirm/Block buttons become reachable.
           await this.prisma.organization.update({
             where: { id: organization.id },
             data: {
               referral_stage: 'deployed' as any,
-              med_alliance_referral_status: 'expired' as any,
+              // med_alliance_referral_status: 'expired' as any,
               eligibility_start_at: deployDate,
               med_alliance_block_reason: null,
             },
@@ -212,11 +225,16 @@ export class HandlerOrganizationPropertyChange {
             data: {
               entity_type: 'referred_company',
               entity_id: organization.id,
-              event: 'eligibility_expired',
+              // Renamed from 'eligibility_expired' — no status transition happens here
+              // anymore (§4.6); this logs the automatic deployed-stage detection only.
+              event: 'deployed_stage_detected_over_365_days',
               old_status: priorStatus,
-              new_status: 'expired',
+              // new_status intentionally null — med_alliance_referral_status is no longer
+              // auto-set; the admin must Confirm/Block explicitly once the company shows
+              // as deployed.
+              new_status: null,
               reason:
-                'deployment_date synced from HubSpot — already more than 365 days in the past' +
+                'deployment_date synced from HubSpot — already more than 365 days in the past; admin decision required (status is manual-only)' +
                 (priorStage === 'canceled'
                   ? ' — company re-opened from canceled'
                   : ''),
@@ -229,13 +247,16 @@ export class HandlerOrganizationPropertyChange {
             },
           });
         } else {
-          // Within 365 days in the past, or a future date — pending, decision available
-          // immediately once in the past (approveEligibility rejects future dates itself).
+          // Within 365 days in the past, or a future date.
+          // DISABLED (spec doc §4.6): med_alliance_referral_status is no longer auto-set —
+          // exclusively a manual admin decision. referral_stage/eligibility_start_at stay
+          // automatic (approveEligibility rejects future dates itself, and requires
+          // referral_stage='deployed' server-side before Confirm/Block are reachable).
           await this.prisma.organization.update({
             where: { id: organization.id },
             data: {
               referral_stage: 'deployed' as any,
-              med_alliance_referral_status: 'pending_confirmation' as any,
+              // med_alliance_referral_status: 'pending_confirmation' as any,
               eligibility_start_at: deployDate,
               med_alliance_block_reason: null,
             },
@@ -245,11 +266,15 @@ export class HandlerOrganizationPropertyChange {
             data: {
               entity_type: 'referred_company',
               entity_id: organization.id,
-              event: 'eligibility_pending_confirmation',
+              // Renamed from 'eligibility_pending_confirmation' — no status transition
+              // happens here anymore (§4.6); this logs the automatic deployed-stage
+              // detection only.
+              event: 'deployed_stage_detected',
               old_status: priorStatus,
-              new_status: 'pending_confirmation',
+              // new_status intentionally null — see the >365-days branch above.
+              new_status: null,
               reason:
-                'deployment_date synced from HubSpot deploy_date_of_first_va' +
+                'deployment_date synced from HubSpot deploy_date_of_first_va; admin decision required (status is manual-only)' +
                 (priorStage === 'canceled'
                   ? ' — company re-opened from canceled'
                   : ''),

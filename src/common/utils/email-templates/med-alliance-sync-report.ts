@@ -6,6 +6,15 @@ export interface SyncReportEntry {
   outcome: string;
   hubspotCompanyId?: string;
   invoices?: { created: number; updated: number; skipped: number };
+  // Per-collaborator line-item outcomes (StaffMatchingService), added alongside the
+  // per-collaborator commission rewrite (spec doc §4.5) — gives immediate visibility into
+  // unmatched/ambiguous collaborator payments without opening the review-case dashboard.
+  lineItems?: {
+    created: number;
+    matched: number;
+    unmatched: number;
+    ambiguous: number;
+  };
   commissions?: { created: number; skipped: number };
   error?: string;
 }
@@ -14,7 +23,12 @@ export default function medAllianceSyncReport(
   processed: number,
   allEntries: SyncReportEntry[],
   needsAttention: SyncReportEntry[],
-  totals: { invoicesCreated: number; commissionsCreated: number },
+  totals: {
+    invoicesCreated: number;
+    commissionsCreated: number;
+    lineItemsUnmatched: number;
+    lineItemsAmbiguous: number;
+  },
   runAt: Date,
 ): string {
   const formattedDate = runAt.toLocaleString('en-US', {
@@ -40,16 +54,20 @@ export default function medAllianceSyncReport(
     .join('');
 
   const allRows = allEntries
-    .map(
-      (e) => `
+    .map((e) => {
+      const lineItemsCell = e.lineItems
+        ? `${e.lineItems.matched} matched${e.lineItems.unmatched || e.lineItems.ambiguous ? ` / <span style="color:#bf360c;font-weight:600;">${e.lineItems.unmatched} unmatched, ${e.lineItems.ambiguous} ambiguous</span>` : ''}`
+        : '-';
+      return `
       <tr>
         <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:14px;font-weight:600;">${e.organizationName}</td>
         <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:14px;color:#555;text-align:center;">${e.outcome}</td>
         <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:11px;color:#888;font-family:monospace;">${e.hubspotCompanyId ?? '-'}</td>
         <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:13px;color:#555;text-align:center;">${e.invoices ? `${e.invoices.created} / ${e.invoices.updated} / ${e.invoices.skipped}` : '-'}</td>
+        <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:13px;color:#555;text-align:center;">${lineItemsCell}</td>
         <td style="border:1px solid #dee2e6;padding:10px 12px;font-size:13px;color:#555;text-align:center;">${e.commissions ? `${e.commissions.created} / ${e.commissions.skipped}` : '-'}</td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join('');
 
   const nothingToDoSection =
@@ -86,6 +104,7 @@ export default function medAllianceSyncReport(
             <th style="border:1px solid #dee2e6;padding:10px 12px;text-align:center;font-size:13px;">Outcome</th>
             <th style="border:1px solid #dee2e6;padding:10px 12px;text-align:left;font-size:13px;">HubSpot Company ID</th>
             <th style="border:1px solid #dee2e6;padding:10px 12px;text-align:center;font-size:13px;">Invoices (created / updated / skipped)</th>
+            <th style="border:1px solid #dee2e6;padding:10px 12px;text-align:center;font-size:13px;">Line Items (matched / unmatched / ambiguous)</th>
             <th style="border:1px solid #dee2e6;padding:10px 12px;text-align:center;font-size:13px;">Commissions (created / skipped)</th>
           </tr>
         </thead>
@@ -124,6 +143,10 @@ export default function medAllianceSyncReport(
         <div style="flex:1;background:#f5f5f5;border-radius:8px;padding:16px;text-align:center;margin:0 8px;">
           <p style="margin:0;font-size:13px;color:#757575;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Commissions Created</p>
           <p style="margin:8px 0 0;font-size:28px;font-weight:700;color:#9e9e9e;">${totals.commissionsCreated}</p>
+        </div>
+        <div style="flex:1;background:${totals.lineItemsUnmatched + totals.lineItemsAmbiguous > 0 ? '#fff3e0' : '#f5f5f5'};border-radius:8px;padding:16px;text-align:center;margin:0 8px;">
+          <p style="margin:0;font-size:13px;color:${totals.lineItemsUnmatched + totals.lineItemsAmbiguous > 0 ? '#e65100' : '#757575'};font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Unmatched / Ambiguous</p>
+          <p style="margin:8px 0 0;font-size:28px;font-weight:700;color:${totals.lineItemsUnmatched + totals.lineItemsAmbiguous > 0 ? '#bf360c' : '#9e9e9e'};">${totals.lineItemsUnmatched} / ${totals.lineItemsAmbiguous}</p>
         </div>
       </div>
 

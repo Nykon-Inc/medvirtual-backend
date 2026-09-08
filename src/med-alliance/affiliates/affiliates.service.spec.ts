@@ -46,6 +46,9 @@ const mockPrisma = {
   hubspotInvoiceSnapshot: {
     findMany: jest.fn(),
   },
+  hubspotLineItemSnapshot: {
+    findMany: jest.fn(),
+  },
   medAllianceAuditLog: {
     create: jest.fn(),
   },
@@ -858,6 +861,7 @@ describe('AffiliatesService', () => {
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([]);
       mockInvoiceIngestionService.run.mockResolvedValue(undefined);
       mockHubspotService.setCompanyAffiliateReferral.mockResolvedValue(undefined);
     });
@@ -902,7 +906,7 @@ describe('AffiliatesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should set status to pending_confirmation (no 30-day tier) and anchor eligibility_start_at on the raw anchor date', async () => {
+    it('should set referral_stage=deployed and anchor eligibility_start_at on the raw anchor date (med_alliance_referral_status untouched — §4.6)', async () => {
       mockPrisma.affiliateProfile.findUnique
         .mockResolvedValueOnce(mockProfile) // outer profile lookup
         .mockResolvedValueOnce(mockProfile); // inner lookup in _backfillOnAssociation
@@ -925,49 +929,101 @@ describe('AffiliatesService', () => {
           where: { id: 'org-1' },
         }),
       );
+      // The backfill write is the one carrying eligibility_start_at (§4.6: no longer keyed
+      // by med_alliance_referral_status, since that field is no longer set here at all).
       const updateCallArgs = mockPrisma.organization.update.mock.calls.find(
-        (c: any) => c[0].data?.med_alliance_referral_status,
+        (c: any) => c[0].data?.eligibility_start_at,
       );
       expect(updateCallArgs[0].data).toEqual(
         expect.objectContaining({
           referral_stage: 'deployed',
           eligibility_start_at: anchorDate,
           med_alliance_block_reason: null,
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       );
+      expect(updateCallArgs[0].data.med_alliance_referral_status).toBeUndefined();
     });
 
-    it('should mark expired and skip commission backfill when anchor date is more than 365 days ago', async () => {
+    it('should still backfill matched-line-item commissions when anchor date is more than 365 days ago (company eligibility no longer gates this — §4.6; per-collaborator eligibility still applies — §4)', async () => {
       const oldAnchor = daysAgo(400);
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
         .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: oldAnchor });
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
-        paidSnapshot({ paid_at: oldAnchor }),
+      const snap = paidSnapshot({ paid_at: oldAnchor });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      // A staff member who started recently (30 days ago) still has a fresh commission
+      // window even though the COMPANY's deployment_date is 400 days old — this is exactly
+      // the per-collaborator clock the plan introduces (§4).
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-1',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-1',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-1', start_date: daysAgo(30) },
+        },
       ]);
 
       await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
 
       const updateCallArgs = mockPrisma.organization.update.mock.calls.find(
-        (c: any) => c[0].data?.med_alliance_referral_status,
+        (c: any) => c[0].data?.eligibility_start_at,
       );
-      expect(updateCallArgs[0].data).toEqual(
-        expect.objectContaining({ med_alliance_referral_status: 'expired' }),
+      expect(updateCallArgs[0].data.med_alliance_referral_status).toBeUndefined();
+      expect(mockPrisma.affiliateCommission.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            hubspot_line_item_snapshot_id: 'li-1',
+            staff_id: 'staff-1',
+            status: 'detected',
+          }),
+        }),
       );
-      // No commission backfill once expired.
-      expect(mockPrisma.affiliateCommission.create).not.toHaveBeenCalled();
     });
 
-    it('should always backfill commissions as "detected" (never pending_admin_confirmation) when not expired', async () => {
+    it('should skip a matched line item whose staff started more than 365 days ago (per-collaborator window — §4)', async () => {
       const anchorDate = daysAgo(5);
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
         .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: anchorDate });
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
-        paidSnapshot({ paid_at: anchorDate }),
+      const snap = paidSnapshot({ paid_at: anchorDate });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-expired',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-expired',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-expired', start_date: daysAgo(400) },
+        },
+      ]);
+
+      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+
+      expect(mockPrisma.affiliateCommission.create).not.toHaveBeenCalled();
+    });
+
+    it('should always backfill matched-line-item commissions as "detected" (never pending_admin_confirmation)', async () => {
+      const anchorDate = daysAgo(5);
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.organization.findUnique
+        .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
+        .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: anchorDate });
+      const snap = paidSnapshot({ paid_at: anchorDate });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-1',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-1',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-1', start_date: daysAgo(10) },
+        },
       ]);
 
       await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
