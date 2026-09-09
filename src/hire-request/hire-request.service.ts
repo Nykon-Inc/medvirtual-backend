@@ -1092,7 +1092,7 @@ export class HireRequestService {
             role: true,
           },
         },
-    assigned_sourcing: {
+        assigned_sourcing: {
           select: {
             id: true,
             first_name: true,
@@ -1412,7 +1412,7 @@ export class HireRequestService {
             role: true,
           },
         },
-    assigned_sourcing: {
+        assigned_sourcing: {
           select: {
             id: true,
             first_name: true,
