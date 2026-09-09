@@ -47,6 +47,11 @@ import {
 import axios from 'axios';
 import { HRTicketStatus } from '../common/dictionaries/HRTicket-dicionary';
 import { getApprovedPositionLabel } from '../common/dictionaries/approved-positions-pairing-dictionary';
+import {
+  isClientOriginatedRole,
+  violatesMinLeadTime,
+  INTERVIEW_MIN_LEAD_ERROR,
+} from '../common/utils/interview-schedule-window';
 import { dateToTimestamp, timestampToUSDate } from '../common/utils/formatDate';
 import {
   CANDIDATE_AUDIT_EVENTS,
@@ -740,6 +745,7 @@ export class HireRequestService {
               id: true,
               first_name: true,
               last_name: true,
+              role: true,
             },
           },
           assigned_sourcing: {
@@ -1083,9 +1089,10 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
-        assigned_sourcing: {
+    assigned_sourcing: {
           select: {
             id: true,
             first_name: true,
@@ -1402,9 +1409,10 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
-        assigned_sourcing: {
+    assigned_sourcing: {
           select: {
             id: true,
             first_name: true,
@@ -3913,9 +3921,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
@@ -4054,9 +4070,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
