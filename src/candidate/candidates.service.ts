@@ -55,6 +55,11 @@ import {
   CandidateAuditService,
 } from './candidate-audit.service';
 import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import { isClientOriginatedRole } from '../common/utils/interview-schedule-window';
+import {
+  violatesPanelCandidateMinLead,
+  PANEL_CANDIDATE_MIN_LEAD_ERROR,
+} from '../common/utils/panel-candidate-lead-time';
 
 const NON_MEDICAL_POOL = 'non_medical';
 
@@ -3024,6 +3029,7 @@ export class CandidatesService {
       where: { hire_request_id: data.hireRequestId },
       select: { id: true },
     });
+    const panelJustCreated = !panel;
     if (!panel) {
       panel = await this.prisma.candidatePanel.create({
         data: {
@@ -3032,6 +3038,25 @@ export class CandidatesService {
           readable: true,
         },
       });
+    }
+
+    // 48h panel-candidate minimum lead-time rule (organization users only —
+    // keys on the ACTING user's role, not the hire request's origin; see
+    // `common/utils/panel-candidate-lead-time.ts`). A freshly created panel
+    // can have no interview yet, so it is skipped without a query.
+    if (isClientOriginatedRole(user.role) && !panelJustCreated) {
+      const activeInterview = await this.prisma.interview.findFirst({
+        where: { panel_id: panel.id, status: 'scheduled' },
+        orderBy: { scheduled_date: 'asc' },
+        select: { scheduled_date: true },
+      });
+
+      if (
+        activeInterview &&
+        violatesPanelCandidateMinLead(activeInterview.scheduled_date)
+      ) {
+        throw new BadRequestException(PANEL_CANDIDATE_MIN_LEAD_ERROR);
+      }
     }
 
     const candidates = await this.prisma.candidate.findMany({

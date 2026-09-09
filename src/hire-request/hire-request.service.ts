@@ -1505,9 +1505,20 @@ export class HireRequestService {
                 },
               },
             },
+            // Scoped to the active (`status: 'scheduled'`) interview only,
+            // earliest first, so the client can evaluate the 48h
+            // panel-candidate lead-time rule
+            // (`common/utils/panel-candidate-lead-time.ts`) before
+            // submitting. `id`/`status` are additive alongside the
+            // pre-existing `scheduled_date`/`link` fields — no consumer of
+            // this payload breaks. No new PII enters the payload.
             interviews: {
+              where: { status: 'scheduled' },
+              orderBy: { scheduled_date: 'asc' },
               select: {
+                id: true,
                 scheduled_date: true,
+                status: true,
                 link: true,
               },
             },
