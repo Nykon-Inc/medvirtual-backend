@@ -27,6 +27,7 @@ import {
   changeLabelAvailability,
   extractDriveFileId,
 } from '../common/utils/hubspot.util';
+import { parseQueryList } from '../common/utils/query.util';
 import { GoogledriveService } from '../googledrive/googledrive.service';
 import { S3Service } from '../s3/s3.service';
 import { OpenaiService } from '../openai/openai.service';
@@ -397,22 +398,22 @@ export class CandidatesService {
     user: USER,
     country?: string,
     shift_block?: string,
-    availability?: string,
+    availability?: string | string[],
     monthly_compensation_from?: string,
     monthly_compensation_to?: string,
     years_of_experience?: string,
-    specializations?: string,
-    positions?: string,
-    skills?: string,
-    languages?: string,
+    specializations?: string | string[],
+    positions?: string | string[],
+    skills?: string | string[],
+    languages?: string | string[],
     page?: number,
     perPage?: number,
     search?: string,
     all?: string,
     scorecard_fields?: string,
-    tools?: string,
-    medical_tools?: string,
-    core_skills_fields?: string,
+    tools?: string | string[],
+    medical_tools?: string | string[],
+    core_skills_fields?: string | string[],
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -480,10 +481,7 @@ export class CandidatesService {
     const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
     const coreSkillsFilters: Record<string, any>[] =
       core_skills_fields && isCoreSkillsFilterAllowed
-        ? core_skills_fields
-            .split(',')
-            .map((pair) => pair.trim())
-            .filter(Boolean)
+        ? parseQueryList(core_skills_fields)
             .map((pair) => {
               const [field, value] = pair.split(':').map((p) => p.trim());
               return { field, value };
@@ -497,41 +495,16 @@ export class CandidatesService {
             }))
         : [];
 
-    const availabilityArray = availability
-      ? availability
-          .split(',')
-          .map((a) => a.trim())
-          .filter(Boolean)
-      : [];
+    const availabilityArray = parseQueryList(availability);
     const availabilityNumbers = availabilityArray
       .map((a) => stageToDbDictionary[a])
       .filter(Boolean)
       .map((av) => String(av));
 
-    const languagesArray = languages
-      ? languages
-          .split(',')
-          .map((l) => l.trim())
-          .filter(Boolean)
-      : [];
-    const skillsArray = skills
-      ? skills
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const specializationArray = specializations
-      ? specializations
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const positionsArray = positions
-      ? positions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    const languagesArray = parseQueryList(languages);
+    const skillsArray = parseQueryList(skills);
+    const specializationArray = parseQueryList(specializations);
+    const positionsArray = parseQueryList(positions);
 
     if (languagesArray.length) {
       combinedFilters.push(
@@ -568,12 +541,7 @@ export class CandidatesService {
       };
     }
 
-    const toolsArray = tools
-      ? tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const toolsArray = parseQueryList(tools);
     if (toolsArray.length) {
       combinedFilters.push({
         OR: toolsArray.map((tool) => ({
@@ -584,12 +552,7 @@ export class CandidatesService {
 
     // medical_tools is a semicolon-delimited text column, so it is matched with
     // `contains` (OR semantics), mirroring the `tools` filter above.
-    const medicalToolsArray = medical_tools
-      ? medical_tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const medicalToolsArray = parseQueryList(medical_tools);
     if (medicalToolsArray.length) {
       combinedFilters.push({
         OR: medicalToolsArray.map((tool) => ({
@@ -657,7 +620,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -691,7 +654,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -725,7 +688,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -759,7 +722,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1119,22 +1082,22 @@ export class CandidatesService {
     user: USER,
     country?: string,
     shift_block?: string,
-    availability?: string,
+    availability?: string | string[],
     monthly_compensation_from?: string,
     monthly_compensation_to?: string,
     years_of_experience?: string,
-    specializations?: string,
-    positions?: string,
-    skills?: string,
-    languages?: string,
+    specializations?: string | string[],
+    positions?: string | string[],
+    skills?: string | string[],
+    languages?: string | string[],
     page?: number,
     perPage?: number,
     search?: string,
     all?: string,
     scorecard_fields?: string,
-    tools?: string,
-    medical_tools?: string,
-    core_skills_fields?: string,
+    tools?: string | string[],
+    medical_tools?: string | string[],
+    core_skills_fields?: string | string[],
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -1182,10 +1145,7 @@ export class CandidatesService {
     const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
     const coreSkillsFilters: Record<string, any>[] =
       core_skills_fields && isCoreSkillsFilterAllowed
-        ? core_skills_fields
-            .split(',')
-            .map((pair) => pair.trim())
-            .filter(Boolean)
+        ? parseQueryList(core_skills_fields)
             .map((pair) => {
               const [field, value] = pair.split(':').map((p) => p.trim());
               return { field, value };
@@ -1199,41 +1159,16 @@ export class CandidatesService {
             }))
         : [];
 
-    const availabilityArray = availability
-      ? availability
-          .split(',')
-          .map((a) => a.trim())
-          .filter(Boolean)
-      : [];
+    const availabilityArray = parseQueryList(availability);
     const availabilityNumbers = availabilityArray
       .map((a) => stageToDbDictionary[a])
       .filter(Boolean)
       .map((av) => String(av));
 
-    const languagesArray = languages
-      ? languages
-          .split(',')
-          .map((l) => l.trim())
-          .filter(Boolean)
-      : [];
-    const skillsArray = skills
-      ? skills
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const specializationArray = specializations
-      ? specializations
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const positionsArray = positions
-      ? positions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    const languagesArray = parseQueryList(languages);
+    const skillsArray = parseQueryList(skills);
+    const specializationArray = parseQueryList(specializations);
+    const positionsArray = parseQueryList(positions);
 
     if (languagesArray.length) {
       combinedFilters.push(
@@ -1270,12 +1205,7 @@ export class CandidatesService {
       };
     }
 
-    const toolsArray = tools
-      ? tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const toolsArray = parseQueryList(tools);
     if (toolsArray.length) {
       combinedFilters.push({
         OR: toolsArray.map((tool) => ({
@@ -1286,12 +1216,7 @@ export class CandidatesService {
 
     // medical_tools is a semicolon-delimited text column, so it is matched with
     // `contains` (OR semantics), mirroring the `tools` filter above.
-    const medicalToolsArray = medical_tools
-      ? medical_tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const medicalToolsArray = parseQueryList(medical_tools);
     if (medicalToolsArray.length) {
       combinedFilters.push({
         OR: medicalToolsArray.map((tool) => ({
@@ -1359,7 +1284,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1390,7 +1315,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1421,7 +1346,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1452,7 +1377,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
