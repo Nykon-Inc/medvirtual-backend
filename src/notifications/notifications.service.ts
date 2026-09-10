@@ -2727,6 +2727,28 @@ ${getEmailLogoCss()}
     return cc;
   }
 
+  private static readonly VERIFIED_SENDER_DOMAINS = [
+    'medvirtual.ai',
+    'berryvirtual.com',
+  ];
+
+  /**
+   * Resend only allows `from` on domains verified in the account. When the
+   * panel creator's email is on one of those domains, send as them so the
+   * recipient sees a real teammate instead of a no-reply address; otherwise
+   * fall back to the shared noreply address, which is always verified.
+   */
+  private offerPanelSenderAddress(
+    creatorEmail: string | null | undefined,
+  ): string {
+    const trimmedEmail = creatorEmail?.trim();
+    const domain = trimmedEmail?.split('@')[1]?.toLowerCase();
+    const isVerified =
+      !!domain &&
+      NotificationsService.VERIFIED_SENDER_DOMAINS.includes(domain);
+    return isVerified ? (trimmedEmail as string) : 'noreply@medvirtual.ai';
+  }
+
   /**
    * BCC the HubSpot logging address on the recipient-facing offer-panel email so
    * the send is recorded on the contact's CRM timeline.
@@ -2937,7 +2959,7 @@ ${getEmailLogoCss()}
     );
 
     return this.mail.sendMail({
-      from: `${theme?.companyName || 'MedVirtual'} <noreply@medvirtual.ai>`,
+      from: `${theme?.companyName || 'MedVirtual'} <${this.offerPanelSenderAddress(panel.createdBy.email)}>`,
       to: panel.recipient_email,
       cc: this.offerPanelCreatorCc(
         panel.createdBy.email,
@@ -3018,7 +3040,7 @@ ${getEmailLogoCss()}
     );
 
     return this.mail.sendMail({
-      from: `${theme?.companyName || 'MedVirtual'} <noreply@medvirtual.ai>`,
+      from: `${theme?.companyName || 'MedVirtual'} <${this.offerPanelSenderAddress(panel.createdBy.email)}>`,
       to: panel.recipient_email,
       // Both the cc and the bcc also apply to the resend path, which reuses this
       // method: a resend is the same email reaching the client, so it belongs on
