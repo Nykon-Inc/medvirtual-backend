@@ -3055,6 +3055,18 @@ export class CandidatesService {
         activeInterview &&
         violatesPanelCandidateMinLead(activeInterview.scheduled_date)
       ) {
+        try {
+          await this.notifications.notifyPanelCandidateBlocked(
+            data.hireRequestId,
+            user.id,
+            data.candidatesId,
+          );
+        } catch (err) {
+          console.error(
+            '[notifications] panel-candidate-blocked email failed',
+            err?.message || err,
+          );
+        }
         throw new BadRequestException(PANEL_CANDIDATE_MIN_LEAD_ERROR);
       }
     }

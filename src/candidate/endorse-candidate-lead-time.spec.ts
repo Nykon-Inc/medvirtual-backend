@@ -48,7 +48,10 @@ const hubspotMock = {
 };
 const mailMock = { sendEmail: jest.fn() };
 const hireRequestMock = { updateStatus: jest.fn() };
-const notificationsMock = { notifyEndorseCandidates: jest.fn() };
+const notificationsMock = {
+  notifyEndorseCandidates: jest.fn(),
+  notifyPanelCandidateBlocked: jest.fn(),
+};
 const positionRateConfigMock = {
   findAll: jest.fn().mockResolvedValue({ status: 200, data: [], meta: { total: 0, page: 1, perPage: 10, totalPages: 0 } }),
   findAllUnpaginated: jest.fn().mockResolvedValue([]),
@@ -120,6 +123,7 @@ describe('CandidatesService.endorseCandidate — 48h panel-candidate lead time',
     mockPrisma.panelCandidate.findFirst.mockResolvedValue(null);
     mockPrisma.panelCandidate.createMany.mockResolvedValue({ count: 1 });
     notificationsMock.notifyEndorseCandidates.mockResolvedValue(true);
+    notificationsMock.notifyPanelCandidateBlocked.mockResolvedValue(true);
   });
 
   it('rejects an organization user targeting a panel whose interview starts in 2h', async () => {
@@ -134,6 +138,39 @@ describe('CandidatesService.endorseCandidate — 48h panel-candidate lead time',
 
     expect(mockPrisma.panelCandidate.createMany).not.toHaveBeenCalled();
     expect(notificationsMock.notifyEndorseCandidates).not.toHaveBeenCalled();
+  });
+
+  it('notifies the hire request assignees when the 48h block fires', async () => {
+    mockPrisma.candidatePanel.findFirst.mockResolvedValue({ id: 'panel-1' });
+    mockPrisma.interview.findFirst.mockResolvedValue({
+      scheduled_date: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+
+    await expect(
+      service.endorseCandidate({ ...baseData }, orgUser),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(notificationsMock.notifyPanelCandidateBlocked).toHaveBeenCalledWith(
+      baseData.hireRequestId,
+      orgUser.id,
+      baseData.candidatesId,
+    );
+  });
+
+  it('still throws BadRequestException when notifyPanelCandidateBlocked rejects', async () => {
+    mockPrisma.candidatePanel.findFirst.mockResolvedValue({ id: 'panel-1' });
+    mockPrisma.interview.findFirst.mockResolvedValue({
+      scheduled_date: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+    notificationsMock.notifyPanelCandidateBlocked.mockRejectedValue(
+      new Error('email provider down'),
+    );
+
+    await expect(
+      service.endorseCandidate({ ...baseData }, orgUser),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(mockPrisma.panelCandidate.createMany).not.toHaveBeenCalled();
   });
 
   it('allows an organization user targeting a panel whose interview starts in 72h', async () => {
