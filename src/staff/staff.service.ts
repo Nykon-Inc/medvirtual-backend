@@ -58,6 +58,7 @@ export class StaffService {
         candidate: {
           select: {
             id: true,
+            hubspot_vaid: true,
             first_name: true,
             last_name: true,
             name: true,
@@ -111,6 +112,7 @@ export class StaffService {
       candidate: staff.candidate
         ? {
             ...staff.candidate,
+            vaid: staff.candidate.hubspot_vaid,
             avatar: staff.candidate.avatar_url
               ? `${process.env.AVATAR_URL}${staff.candidate.avatar_url}`
               : null,
@@ -442,6 +444,7 @@ export class StaffService {
         candidate: {
           select: {
             id: true,
+            hubspot_vaid: true,
             first_name: true,
             last_name: true,
             name: true,
@@ -508,6 +511,7 @@ export class StaffService {
       candidate: s.candidate
         ? {
             ...s.candidate,
+            vaid: s.candidate.hubspot_vaid,
             avatar: s.candidate.avatar_url
               ? `${process.env.AVATAR_URL}${s.candidate.avatar_url}`
               : null,
@@ -533,6 +537,7 @@ export class StaffService {
         candidate: {
           select: {
             id: true,
+            hubspot_vaid: true,
             first_name: true,
             last_name: true,
             email: true,
@@ -547,7 +552,12 @@ export class StaffService {
       orderBy: { created_at: 'desc' },
     });
 
-    return staff;
+    return staff.map((s) => ({
+      ...s,
+      candidate: s.candidate
+        ? { ...s.candidate, vaid: s.candidate.hubspot_vaid }
+        : null,
+    }));
   }
 
   async findAll(
@@ -641,6 +651,7 @@ export class StaffService {
       candidate: {
         select: {
           id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           name: true,
@@ -706,6 +717,7 @@ export class StaffService {
       ...staff,
       candidate: {
         ...staff.candidate,
+        vaid: staff.candidate?.hubspot_vaid,
         avatar: staff.candidate?.avatar_url
           ? `${process.env.AVATAR_URL}${staff.candidate.avatar_url}`
           : null,
@@ -813,6 +825,7 @@ export class StaffService {
       candidate: {
         select: {
           id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           name: true,
@@ -872,9 +885,16 @@ export class StaffService {
       this.prisma.staff.count({ where }),
     ]);
 
+    const staffWithCandidateVaid = staff.map((s) => ({
+      ...s,
+      candidate: s.candidate
+        ? { ...s.candidate, vaid: s.candidate.hubspot_vaid }
+        : null,
+    }));
+
     return {
       status: 200,
-      data: staff,
+      data: staffWithCandidateVaid,
       meta: {
         total,
         page,
@@ -945,6 +965,7 @@ export class StaffService {
             candidate: {
               select: {
                 id: true,
+                hubspot_vaid: true,
                 first_name: true,
                 last_name: true,
                 name: true,
@@ -1008,7 +1029,14 @@ export class StaffService {
       return {
         status: 200,
         message: 'Staff updated successfully',
-        data: result,
+        data: result
+          ? {
+              ...result,
+              candidate: result.candidate
+                ? { ...result.candidate, vaid: result.candidate.hubspot_vaid }
+                : null,
+            }
+          : result,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {

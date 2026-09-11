@@ -790,7 +790,7 @@ describe('StaffService', () => {
       );
 
       expect(result.status).toBe(200);
-      expect(result.data).toEqual(mockStaffData);
+      expect(result.data).toEqual([{ ...mockStaffData[0], candidate: null }]);
       expect(result.meta.total).toBe(mockTotal);
     });
 
@@ -910,7 +910,7 @@ describe('StaffService', () => {
 
       expect(result.status).toBe(200);
       expect(result.message).toBe('Staff updated successfully');
-      expect(result.data).toEqual(mockUpdatedResult);
+      expect(result.data).toEqual({ ...mockUpdatedResult, candidate: null });
     });
 
     it('should translate status via staffStatusDictionary', async () => {
