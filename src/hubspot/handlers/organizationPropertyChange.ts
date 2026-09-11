@@ -111,6 +111,34 @@ export class HandlerOrganizationPropertyChange {
       return true;
     }
 
+    //upsert invoiceConfiguration if the property updated is hubspot_project_id
+    if (event.propertyName === 'hubspot_project_id') {
+
+      await this.prisma.invoiceConfiguration.upsert({
+        where: {
+          organization_id: organization.id,
+        },
+        update: {
+          hubstaff_id: event.propertyValue,
+        },
+        create: {
+          organization_id: organization.id,
+          hubstaff_id: event.propertyValue,
+          hubspot_id: organization.hubspot_id,
+          billing_mode: 'arrears',
+          billing_currency: 'USD',
+          payment_terms_days: 7,
+          auto_sync_to_stripe: true,
+          reconciliation_delay_days: 0,
+          credit_balance: 0,
+          debit_balance: 0,
+          auto_apply_credits: true,
+          allow_outstanding_balance: true,
+        },
+      });
+      return true;
+    }
+
     // For deployment_date, fetch state needed for the eligibility branch BEFORE the generic
     // update below overwrites deployment_date — we need the prior value to detect a no-op
     // (unchanged) HubSpot re-delivery, which must never overwrite a manual admin decision.
