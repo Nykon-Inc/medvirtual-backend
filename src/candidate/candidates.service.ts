@@ -291,6 +291,7 @@ const CORE_SKILLS_FILTER_ROLES = new Set([
  */
 const CANDIDATE_LIST_CARD_SELECT = {
   id: true,
+  hubspot_vaid: true,
   first_name: true,
   last_name: true,
   name: true,
@@ -1404,6 +1405,7 @@ export class CandidatesService {
     };
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -1667,6 +1669,7 @@ export class CandidatesService {
         );
         return {
           ...candidate,
+          vaid: candidate.hubspot_vaid,
           approved_positions_pairing:
             (candidate.approved_positions_pairing &&
               candidate.approved_positions_pairing.map((position) =>
@@ -1733,6 +1736,7 @@ export class CandidatesService {
 
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -1938,6 +1942,7 @@ export class CandidatesService {
 
     const formattedCandidate = {
       ...candidate, // mantém os outros campos do candidato
+      vaid: candidate.hubspot_vaid,
       approved_positions_pairing:
         (candidate.approved_positions_pairing &&
           candidate.approved_positions_pairing.map((position) =>
@@ -2028,7 +2033,7 @@ export class CandidatesService {
       await this.removeFromOfferPanels(id);
     }
 
-    return updatedCandidate;
+    return { ...updatedCandidate, vaid: updatedCandidate.hubspot_vaid };
   }
 
   async removeFromOfferPanels(candidateId: string): Promise<void> {
@@ -2795,7 +2800,7 @@ export class CandidatesService {
       await this.removeFromOfferPanels(id);
     }
 
-    return updatedCandidate;
+    return { ...updatedCandidate, vaid: updatedCandidate.hubspot_vaid };
   }
 
   async showMatchHireRequests(
@@ -3337,6 +3342,7 @@ export class CandidatesService {
         select: {
           id: true,
           hubspot_id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           name: true,
@@ -3411,6 +3417,7 @@ export class CandidatesService {
       );
       return {
         ...candidate,
+        vaid: candidate.hubspot_vaid,
         avatar_url: candidate.avatar_url
           ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
           : null,
@@ -3443,6 +3450,7 @@ export class CandidatesService {
       where: { id: id.trim() },
       select: {
         id: true,
+        hubspot_vaid: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -3661,6 +3669,7 @@ export class CandidatesService {
 
     const candidateWithFullAvatarUrl = {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,
@@ -3757,6 +3766,7 @@ export class CandidatesService {
     // 3. And finally map the positions to their display labels.
     return {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,
@@ -3785,6 +3795,7 @@ export class CandidatesService {
       where: { id: id.trim() },
       select: {
         id: true,
+        hubspot_vaid: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -4007,6 +4018,7 @@ export class CandidatesService {
 
     const candidateWithFullAvatarUrl = {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,

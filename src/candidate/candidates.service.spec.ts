@@ -665,6 +665,7 @@ describe('CandidatesService', () => {
         },
         select: {
           id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           email: true,
