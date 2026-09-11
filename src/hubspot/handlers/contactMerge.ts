@@ -26,7 +26,19 @@ export class HandlerContactMerge {
           );
         }
 
-        const otherMergedIds = event.mergedObjectIds
+        // HubSpot sometimes serializes mergedObjectIds as a string
+        // (e.g. "[ 123, 456 ]") instead of a real array.
+        const mergedObjectIdsList: unknown[] = Array.isArray(
+          event.mergedObjectIds,
+        )
+          ? event.mergedObjectIds
+          : String(event.mergedObjectIds)
+              .replace(/[[\]]/g, '')
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean);
+
+        const otherMergedIds = mergedObjectIdsList
           .map((id) => String(id))
           .filter((id) => id !== String(event.primaryObjectId));
 
