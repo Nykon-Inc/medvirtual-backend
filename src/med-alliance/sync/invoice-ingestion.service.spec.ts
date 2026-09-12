@@ -111,7 +111,8 @@ describe('InvoiceIngestionService', () => {
 
       await service.run('org-1', 'hs-company-1');
 
-      const createCall = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
+      const createCall =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
       expect(createCall.data.sync_hash).toBeTruthy();
       expect(typeof createCall.data.sync_hash).toBe('string');
       expect(createCall.data.sync_hash).toHaveLength(64); // SHA-256 hex
@@ -120,15 +121,20 @@ describe('InvoiceIngestionService', () => {
     it.skip('should parse paid_at from hs_due_date', async () => {
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
-        .mockResolvedValueOnce(makeInvoiceResponse({ hs_due_date: '2026-03-15T00:00:00.000Z' }));
+        .mockResolvedValueOnce(
+          makeInvoiceResponse({ hs_due_date: '2026-03-15T00:00:00.000Z' }),
+        );
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({});
 
       await service.run('org-1', 'hs-company-1');
 
-      const createCall = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
-      expect(createCall.data.paid_at).toEqual(new Date('2026-03-15T00:00:00.000Z'));
+      const createCall =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
+      expect(createCall.data.paid_at).toEqual(
+        new Date('2026-03-15T00:00:00.000Z'),
+      );
     });
 
     it('should set paid_at to null when hs_due_date is absent', async () => {
@@ -141,7 +147,8 @@ describe('InvoiceIngestionService', () => {
 
       await service.run('org-1', 'hs-company-1');
 
-      const createCall = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
+      const createCall =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0];
       expect(createCall.data.paid_at).toBeNull();
     });
   });
@@ -165,7 +172,9 @@ describe('InvoiceIngestionService', () => {
       expect(firstRun.created).toBe(1);
 
       // Capture the hash that was stored
-      const storedHash = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+      const storedHash =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
 
       // Second run: same invoice, same data → DB returns existing snapshot with same hash
       jest.clearAllMocks();
@@ -195,7 +204,9 @@ describe('InvoiceIngestionService', () => {
     it('should update snapshot when sync_hash has changed', async () => {
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
-        .mockResolvedValueOnce(makeInvoiceResponse({ hs_amount_billed: '2000.00' }));
+        .mockResolvedValueOnce(
+          makeInvoiceResponse({ hs_amount_billed: '2000.00' }),
+        );
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
@@ -222,7 +233,9 @@ describe('InvoiceIngestionService', () => {
     it('should update sync_hash on update', async () => {
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
-        .mockResolvedValueOnce(makeInvoiceResponse({ hs_amount_billed: '2000.00' }));
+        .mockResolvedValueOnce(
+          makeInvoiceResponse({ hs_amount_billed: '2000.00' }),
+        );
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
@@ -232,7 +245,8 @@ describe('InvoiceIngestionService', () => {
 
       await service.run('org-1', 'hs-company-1');
 
-      const updateCall = mockPrisma.hubspotInvoiceSnapshot.update.mock.calls[0][0];
+      const updateCall =
+        mockPrisma.hubspotInvoiceSnapshot.update.mock.calls[0][0];
       expect(updateCall.data.sync_hash).toBeTruthy();
       expect(updateCall.data.sync_hash).not.toBe('stale-hash');
     });
@@ -250,7 +264,8 @@ describe('InvoiceIngestionService', () => {
         mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
         mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({});
         await service.run('org-1', 'hs-company-1');
-        return mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+        return mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
       };
 
       const hash1 = await runOnce();
@@ -264,23 +279,30 @@ describe('InvoiceIngestionService', () => {
       // First run: paid
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
-        .mockResolvedValueOnce(makeInvoiceResponse({ hs_invoice_status: 'paid' }));
+        .mockResolvedValueOnce(
+          makeInvoiceResponse({ hs_invoice_status: 'paid' }),
+        );
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({});
       await service.run('org-1', 'hs-company-1');
-      const hashPaid = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+      const hashPaid =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
 
       jest.clearAllMocks();
 
       // Second run: outstanding
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
-        .mockResolvedValueOnce(makeInvoiceResponse({ hs_invoice_status: 'outstanding' }));
+        .mockResolvedValueOnce(
+          makeInvoiceResponse({ hs_invoice_status: 'outstanding' }),
+        );
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({});
       await service.run('org-1', 'hs-company-1');
       const hashOutstanding =
-        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
 
       expect(hashPaid).not.toBe(hashOutstanding);
     });
@@ -291,10 +313,12 @@ describe('InvoiceIngestionService', () => {
   // -------------------------------------------------------------------------
   it('should process all invoices and continue on individual fetch failure', async () => {
     mockedAxios.get
-      .mockResolvedValueOnce(makeAssociationsResponse(['inv-1', 'inv-2', 'inv-3']))
-      .mockResolvedValueOnce(makeInvoiceResponse())           // inv-1 OK
-      .mockRejectedValueOnce(new Error('HubSpot 404'))        // inv-2 fails
-      .mockResolvedValueOnce(makeInvoiceResponse());           // inv-3 OK
+      .mockResolvedValueOnce(
+        makeAssociationsResponse(['inv-1', 'inv-2', 'inv-3']),
+      )
+      .mockResolvedValueOnce(makeInvoiceResponse()) // inv-1 OK
+      .mockRejectedValueOnce(new Error('HubSpot 404')) // inv-2 fails
+      .mockResolvedValueOnce(makeInvoiceResponse()); // inv-3 OK
 
     mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
     mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({});

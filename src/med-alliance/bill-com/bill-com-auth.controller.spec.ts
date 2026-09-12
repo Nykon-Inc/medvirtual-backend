@@ -52,15 +52,22 @@ describe('BillComAuthController', () => {
 
       const result = await controller.status(mockAdmin);
 
-      expect(mockBillComService.hasValidSession).toHaveBeenCalledWith('admin-1');
+      expect(mockBillComService.hasValidSession).toHaveBeenCalledWith(
+        'admin-1',
+      );
       expect(result).toEqual({ connected: true });
     });
   });
 
   describe('login', () => {
     it('returns trusted + nextStep, never the sessionId', async () => {
-      mockBillComService.login.mockResolvedValue({ sessionId: 'sess-1', trusted: true });
-      mockBillComAuthService.determineNextStep.mockResolvedValue({ nextStep: 'proceed' });
+      mockBillComService.login.mockResolvedValue({
+        sessionId: 'sess-1',
+        trusted: true,
+      });
+      mockBillComAuthService.determineNextStep.mockResolvedValue({
+        nextStep: 'proceed',
+      });
 
       const result = await controller.login(mockAdmin, {
         email: 'admin@medvirtual.ai',
@@ -71,12 +78,19 @@ describe('BillComAuthController', () => {
         username: 'admin@medvirtual.ai',
         password: 'secret',
       });
-      expect(result).toEqual({ trusted: true, nextStep: 'proceed', challengeId: undefined });
+      expect(result).toEqual({
+        trusted: true,
+        nextStep: 'proceed',
+        challengeId: undefined,
+      });
       expect(result).not.toHaveProperty('sessionId');
     });
 
     it('passes through the challengeId when the next step is mfa_challenge', async () => {
-      mockBillComService.login.mockResolvedValue({ sessionId: 'sess-1', trusted: false });
+      mockBillComService.login.mockResolvedValue({
+        sessionId: 'sess-1',
+        trusted: false,
+      });
       mockBillComAuthService.determineNextStep.mockResolvedValue({
         nextStep: 'mfa_challenge',
         challengeId: 'chal-1',
@@ -111,7 +125,9 @@ describe('BillComAuthController', () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({
         billcom_pending_session_id: 'pending-sess-1',
       });
-      mockBillComService.requestMfaChallenge.mockResolvedValue({ challengeId: 'chal-1' });
+      mockBillComService.requestMfaChallenge.mockResolvedValue({
+        challengeId: 'chal-1',
+      });
 
       const result = await controller.mfaChallenge(mockAdmin);
 
@@ -150,10 +166,15 @@ describe('BillComAuthController', () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({
         billcom_pending_session_id: 'pending-sess-1',
       });
-      mockBillComService.validateMfaChallenge.mockRejectedValue(new Error('Invalid code'));
+      mockBillComService.validateMfaChallenge.mockRejectedValue(
+        new Error('Invalid code'),
+      );
 
       await expect(
-        controller.mfaValidate(mockAdmin, { challengeId: 'chal-1', token: '000000' }),
+        controller.mfaValidate(mockAdmin, {
+          challengeId: 'chal-1',
+          token: '000000',
+        }),
       ).rejects.toThrow('Invalid code');
     });
   });
@@ -163,9 +184,13 @@ describe('BillComAuthController', () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({
         billcom_pending_session_id: 'pending-sess-1',
       });
-      mockBillComService.addPhoneForMfaSetup.mockResolvedValue({ setupId: 'setup-1' });
+      mockBillComService.addPhoneForMfaSetup.mockResolvedValue({
+        setupId: 'setup-1',
+      });
 
-      const result = await controller.phoneSetup(mockAdmin, { phone: '+14155552671' });
+      const result = await controller.phoneSetup(mockAdmin, {
+        phone: '+14155552671',
+      });
 
       expect(mockBillComService.addPhoneForMfaSetup).toHaveBeenCalledWith(
         'admin-1',
@@ -183,17 +208,23 @@ describe('BillComAuthController', () => {
         new BillComAlreadyEnrolledException(),
       );
 
-      const result = await controller.phoneSetup(mockAdmin, { phone: '+14155552671' });
+      const result = await controller.phoneSetup(mockAdmin, {
+        phone: '+14155552671',
+      });
 
       expect(result).toEqual({ setupId: null, alreadyEnrolled: true });
-      expect(mockBillComService.markDeviceAlreadyEnrolled).toHaveBeenCalledWith('admin-1');
+      expect(mockBillComService.markDeviceAlreadyEnrolled).toHaveBeenCalledWith(
+        'admin-1',
+      );
     });
 
     it('phoneValidate returns { success: true }', async () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({
         billcom_pending_session_id: 'pending-sess-1',
       });
-      mockBillComService.validatePhoneForMfaSetup.mockResolvedValue({ status: 'SUCCESS' });
+      mockBillComService.validatePhoneForMfaSetup.mockResolvedValue({
+        status: 'SUCCESS',
+      });
 
       const result = await controller.phoneValidate(mockAdmin, {
         setupId: 'setup-1',

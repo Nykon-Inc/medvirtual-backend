@@ -49,7 +49,8 @@ describe('openrouter.errors', () => {
       expect(
         isInsufficientQuotaError({
           status: 429,
-          message: 'You exceeded your current quota, please check your plan and billing details.',
+          message:
+            'You exceeded your current quota, please check your plan and billing details.',
         }),
       ).toBe(true);
     });
@@ -57,7 +58,10 @@ describe('openrouter.errors', () => {
     it('should read an axios-shaped error', () => {
       expect(
         isInsufficientQuotaError({
-          response: { status: 429, data: { error: { code: 'insufficient_quota' } } },
+          response: {
+            status: 429,
+            data: { error: { code: 'insufficient_quota' } },
+          },
         }),
       ).toBe(true);
     });
@@ -80,7 +84,10 @@ describe('openrouter.errors', () => {
 
     it('should NOT trigger on a 400 validation error', () => {
       expect(
-        isInsufficientQuotaError({ status: 400, code: 'invalid_request_error' }),
+        isInsufficientQuotaError({
+          status: 400,
+          code: 'invalid_request_error',
+        }),
       ).toBe(false);
     });
 
@@ -102,9 +109,9 @@ describe('openrouter.errors', () => {
 
   describe('isRateLimitError', () => {
     it('should detect rate_limit_exceeded', () => {
-      expect(isRateLimitError({ status: 429, code: 'rate_limit_exceeded' })).toBe(
-        true,
-      );
+      expect(
+        isRateLimitError({ status: 429, code: 'rate_limit_exceeded' }),
+      ).toBe(true);
     });
 
     it('should treat a bare 429 as a rate limit', () => {

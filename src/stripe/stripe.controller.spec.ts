@@ -43,9 +43,18 @@ describe('StripeController', () => {
         { provide: SecretsService, useValue: mockSecretsService },
         { provide: 'REDIS_CLIENT', useValue: mockRedisClient },
         { provide: PrismaService, useValue: {} },
-        { provide: PusherService, useValue: { trigger: jest.fn(), authenticate: jest.fn() } },
-        { provide: getQueueToken('invoice'), useValue: { getJob: jest.fn(), add: jest.fn() } },
-        { provide: getQueueToken('invoice-prebill-reconciliation'), useValue: { getJob: jest.fn(), add: jest.fn() } },
+        {
+          provide: PusherService,
+          useValue: { trigger: jest.fn(), authenticate: jest.fn() },
+        },
+        {
+          provide: getQueueToken('invoice'),
+          useValue: { getJob: jest.fn(), add: jest.fn() },
+        },
+        {
+          provide: getQueueToken('invoice-prebill-reconciliation'),
+          useValue: { getJob: jest.fn(), add: jest.fn() },
+        },
         { provide: InvoiceService, useValue: { getInvoiceDetails: jest.fn() } },
       ],
     }).compile();
@@ -60,26 +69,37 @@ describe('StripeController', () => {
 
   describe('createCustomer', () => {
     it('should call stripeService.createCustomer with name and email', async () => {
-      const mockResult = { id: 'cust_123', name: 'John Doe', email: 'john@example.com' };
-      const spy = jest.spyOn(stripeService, 'createCustomer').mockResolvedValue(mockResult as any);
+      const mockResult = {
+        id: 'cust_123',
+        name: 'John Doe',
+        email: 'john@example.com',
+      };
+      const spy = jest
+        .spyOn(stripeService, 'createCustomer')
+        .mockResolvedValue(mockResult as any);
 
-      const result = await stripeController.createCustomer({ name: 'John Doe', email: 'john@example.com' });
+      const result = await stripeController.createCustomer({
+        name: 'John Doe',
+        email: 'john@example.com',
+      });
 
       expect(spy).toHaveBeenCalledWith('John Doe', 'john@example.com');
       expect(result).toEqual(mockResult);
     });
 
     it('should throw BadRequestException if name is missing', async () => {
-      await expect(stripeController.createCustomer({ name: '' })).rejects.toThrow(
-        'Name is required',
-      );
+      await expect(
+        stripeController.createCustomer({ name: '' }),
+      ).rejects.toThrow('Name is required');
     });
   });
 
   describe('getInvoiceUrl', () => {
     it('should call stripeService.getInvoiceUrl with id', async () => {
       const mockResult = { url: 'https://stripe.com/invoice/123' };
-      const spy = jest.spyOn(stripeService, 'getInvoiceUrl').mockResolvedValue(mockResult);
+      const spy = jest
+        .spyOn(stripeService, 'getInvoiceUrl')
+        .mockResolvedValue(mockResult);
 
       const result = await stripeController.getInvoiceUrl('in_123');
 
@@ -94,4 +114,3 @@ describe('StripeController', () => {
     });
   });
 });
-

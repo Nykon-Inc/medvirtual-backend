@@ -1,7 +1,4 @@
-import {
-  getUserEmailTheme,
-  getBusinessUnitEmailTheme,
-} from './theme-helper';
+import { getUserEmailTheme, getBusinessUnitEmailTheme } from './theme-helper';
 
 const BRANDING = {
   id: 'brand-1',

@@ -909,12 +909,10 @@ export class BusinessUnitsService {
 
     // updateMany only returns a count — fetch the affected rows first so the
     // audit log can capture per-candidate before/after state.
-    const candidatesBeforeDeactivation = await this.prisma.candidate.findMany(
-      {
-        where: { business_unit: businessUnitValue },
-        select: { id: true, hubspot_id: true, deactivated_by_bu: true },
-      },
-    );
+    const candidatesBeforeDeactivation = await this.prisma.candidate.findMany({
+      where: { business_unit: businessUnitValue },
+      select: { id: true, hubspot_id: true, deactivated_by_bu: true },
+    });
 
     await this.prisma.candidate.updateMany({
       where: { business_unit: businessUnitValue },
@@ -1010,12 +1008,10 @@ export class BusinessUnitsService {
 
     // updateMany only returns a count — fetch the affected rows first so the
     // audit log can capture per-candidate before/after state.
-    const candidatesBeforeReactivation = await this.prisma.candidate.findMany(
-      {
-        where: { deactivated_by_bu: slug },
-        select: { id: true, hubspot_id: true, deactivated_by_bu: true },
-      },
-    );
+    const candidatesBeforeReactivation = await this.prisma.candidate.findMany({
+      where: { deactivated_by_bu: slug },
+      select: { id: true, hubspot_id: true, deactivated_by_bu: true },
+    });
 
     await this.prisma.candidate.updateMany({
       where: { deactivated_by_bu: slug },

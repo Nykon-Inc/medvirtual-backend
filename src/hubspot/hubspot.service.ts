@@ -296,7 +296,6 @@ export class HubspotService {
   }
 
   async changeDataFromHubspot(data: any): Promise<any> {
-
     const expectedAppId = Number(process.env.HUBSPOT_APP_ID);
     if (expectedAppId && data[0]?.appId != expectedAppId) {
       console.log(
@@ -907,7 +906,6 @@ export class HubspotService {
       await pace(200);
     }
     return 'Candidates created successfully';
-
   }
 
   ////=> this service is just a example to read candidates on our database and UPDATE it with the data from hubspot
@@ -1064,7 +1062,6 @@ export class HubspotService {
       await pace(500);
     }
   }
-
 
   //// => This service is just a example to read organizations on our database and UPDATE it with the data from hubspot
   async updateOrganizations(): Promise<any> {
@@ -1264,7 +1261,6 @@ export class HubspotService {
       }
 
       return response;
-
     } catch (error) {
       throw new BadRequestException(
         `Error fetching candidates: ${error.message}`,
@@ -1401,95 +1397,106 @@ export class HubspotService {
       }
 
       console.log('-------------------------');
-            // Pace the loop
-            await pace(100);
+      // Pace the loop
+      await pace(100);
     }
     return true;
   }
 
-    /**
-     * Looks up HubSpot candidate records, optionally filtered to a set of VA IDs.
-     *
-     * `properties` overrides the default payload, which is the full ~54-key
-     * candidate dictionary. Callers that only need to resolve identity — e.g. the
-     * Hubstaff sync, which reads `vaid` and `hs_object_id` and discards the rest —
-     * should pass a minimal list instead of paying for every property per record.
-     *
-     * Throttling and 429 retries are handled centrally by the HubSpot client's
-     * limiter/retry decorators (configured in the constructor), not here.
-     */
-    async fetchPropertiesAndCandidates(
-        vaIds?: string[],
-        properties?: string[],
-    ): Promise<{ candidates: any[] }> {
-        const customObject = process.env.HUBSPOT_CUSTOM_OBJECT;
-        if (!customObject) {
-            throw new NotFoundException('Custom Object is not defined on the environment variables');
-        }
-
-        try {
-            const requestedProperties = properties ?? [...Object.keys(candidadeToDbDictionary), 'vaid'];
-            let allCandidates: any[] = [];
-
-            if (vaIds && vaIds.length > 0) {
-                // Chunk the vaIds list into batches of 100 to respect HubSpot limit
-                const chunkSize = 100;
-                for (let i = 0; i < vaIds.length; i += chunkSize) {
-                    const chunk = vaIds.slice(i, i + chunkSize);
-                    let after: string | undefined = undefined;
-
-                    do {
-                        const apiResponse = await this.hubspotClient.crm.objects.searchApi.doSearch(
-                            customObject,
-                            {
-                                limit: 100,
-                                after: after,
-                                properties: requestedProperties,
-                                filterGroups: [
-                                    {
-                                        filters: [
-                                            {
-                                                propertyName: 'vaid',
-                                                operator: FilterOperatorEnum.In,
-                                                values: chunk,
-                                            }
-                                        ]
-                                    }
-                                ],
-                            }
-                        );
-
-                        allCandidates.push(...apiResponse.results);
-                        after = apiResponse.paging?.next?.after;
-                    } while (after);
-                }
-            } else {
-                // Fetch all candidate records using the properties list
-                let after: string | undefined = undefined;
-
-                do {
-                    const apiResponse = await this.hubspotClient.crm.objects.searchApi.doSearch(
-                        customObject,
-                        {
-                            limit: 100,
-                            after: after,
-                            properties: requestedProperties,
-                            filterGroups: [],
-                        }
-                    );
-
-                    allCandidates.push(...apiResponse.results);
-                    after = apiResponse.paging?.next?.after;
-                } while (after);
-            }
-
-            console.log(`Successfully fetched ${allCandidates.length} candidates from HubSpot`);
-            return {
-                candidates: allCandidates,
-            };
-        } catch (error: any) {
-            console.error('Error fetching candidates from HubSpot:', error.message);
-            throw new BadRequestException(`Failed to fetch candidates from HubSpot: ${error.message}`);
-        }
+  /**
+   * Looks up HubSpot candidate records, optionally filtered to a set of VA IDs.
+   *
+   * `properties` overrides the default payload, which is the full ~54-key
+   * candidate dictionary. Callers that only need to resolve identity — e.g. the
+   * Hubstaff sync, which reads `vaid` and `hs_object_id` and discards the rest —
+   * should pass a minimal list instead of paying for every property per record.
+   *
+   * Throttling and 429 retries are handled centrally by the HubSpot client's
+   * limiter/retry decorators (configured in the constructor), not here.
+   */
+  async fetchPropertiesAndCandidates(
+    vaIds?: string[],
+    properties?: string[],
+  ): Promise<{ candidates: any[] }> {
+    const customObject = process.env.HUBSPOT_CUSTOM_OBJECT;
+    if (!customObject) {
+      throw new NotFoundException(
+        'Custom Object is not defined on the environment variables',
+      );
     }
+
+    try {
+      const requestedProperties = properties ?? [
+        ...Object.keys(candidadeToDbDictionary),
+        'vaid',
+      ];
+      const allCandidates: any[] = [];
+
+      if (vaIds && vaIds.length > 0) {
+        // Chunk the vaIds list into batches of 100 to respect HubSpot limit
+        const chunkSize = 100;
+        for (let i = 0; i < vaIds.length; i += chunkSize) {
+          const chunk = vaIds.slice(i, i + chunkSize);
+          let after: string | undefined = undefined;
+
+          do {
+            const apiResponse =
+              await this.hubspotClient.crm.objects.searchApi.doSearch(
+                customObject,
+                {
+                  limit: 100,
+                  after: after,
+                  properties: requestedProperties,
+                  filterGroups: [
+                    {
+                      filters: [
+                        {
+                          propertyName: 'vaid',
+                          operator: FilterOperatorEnum.In,
+                          values: chunk,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              );
+
+            allCandidates.push(...apiResponse.results);
+            after = apiResponse.paging?.next?.after;
+          } while (after);
+        }
+      } else {
+        // Fetch all candidate records using the properties list
+        let after: string | undefined = undefined;
+
+        do {
+          const apiResponse =
+            await this.hubspotClient.crm.objects.searchApi.doSearch(
+              customObject,
+              {
+                limit: 100,
+                after: after,
+                properties: requestedProperties,
+                filterGroups: [],
+              },
+            );
+
+          allCandidates.push(...apiResponse.results);
+          after = apiResponse.paging?.next?.after;
+        } while (after);
+      }
+
+      console.log(
+        `Successfully fetched ${allCandidates.length} candidates from HubSpot`,
+      );
+      return {
+        candidates: allCandidates,
+      };
+    } catch (error: any) {
+      console.error('Error fetching candidates from HubSpot:', error.message);
+      throw new BadRequestException(
+        `Failed to fetch candidates from HubSpot: ${error.message}`,
+      );
+    }
+  }
 }

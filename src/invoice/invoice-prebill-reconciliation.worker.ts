@@ -22,9 +22,9 @@ interface ComputedLineItem {
   overtime_hours: number;
   hourly_rate: Decimal;
   overtime_hourly_rate: Decimal;
-  primary_total: Decimal;   // primary line total
+  primary_total: Decimal; // primary line total
   overtime_total: Decimal;
-  grand_total: Decimal;     // primary + overtime
+  grand_total: Decimal; // primary + overtime
 }
 
 /**
@@ -34,7 +34,7 @@ export interface PrebillReconciliationJobPayload {
   invoiceId: string;
   organizationId: string;
   billingStartDate: string; // ISO date string
-  billingEndDate: string;   // ISO date string
+  billingEndDate: string; // ISO date string
 }
 
 /**
@@ -67,16 +67,19 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
   // Entry point
   // ---------------------------------------------------------------------------
 
-  async process(job: Job<PrebillReconciliationJobPayload, any, string>): Promise<any> {
+  async process(
+    job: Job<PrebillReconciliationJobPayload, any, string>,
+  ): Promise<any> {
     if (!queuesEnabled(this.configService)) {
       this.logger.warn('LOCAL mode — prebill reconciliation job skipped.');
       return;
     }
-    const { invoiceId, organizationId, billingStartDate, billingEndDate } = job.data;
+    const { invoiceId, organizationId, billingStartDate, billingEndDate } =
+      job.data;
 
     this.logger.log(
       `Starting prebill reconciliation for invoice ${invoiceId} ` +
-      `(org: ${organizationId}, period: ${billingStartDate} → ${billingEndDate})`,
+        `(org: ${organizationId}, period: ${billingStartDate} → ${billingEndDate})`,
     );
 
     // -----------------------------------------------------------------------
@@ -95,20 +98,26 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     });
 
     if (!invoice) {
-      this.logger.warn(`Invoice ${invoiceId} not found — skipping prebill reconciliation`);
+      this.logger.warn(
+        `Invoice ${invoiceId} not found — skipping prebill reconciliation`,
+      );
       return;
     }
 
     const prebillLineItems = invoice.currentVersion?.line_items ?? [];
     if (prebillLineItems.length === 0) {
-      this.logger.warn(`Invoice ${invoiceId} has no line items — skipping prebill reconciliation`);
+      this.logger.warn(
+        `Invoice ${invoiceId} has no line items — skipping prebill reconciliation`,
+      );
       return;
     }
 
     const org = invoice.organization;
     const hubstaffId = org?.invoiceConfiguration?.hubstaff_id;
     if (!hubstaffId) {
-      this.logger.warn(`No Hubstaff ID for org ${organizationId} — skipping prebill reconciliation`);
+      this.logger.warn(
+        `No Hubstaff ID for org ${organizationId} — skipping prebill reconciliation`,
+      );
       return;
     }
 
@@ -134,12 +143,17 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     //    one comparison total, since computeActualLineItems below also returns one
     //    combined grand_total per worker rather than a separate primary/overtime split.
     // -----------------------------------------------------------------------
-    const prebillByWorker = new Map<string, { lineItemId: string; estimatedTotal: Decimal }>();
+    const prebillByWorker = new Map<
+      string,
+      { lineItemId: string; estimatedTotal: Decimal }
+    >();
     for (const li of prebillLineItems) {
       if (!li.worker_id) continue;
       const existing = prebillByWorker.get(li.worker_id);
       if (existing) {
-        existing.estimatedTotal = existing.estimatedTotal.add(li.final_total ?? 0);
+        existing.estimatedTotal = existing.estimatedTotal.add(
+          li.final_total ?? 0,
+        );
       } else {
         // Use first encountered line item id for the linkage (primary line)
         prebillByWorker.set(li.worker_id, {
@@ -159,10 +173,11 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
 
     if (lineItemIds.length > 0) {
       // Ledger entries reference reconciliations — delete them first
-      const existingRecons = await this.prisma.invoiceLineReconciliation.findMany({
-        where: { line_item_id: { in: lineItemIds } },
-        select: { id: true },
-      });
+      const existingRecons =
+        await this.prisma.invoiceLineReconciliation.findMany({
+          where: { line_item_id: { in: lineItemIds } },
+          select: { id: true },
+        });
       const reconIds = existingRecons.map((r) => r.id);
 
       if (reconIds.length > 0) {
@@ -205,8 +220,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       }
 
       // direction: credit if client owes more (actual > prebill), debit if client was overbilled
-      const direction: LedgerDirection =
-        deltaAmount.gte(0) ? LedgerDirection.debit : LedgerDirection.credit;
+      const direction: LedgerDirection = deltaAmount.gte(0)
+        ? LedgerDirection.debit
+        : LedgerDirection.credit;
 
       await this.prisma.$transaction(async (tx) => {
         // InvoiceLineReconciliation
@@ -260,7 +276,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       reconciledCount,
     };
 
-    this.logger.log(`Prebill reconciliation complete: ${JSON.stringify(summary)}`);
+    this.logger.log(
+      `Prebill reconciliation complete: ${JSON.stringify(summary)}`,
+    );
     return summary;
   }
 
@@ -285,7 +303,13 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     billingStartDate: string;
     billingEndDate: string;
   }): Promise<ComputedLineItem[]> {
-    const { org, hubstaffId, organizationId, billingStartDate, billingEndDate } = params;
+    const {
+      org,
+      hubstaffId,
+      organizationId,
+      billingStartDate,
+      billingEndDate,
+    } = params;
 
     // --- Members ---
     const members = await this.hubstaff.getProjectMembers(hubstaffId);
@@ -293,7 +317,10 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     const memberMap = new Map<number, string>();
     members.forEach((m: any) => {
       if (m.user_id) {
-        memberMap.set(m.user_id, m.name || m.user?.name || `Hubstaff User ${m.user_id}`);
+        memberMap.set(
+          m.user_id,
+          m.name || m.user?.name || `Hubstaff User ${m.user_id}`,
+        );
       }
     });
 
@@ -301,8 +328,12 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       .map((m: any) => (m.user_id ? String(m.user_id) : null))
       .filter((id): id is string => !!id);
 
-    const startOfPeriod = DateTime.fromISO(billingStartDate, { zone: 'utc' }).startOf('day').toJSDate();
-    const endOfPeriod = DateTime.fromISO(billingEndDate, { zone: 'utc' }).endOf('day').toJSDate();
+    const startOfPeriod = DateTime.fromISO(billingStartDate, { zone: 'utc' })
+      .startOf('day')
+      .toJSDate();
+    const endOfPeriod = DateTime.fromISO(billingEndDate, { zone: 'utc' })
+      .endOf('day')
+      .toJSDate();
 
     // --- Staff / candidate records (for rates) ---
     const staffRecords =
@@ -312,7 +343,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
               candidate: { hubstaff_id: { in: hubstaffUserIds } },
               OR: [
                 { organization_id: organizationId },
-                ...(org.hubspot_id ? [{ hubspot_organization_id: org.hubspot_id }] : []),
+                ...(org.hubspot_id
+                  ? [{ hubspot_organization_id: org.hubspot_id }]
+                  : []),
               ],
             },
             include: {
@@ -333,7 +366,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     // computed once per batch to avoid N+1 lookups in the loop below.
     const positionConfigMap = await this.invoiceWorker.buildPositionConfigMap();
     const candidatePoolMap = await this.invoiceWorker.buildCandidatePoolMap(
-      staffRecords.map((s) => ({ business_unit: s.candidate?.business_unit ?? null })),
+      staffRecords.map((s) => ({
+        business_unit: s.candidate?.business_unit ?? null,
+      })),
     );
 
     // --- Actual Hubstaff activities ---
@@ -349,30 +384,56 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       if (act.user_name) {
         memberMap.set(act.user_id, act.user_name);
       }
-      userSummary.set(act.user_id, (userSummary.get(act.user_id) ?? 0) + act.total_time_logged);
+      userSummary.set(
+        act.user_id,
+        (userSummary.get(act.user_id) ?? 0) + act.total_time_logged,
+      );
     }
 
     // --- PTO ---
     const uniqueUserIds = Array.from(
-      new Set([...hubstaffUserIds, ...activities.map((a: any) => String(a.user_id))]),
+      new Set([
+        ...hubstaffUserIds,
+        ...activities.map((a: any) => String(a.user_id)),
+      ]),
     );
-    const startISO = DateTime.fromISO(billingStartDate, { zone: 'utc' }).startOf('day').toISO() || undefined;
+    const startISO =
+      DateTime.fromISO(billingStartDate, { zone: 'utc' })
+        .startOf('day')
+        .toISO() || undefined;
     const endISO =
-      DateTime.fromISO(billingEndDate, { zone: 'utc' }).plus({ days: 1 }).startOf('day').toISO() || undefined;
+      DateTime.fromISO(billingEndDate, { zone: 'utc' })
+        .plus({ days: 1 })
+        .startOf('day')
+        .toISO() || undefined;
 
     const ptoRequests =
       uniqueUserIds.length > 0
-        ? await this.hubstaff.getTimeOffRequests(uniqueUserIds, startISO, endISO)
+        ? await this.hubstaff.getTimeOffRequests(
+            uniqueUserIds,
+            startISO,
+            endISO,
+          )
         : [];
-    const approvedPtos = ptoRequests.filter((p: any) => p.status === 'approved');
+    const approvedPtos = ptoRequests.filter(
+      (p: any) => p.status === 'approved',
+    );
 
     // --- Date / holiday helpers ---
-    const startJSDate = DateTime.fromISO(billingStartDate, { zone: 'utc' }).toJSDate();
-    const endJSDate = DateTime.fromISO(billingEndDate, { zone: 'utc' }).toJSDate();
+    const startJSDate = DateTime.fromISO(billingStartDate, {
+      zone: 'utc',
+    }).toJSDate();
+    const endJSDate = DateTime.fromISO(billingEndDate, {
+      zone: 'utc',
+    }).toJSDate();
 
     const allDaysList: DateTime[] = [];
-    let curDate = DateTime.fromJSDate(startJSDate, { zone: 'utc' }).startOf('day');
-    const lastDate = DateTime.fromJSDate(endJSDate, { zone: 'utc' }).startOf('day');
+    let curDate = DateTime.fromJSDate(startJSDate, { zone: 'utc' }).startOf(
+      'day',
+    );
+    const lastDate = DateTime.fromJSDate(endJSDate, { zone: 'utc' }).startOf(
+      'day',
+    );
     while (curDate.toMillis() <= lastDate.toMillis()) {
       allDaysList.push(curDate);
       curDate = curDate.plus({ days: 1 });
@@ -382,7 +443,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     const endYear = DateTime.fromISO(billingEndDate, { zone: 'utc' }).year;
     const holidayDates = new Set<string>();
     for (let y = startYear; y <= endYear; y++) {
-      this.invoiceWorker.getHolidaysForYear(y).forEach((h) => holidayDates.add(h));
+      this.invoiceWorker
+        .getHolidaysForYear(y)
+        .forEach((h) => holidayDates.add(h));
     }
 
     // --- Compute per-worker line items ---
@@ -395,11 +458,17 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     const workerIdsToProcess = new Set<number>([...userSummary.keys()]);
 
     for (const userId of workerIdsToProcess) {
-      const staff = staffRecords.find((s) => s.candidate?.hubstaff_id === String(userId)) ?? null;
+      const staff =
+        staffRecords.find((s) => s.candidate?.hubstaff_id === String(userId)) ??
+        null;
       const candidate = staff?.candidate ?? null;
 
-      const deploymentType = (staff?.hubspot_deployment_type ?? '').trim().toLowerCase().replace('-', ' ');
-      const isFullTime = deploymentType === 'full time' || deploymentType === 'fulltime';
+      const deploymentType = (staff?.hubspot_deployment_type ?? '')
+        .trim()
+        .toLowerCase()
+        .replace('-', ' ');
+      const isFullTime =
+        deploymentType === 'full time' || deploymentType === 'fulltime';
       const dailyBaseline = isFullTime ? 8 : 4;
 
       let totalWorkedHours = 0;
@@ -416,7 +485,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         const dayActs = activities.filter(
           (act: any) => act.user_id === userId && act.day === dateStr,
         );
-        const dailyWorked = dayActs.reduce((s: number, a: any) => s + a.total_time_logged, 0) / 3600;
+        const dailyWorked =
+          dayActs.reduce((s: number, a: any) => s + a.total_time_logged, 0) /
+          3600;
         totalWorkedHours += dailyWorked;
 
         if (isHoliday) {
@@ -427,13 +498,15 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
           }
           totalHolidayHours += dailyHolidayPayable;
         } else if (isWeekday) {
-          const userPtos = approvedPtos.filter((p: any) => p.user_id === userId);
+          const userPtos = approvedPtos.filter(
+            (p: any) => p.user_id === userId,
+          );
           for (const pto of userPtos) {
             const days: any[] = Array.isArray(pto.time_off_request_days)
               ? pto.time_off_request_days
               : pto.time_off_request_days
-              ? [pto.time_off_request_days]
-              : [];
+                ? [pto.time_off_request_days]
+                : [];
             for (const day of days) {
               if (day.date === dateStr) {
                 totalPtoHours += (day.amount_used ?? 0) / 3600;
@@ -444,9 +517,15 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       }
 
       const totalPayableHours =
-        totalWorkedHours - actualWorkedHoursOnHolidays + totalPtoHours + totalHolidayHours;
+        totalWorkedHours -
+        actualWorkedHoursOnHolidays +
+        totalPtoHours +
+        totalHolidayHours;
 
-      const workdaysInPeriod = this.invoiceWorker.getWorkdaysCount(startJSDate, endJSDate);
+      const workdaysInPeriod = this.invoiceWorker.getWorkdaysCount(
+        startJSDate,
+        endJSDate,
+      );
       const requiredHours = workdaysInPeriod * dailyBaseline;
       const actualHours = totalPayableHours;
       const hasOvertime = actualHours > requiredHours + 4;
@@ -455,7 +534,11 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       // hourly_pay_rate on file — position+business-unit floor price via
       // InvoiceWorker.fallbackHourlyRate, the same source used when generating the
       // original prebill estimate, so prebill and reconciliation never diverge.
-      const fallbackRate = this.invoiceWorker.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap);
+      const fallbackRate = this.invoiceWorker.fallbackHourlyRate(
+        candidate,
+        positionConfigMap,
+        candidatePoolMap,
+      );
       let primaryHours = actualHours;
       let overtimeHours = 0;
       let hourlyRate = new Decimal(fallbackRate);
@@ -475,10 +558,17 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
 
           if (isFullTime) {
             const diffInDays =
-              DateTime.fromJSDate(endJSDate, { zone: 'utc' }).diff(DateTime.fromJSDate(startJSDate, { zone: 'utc' }), 'days').days + 1;
-            const baseSalary = diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
+              DateTime.fromJSDate(endJSDate, { zone: 'utc' }).diff(
+                DateTime.fromJSDate(startJSDate, { zone: 'utc' }),
+                'days',
+              ).days + 1;
+            const baseSalary =
+              diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
             lineTotal = new Decimal(baseSalary);
-            hourlyRate = primaryHours > 0 ? lineTotal.div(new Decimal(primaryHours)) : new Decimal(0);
+            hourlyRate =
+              primaryHours > 0
+                ? lineTotal.div(new Decimal(primaryHours))
+                : new Decimal(0);
           } else {
             hourlyRate = new Decimal(prorationRate);
             lineTotal = new Decimal(primaryHours).mul(hourlyRate);
@@ -500,17 +590,25 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
           const monthlySalary = Number(staff.salary);
           if (isFullTime) {
             const diffInDays =
-              DateTime.fromJSDate(endJSDate, { zone: 'utc' }).diff(DateTime.fromJSDate(startJSDate, { zone: 'utc' }), 'days').days + 1;
-            const baseSalary = diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
+              DateTime.fromJSDate(endJSDate, { zone: 'utc' }).diff(
+                DateTime.fromJSDate(startJSDate, { zone: 'utc' }),
+                'days',
+              ).days + 1;
+            const baseSalary =
+              diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
             const deficit = requiredHours - actualHours;
             if (deficit > 10) {
               const prorationRate = (monthlySalary * 12) / 52 / 40;
-              lineTotal = new Decimal(totalPayableHours).mul(new Decimal(prorationRate));
+              lineTotal = new Decimal(totalPayableHours).mul(
+                new Decimal(prorationRate),
+              );
             } else {
               lineTotal = new Decimal(baseSalary);
             }
             hourlyRate =
-              totalPayableHours > 0 ? lineTotal.div(new Decimal(totalPayableHours)) : new Decimal(0);
+              totalPayableHours > 0
+                ? lineTotal.div(new Decimal(totalPayableHours))
+                : new Decimal(0);
           } else {
             const prorationRate = (monthlySalary * 12) / 52 / 40;
             hourlyRate = new Decimal(prorationRate);

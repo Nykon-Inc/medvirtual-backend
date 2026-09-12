@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CommissionsService } from './commissions.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
@@ -88,7 +92,10 @@ describe('CommissionsService', () => {
       providers: [
         CommissionsService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: AllianceNotificationsService, useValue: mockAllianceNotifications },
+        {
+          provide: AllianceNotificationsService,
+          useValue: mockAllianceNotifications,
+        },
       ],
     }).compile();
 
@@ -169,9 +176,14 @@ describe('CommissionsService', () => {
     });
 
     it('should return commission when it belongs to the current affiliate', async () => {
-      mockPrisma.affiliateCommission.findUnique.mockResolvedValue(makeCommission());
+      mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
+        makeCommission(),
+      );
 
-      const result = await service.findOneForAffiliate('commission-1', mockAffiliateUser);
+      const result = await service.findOneForAffiliate(
+        'commission-1',
+        mockAffiliateUser,
+      );
 
       expect(result.id).toBe('commission-1');
       expect(result.affiliate_id).toBe('affiliate-1');
@@ -185,7 +197,12 @@ describe('CommissionsService', () => {
     it('should return all commissions without affiliate scoping', async () => {
       const commissionWithAffiliate = {
         ...makeCommission(),
-        affiliate: { id: 'affiliate-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
+        affiliate: {
+          id: 'affiliate-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
         adminDecisionBy: null,
       };
       mockPrisma.$transaction.mockResolvedValue([[commissionWithAffiliate], 1]);
@@ -199,7 +216,9 @@ describe('CommissionsService', () => {
     it('should filter by organization_id when provided', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAdmin({ organization_id: 'org-99' });
+      const result = await service.findAllForAdmin({
+        organization_id: 'org-99',
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -207,7 +226,9 @@ describe('CommissionsService', () => {
     it('should filter by affiliate_id when provided', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAdmin({ affiliate_id: 'affiliate-99' });
+      const result = await service.findAllForAdmin({
+        affiliate_id: 'affiliate-99',
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -228,10 +249,21 @@ describe('CommissionsService', () => {
     it('should return commission with affiliate and adminDecisionBy details', async () => {
       const fullCommission = {
         ...makeCommission({ status: 'eligible', admin_decision_by: 'admin-1' }),
-        affiliate: { id: 'affiliate-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
-        adminDecisionBy: { id: 'admin-1', first_name: 'Admin', last_name: 'User' },
+        affiliate: {
+          id: 'affiliate-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
+        adminDecisionBy: {
+          id: 'admin-1',
+          first_name: 'Admin',
+          last_name: 'User',
+        },
       };
-      mockPrisma.affiliateCommission.findUnique.mockResolvedValue(fullCommission);
+      mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
+        fullCommission,
+      );
 
       const result = await service.findOneForAdmin('commission-1');
 
@@ -263,7 +295,11 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.decide('commission-99', { decision: 'eligible' }, mockAdminUser),
+        service.decide(
+          'commission-99',
+          { decision: 'eligible' },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(new NotFoundException('Commission not found'));
     });
 
@@ -285,7 +321,10 @@ describe('CommissionsService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue({
         med_alliance_referral_status: 'eligible',
       });
-      const updated = makeCommission({ status: 'eligible', admin_decision_by: 'admin-1' });
+      const updated = makeCommission({
+        status: 'eligible',
+        admin_decision_by: 'admin-1',
+      });
       mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -347,11 +386,19 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
         makeCommission({ status: 'pending_admin_confirmation' }),
       );
-      mockPrisma.organization.findUnique.mockResolvedValue({ med_alliance_referral_status: 'eligible' });
-      mockPrisma.affiliateCommission.update.mockResolvedValue(makeCommission({ status: 'eligible' }));
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        med_alliance_referral_status: 'eligible',
+      });
+      mockPrisma.affiliateCommission.update.mockResolvedValue(
+        makeCommission({ status: 'eligible' }),
+      );
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      await service.decide('commission-1', { decision: 'eligible' }, mockAdminUser);
+      await service.decide(
+        'commission-1',
+        { decision: 'eligible' },
+        mockAdminUser,
+      );
 
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -381,7 +428,11 @@ describe('CommissionsService', () => {
         });
 
         await expect(
-          service.decide('commission-1', { decision: 'eligible' }, mockAdminUser),
+          service.decide(
+            'commission-1',
+            { decision: 'eligible' },
+            mockAdminUser,
+          ),
         ).rejects.toThrow(
           new BadRequestException(
             'Cannot approve commission: referred organization is not eligible for the Med Alliance program.',
@@ -396,7 +447,10 @@ describe('CommissionsService', () => {
           makeCommission({ status: 'pending_admin_confirmation' }),
         );
         // Guard is skipped for decision === 'rejected' — no org lookup
-        const updated = makeCommission({ status: 'rejected', admin_decision_reason: 'blocked org' });
+        const updated = makeCommission({
+          status: 'rejected',
+          admin_decision_reason: 'blocked org',
+        });
         mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
         mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -412,7 +466,10 @@ describe('CommissionsService', () => {
 
       it('should skip the org guard when commission has no organization_id', async () => {
         mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
-          makeCommission({ status: 'pending_admin_confirmation', organization_id: null }),
+          makeCommission({
+            status: 'pending_admin_confirmation',
+            organization_id: null,
+          }),
         );
         mockPrisma.organization.findUnique.mockResolvedValue(null);
         const updated = makeCommission({ status: 'eligible' });
@@ -476,13 +533,21 @@ describe('CommissionsService', () => {
       },
     );
 
-    it.each(['detected', 'pending_admin_confirmation', 'eligible', 'requested'])(
+    it.each([
+      'detected',
+      'pending_admin_confirmation',
+      'eligible',
+      'requested',
+    ])(
       'should void a commission in non-terminal status "%s"',
       async (status) => {
         mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
           makeCommission({ status }),
         );
-        const updated = makeCommission({ status: 'void', admin_decision_by: 'admin-1' });
+        const updated = makeCommission({
+          status: 'void',
+          admin_decision_by: 'admin-1',
+        });
         mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
         mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -508,10 +573,16 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
         makeCommission({ status: 'eligible' }),
       );
-      mockPrisma.affiliateCommission.update.mockResolvedValue(makeCommission({ status: 'void' }));
+      mockPrisma.affiliateCommission.update.mockResolvedValue(
+        makeCommission({ status: 'void' }),
+      );
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      await service.void('commission-1', { reason: 'Cancelled' }, mockAdminUser);
+      await service.void(
+        'commission-1',
+        { reason: 'Cancelled' },
+        mockAdminUser,
+      );
 
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -540,11 +611,29 @@ describe('CommissionsService', () => {
     });
 
     it('should return audit entries ordered chronologically', async () => {
-      mockPrisma.affiliateCommission.findUnique.mockResolvedValue({ id: 'commission-1' });
+      mockPrisma.affiliateCommission.findUnique.mockResolvedValue({
+        id: 'commission-1',
+      });
 
       const auditEntries = [
-        { id: 'log-1', event: 'status_changed', old_status: null, new_status: 'detected', source: 'sync', createdAt: new Date('2026-02-01'), actorUser: null },
-        { id: 'log-2', event: 'admin_decision', old_status: 'detected', new_status: 'eligible', source: 'admin_action', createdAt: new Date('2026-02-02'), actorUser: { id: 'admin-1', first_name: 'Admin', last_name: 'User' } },
+        {
+          id: 'log-1',
+          event: 'status_changed',
+          old_status: null,
+          new_status: 'detected',
+          source: 'sync',
+          createdAt: new Date('2026-02-01'),
+          actorUser: null,
+        },
+        {
+          id: 'log-2',
+          event: 'admin_decision',
+          old_status: 'detected',
+          new_status: 'eligible',
+          source: 'admin_action',
+          createdAt: new Date('2026-02-02'),
+          actorUser: { id: 'admin-1', first_name: 'Admin', last_name: 'User' },
+        },
       ];
       mockPrisma.medAllianceAuditLog.findMany.mockResolvedValue(auditEntries);
 
@@ -562,7 +651,9 @@ describe('CommissionsService', () => {
     });
 
     it('should return empty array when no audit entries exist', async () => {
-      mockPrisma.affiliateCommission.findUnique.mockResolvedValue({ id: 'commission-1' });
+      mockPrisma.affiliateCommission.findUnique.mockResolvedValue({
+        id: 'commission-1',
+      });
       mockPrisma.medAllianceAuditLog.findMany.mockResolvedValue([]);
 
       const result = await service.getAuditLog('commission-1');
@@ -578,12 +669,18 @@ describe('CommissionsService', () => {
     it('should throw NotFoundException when commission does not exist', async () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(null);
 
-      await expect(service.revertToPending('commission-99', mockAdminUser)).rejects.toThrow(
-        new NotFoundException('Commission not found'),
-      );
+      await expect(
+        service.revertToPending('commission-99', mockAdminUser),
+      ).rejects.toThrow(new NotFoundException('Commission not found'));
     });
 
-    it.each(['detected', 'pending_admin_confirmation', 'rejected', 'void', 'paid'])(
+    it.each([
+      'detected',
+      'pending_admin_confirmation',
+      'rejected',
+      'void',
+      'paid',
+    ])(
       'should throw BadRequestException when commission is in non-eligible status "%s"',
       async (status) => {
         mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
@@ -610,7 +707,10 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      const result = await service.revertToPending('commission-1', mockAdminUser);
+      const result = await service.revertToPending(
+        'commission-1',
+        mockAdminUser,
+      );
 
       expect(result.status).toBe('pending_admin_confirmation');
       expect(result.admin_decision_by).toBeNull();
@@ -663,7 +763,13 @@ describe('CommissionsService', () => {
       ).rejects.toThrow(new NotFoundException('Commission not found'));
     });
 
-    it.each(['detected', 'pending_admin_confirmation', 'eligible', 'rejected', 'paid'])(
+    it.each([
+      'detected',
+      'pending_admin_confirmation',
+      'eligible',
+      'rejected',
+      'paid',
+    ])(
       'should throw BadRequestException when commission is in non-void status "%s"',
       async (status) => {
         mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
@@ -681,19 +787,29 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
         makeCommission({
           status: 'void',
-          organization: { id: 'org-1', name: 'Acme Corp', med_alliance_referral_status: 'eligible' },
+          organization: {
+            id: 'org-1',
+            name: 'Acme Corp',
+            med_alliance_referral_status: 'eligible',
+          },
         }),
       );
       const updated = makeCommission({ status: 'pending_admin_confirmation' });
       mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      const result = await service.unvoid('commission-1', { reason: 'mistake' }, mockAdminUser);
+      const result = await service.unvoid(
+        'commission-1',
+        { reason: 'mistake' },
+        mockAdminUser,
+      );
 
       expect(result.status).toBe('pending_admin_confirmation');
       expect(mockPrisma.affiliateCommission.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'pending_admin_confirmation' }),
+          data: expect.objectContaining({
+            status: 'pending_admin_confirmation',
+          }),
         }),
       );
     });
@@ -702,14 +818,22 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
         makeCommission({
           status: 'void',
-          organization: { id: 'org-1', name: 'Acme Corp', med_alliance_referral_status: 'not_eligible' },
+          organization: {
+            id: 'org-1',
+            name: 'Acme Corp',
+            med_alliance_referral_status: 'not_eligible',
+          },
         }),
       );
       const updated = makeCommission({ status: 'detected' });
       mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      const result = await service.unvoid('commission-1', { reason: 'mistake' }, mockAdminUser);
+      const result = await service.unvoid(
+        'commission-1',
+        { reason: 'mistake' },
+        mockAdminUser,
+      );
 
       expect(result.status).toBe('detected');
       expect(mockPrisma.affiliateCommission.update).toHaveBeenCalledWith(
@@ -727,7 +851,11 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.update.mockResolvedValue(updated);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      const result = await service.unvoid('commission-1', { reason: 'mistake' }, mockAdminUser);
+      const result = await service.unvoid(
+        'commission-1',
+        { reason: 'mistake' },
+        mockAdminUser,
+      );
 
       expect(result.status).toBe('detected');
     });
@@ -736,7 +864,11 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
         makeCommission({
           status: 'void',
-          organization: { id: 'org-1', name: 'Acme Corp', med_alliance_referral_status: 'eligible' },
+          organization: {
+            id: 'org-1',
+            name: 'Acme Corp',
+            med_alliance_referral_status: 'eligible',
+          },
         }),
       );
       mockPrisma.affiliateCommission.update.mockResolvedValue(
@@ -744,7 +876,11 @@ describe('CommissionsService', () => {
       );
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      await service.unvoid('commission-1', { reason: 'mistake' }, mockAdminUser);
+      await service.unvoid(
+        'commission-1',
+        { reason: 'mistake' },
+        mockAdminUser,
+      );
 
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -768,7 +904,11 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateBaseAmount('commission-99', { base_amount: '2000' }, mockAdminUser),
+        service.updateBaseAmount(
+          'commission-99',
+          { base_amount: '2000' },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(new NotFoundException('Commission not found'));
     });
 
@@ -780,7 +920,11 @@ describe('CommissionsService', () => {
         );
 
         await expect(
-          service.updateBaseAmount('commission-1', { base_amount: '2000' }, mockAdminUser),
+          service.updateBaseAmount(
+            'commission-1',
+            { base_amount: '2000' },
+            mockAdminUser,
+          ),
         ).rejects.toThrow(BadRequestException);
         expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();
       },
@@ -790,7 +934,11 @@ describe('CommissionsService', () => {
       'should update base_amount and recalculate commission for status "%s"',
       async (status) => {
         mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
-          makeCommission({ status, commission_percent_snapshot: '10.00', base_amount_snapshot: '1500.00' }),
+          makeCommission({
+            status,
+            commission_percent_snapshot: '10.00',
+            base_amount_snapshot: '1500.00',
+          }),
         );
         const updated = makeCommission({
           status,
@@ -825,7 +973,11 @@ describe('CommissionsService', () => {
       );
 
       await expect(
-        service.updateBaseAmount('commission-1', { base_amount: '-500' }, mockAdminUser),
+        service.updateBaseAmount(
+          'commission-1',
+          { base_amount: '-500' },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -835,18 +987,32 @@ describe('CommissionsService', () => {
       );
 
       await expect(
-        service.updateBaseAmount('commission-1', { base_amount: '0' }, mockAdminUser),
+        service.updateBaseAmount(
+          'commission-1',
+          { base_amount: '0' },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should write audit log with old and new amounts', async () => {
       mockPrisma.affiliateCommission.findUnique.mockResolvedValue(
-        makeCommission({ status: 'detected', commission_percent_snapshot: '10.00', base_amount_snapshot: '1500.00' }),
+        makeCommission({
+          status: 'detected',
+          commission_percent_snapshot: '10.00',
+          base_amount_snapshot: '1500.00',
+        }),
       );
-      mockPrisma.affiliateCommission.update.mockResolvedValue(makeCommission({ status: 'detected' }));
+      mockPrisma.affiliateCommission.update.mockResolvedValue(
+        makeCommission({ status: 'detected' }),
+      );
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      await service.updateBaseAmount('commission-1', { base_amount: '2000' }, mockAdminUser);
+      await service.updateBaseAmount(
+        'commission-1',
+        { base_amount: '2000' },
+        mockAdminUser,
+      );
 
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -957,7 +1123,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org is not found or not referred by this affiliate', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referred_by_affiliate_id: 'someone-else' }),
       );
@@ -973,7 +1141,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org has an active_client_block reason (MA-004)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({
           med_alliance_block_reason:
@@ -993,7 +1163,9 @@ describe('CommissionsService', () => {
 
     it('should skip (read-only) when org status is expired — no inline write', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ med_alliance_referral_status: 'expired' }),
       );
@@ -1012,7 +1184,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org referral_stage is canceled', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referral_stage: 'canceled' }),
       );
@@ -1038,7 +1212,9 @@ describe('CommissionsService', () => {
       );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
-      mockPrisma.affiliateCommission.create.mockResolvedValue({ id: 'comm-new' });
+      mockPrisma.affiliateCommission.create.mockResolvedValue({
+        id: 'comm-new',
+      });
 
       await service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser);
 
@@ -1057,9 +1233,13 @@ describe('CommissionsService', () => {
 
     it('should NOT transition to deployed when org already has first_paid_invoice_at', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
-      mockPrisma.affiliateCommission.create.mockResolvedValue({ id: 'comm-new' });
+      mockPrisma.affiliateCommission.create.mockResolvedValue({
+        id: 'comm-new',
+      });
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
       await service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser);
@@ -1069,9 +1249,13 @@ describe('CommissionsService', () => {
 
     it('should create a commission as pending_admin_confirmation and write an audit log', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
-      mockPrisma.affiliateCommission.create.mockResolvedValue({ id: 'comm-new' });
+      mockPrisma.affiliateCommission.create.mockResolvedValue({
+        id: 'comm-new',
+      });
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
       const result = await service.createFromInvoices(
@@ -1105,7 +1289,9 @@ describe('CommissionsService', () => {
 
     it('should count as skipped when commission creation hits a P2002 unique constraint', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(makeSnapshot());
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+        makeSnapshot(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       const uniqueError = Object.assign(new Error('Unique constraint failed'), {
         code: 'P2002',
@@ -1124,8 +1310,12 @@ describe('CommissionsService', () => {
     it('should count as skipped and continue when commission creation fails with a non-P2002 error', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
       mockPrisma.hubspotInvoiceSnapshot.findUnique
-        .mockResolvedValueOnce(makeSnapshot({ id: 'snap-1', hubspot_id: 'hs-inv-1' }))
-        .mockResolvedValueOnce(makeSnapshot({ id: 'snap-2', hubspot_id: 'hs-inv-2' }));
+        .mockResolvedValueOnce(
+          makeSnapshot({ id: 'snap-1', hubspot_id: 'hs-inv-1' }),
+        )
+        .mockResolvedValueOnce(
+          makeSnapshot({ id: 'snap-2', hubspot_id: 'hs-inv-2' }),
+        );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create
         .mockRejectedValueOnce(new Error('DB connection lost'))

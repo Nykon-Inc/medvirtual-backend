@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadGatewayException, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { CandidatesService } from './candidates.service';
 import { HubspotService } from '../hubspot/hubspot.service';
@@ -37,7 +42,6 @@ jest.mock('fs', () => ({
   readdirSync: jest.fn(),
 }));
 import * as fs from 'fs';
-
 
 const mockPrisma = {
   candidate: {
@@ -95,48 +99,51 @@ const candidateAuditMock = {
 const textractMock = {
   startTextractJob: jest.fn(),
   getTextractResult: jest.fn(),
-}
+};
 
 const s3Mock = {
   uploadFile: jest.fn(),
   getFile: jest.fn(),
   deleteFile: jest.fn(),
-}
+};
 
 const googleMock = {
   downloadFile: jest.fn(),
-}
+};
 
 const openAIMock = {
   organizeText: jest.fn(),
-}
+};
 
 const hubspotMock = {
   updateContact: jest.fn(),
   updateOneCandidateFromHireRequest: jest.fn(),
-}
+};
 
 const MailMock = {
   sendEmail: jest.fn(),
-}
+};
 
 const HireRequestMock = {
   updateStatus: jest.fn(),
-}
+};
 
 const notificationsMock = {
   notifyEndorseCandidates: jest.fn(),
-}
+};
 
 const positionRateConfigMock = {
-  findAll: jest.fn().mockResolvedValue({ status: 200, data: [], meta: { total: 0, page: 1, perPage: 10, totalPages: 0 } }),
+  findAll: jest.fn().mockResolvedValue({
+    status: 200,
+    data: [],
+    meta: { total: 0, page: 1, perPage: 10, totalPages: 0 },
+  }),
   findAllUnpaginated: jest.fn().mockResolvedValue([]),
-}
+};
 
 describe('CandidatesService', () => {
   let service: CandidatesService;
   let prisma: PrismaService;
-
 
   const mockUser = {
     id: 'user-1',
@@ -148,7 +155,7 @@ describe('CandidatesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CandidatesService,
-        { provide: PrismaService, useValue: mockPrisma, },
+        { provide: PrismaService, useValue: mockPrisma },
         { provide: S3Service, useValue: s3Mock },
         { provide: GoogledriveService, useValue: googleMock },
         { provide: OpenaiService, useValue: openAIMock },
@@ -156,10 +163,16 @@ describe('CandidatesService', () => {
         { provide: MailService, useValue: MailMock },
         { provide: HireRequestService, useValue: HireRequestMock },
         { provide: NotificationsService, useValue: notificationsMock },
-        { provide: PositionRateConfigService, useValue: positionRateConfigMock },
+        {
+          provide: PositionRateConfigService,
+          useValue: positionRateConfigMock,
+        },
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
         { provide: CandidateAuditService, useValue: candidateAuditMock },
-        { provide: Logger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        {
+          provide: Logger,
+          useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -181,7 +194,7 @@ describe('CandidatesService', () => {
     it('should return all candidates without filters and transform pipeline_status', async () => {
       const mockCandidates = [
         { id: '1', pipeline_status: '261075105' },
-        { id: '2', pipeline_status: '1087596819' }
+        { id: '2', pipeline_status: '1087596819' },
       ];
       const mockTotal = 2;
 
@@ -192,22 +205,23 @@ describe('CandidatesService', () => {
       expect(result).toEqual({
         data: [
           { id: '1', pipeline_status: 'Available Candidates' },
-          { id: '2', pipeline_status: 'Available Candidates - Part Time' }
+          { id: '2', pipeline_status: 'Available Candidates - Part Time' },
         ],
         meta: {
           total: mockTotal,
           page: 1,
           perPage: 10,
-          totalPages: 1
-        }
+          totalPages: 1,
+        },
       });
     });
-
 
     it('should throw BadGatewayException when prisma fails', async () => {
       mockPrisma.$transaction.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.findAll(mockUser)).rejects.toThrow(BadGatewayException);
+      await expect(service.findAll(mockUser)).rejects.toThrow(
+        BadGatewayException,
+      );
     });
   });
 
@@ -524,9 +538,9 @@ describe('CandidatesService', () => {
 
       for (const branch of branchesOf()) {
         const filters = andFiltersOf(branch);
-        expect(
-          filters.some((f: any) => f.quickbooks !== undefined),
-        ).toBe(false);
+        expect(filters.some((f: any) => f.quickbooks !== undefined)).toBe(
+          false,
+        );
       }
     });
 
@@ -561,9 +575,9 @@ describe('CandidatesService', () => {
 
       for (const branch of branchesOf()) {
         const filters = andFiltersOf(branch);
-        expect(
-          filters.some((f: any) => f.not_a_real_field !== undefined),
-        ).toBe(false);
+        expect(filters.some((f: any) => f.not_a_real_field !== undefined)).toBe(
+          false,
+        );
       }
     });
   });
@@ -589,7 +603,9 @@ describe('CandidatesService', () => {
         years_of_experience: 5,
         hourly_pay_rate: 5,
         employment_type: 'Full Time',
-        educations: [{ degree: 'BSc', institution: 'University', year: '2020' }],
+        educations: [
+          { degree: 'BSc', institution: 'University', year: '2020' },
+        ],
         approved_positions_pairing: ['Test'],
         business_unit: 'BerryVirtual',
         experiences: [
@@ -609,7 +625,8 @@ describe('CandidatesService', () => {
         can_articulate_experience_clearly_to_clients: 'Yes',
         can_multitask_between_systems_or_windows_efficiently: 'Yes',
         client_readiness___fit_evaluator_notes: 'Ready',
-        comfortable_with_basic_tools__google_workspace__zoom__ehr_software_: 'Yes',
+        comfortable_with_basic_tools__google_workspace__zoom__ehr_software_:
+          'Yes',
         comfortable_with_camera_on_setup: 'Yes',
         communication_skills_evaluator_notes: 'Good communicator',
         confident_on_video_and_phone_calls: 'Yes',
@@ -618,7 +635,8 @@ describe('CandidatesService', () => {
         demonstrates_stability_and_commitment: 'Yes',
         demonstrates_understanding_of_medical_terminology_and_procedures: 'Yes',
         exhibits_confidence_and_empathy_in_roleplay_scenarios: 'Yes',
-        familiarity_with_emr_ehr_systems__kareo__athena__eclinicalworks__etc__: 'Yes',
+        familiarity_with_emr_ehr_systems__kareo__athena__eclinicalworks__etc__:
+          'Yes',
         for_bilinguals__fluent_and_accurate_in_both_english_and_spanish: null,
         grammar__vocabulary__and_tone_are_appropriate_for_us_clients: 'Yes',
         handles_feedback_constructively: 'Yes',
@@ -636,7 +654,8 @@ describe('CandidatesService', () => {
         technical_competence_evaluator_notes: 'Technically strong',
         tier_level: 'Tier 1',
         total_points: '85',
-        understands_workflow_in_medical_offices___telehealth_environments: 'Yes',
+        understands_workflow_in_medical_offices___telehealth_environments:
+          'Yes',
         panelCandidates: [
           {
             id: 'pc-1',
@@ -863,17 +882,19 @@ describe('CandidatesService', () => {
       expect(result).toEqual(expectedResult);
     });
 
-
     it('should return 400 if the candidate Id is empty', async () => {
-      await expect(service.findOne('', mockUser)).rejects.toThrow(BadRequestException);
+      await expect(service.findOne('', mockUser)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('shoud return 401 if the candidate is not found', async () => {
-
       mockPrisma.candidate.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('1', mockUser)).rejects.toThrow(NotFoundException);
-    })
+      await expect(service.findOne('1', mockUser)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('getProperties', () => {
@@ -885,7 +906,9 @@ describe('CandidatesService', () => {
 
     it('should return distinct languages when field is "languages"', async () => {
       const mockLanguages = [{ name: 'English' }, { name: 'Spanish' }];
-      mockPrisma.candidateLanguage = { findMany: jest.fn().mockResolvedValue(mockLanguages) };
+      mockPrisma.candidateLanguage = {
+        findMany: jest.fn().mockResolvedValue(mockLanguages),
+      };
 
       const result = await service.getProperties({ fields: 'languages' });
 
@@ -936,7 +959,10 @@ describe('CandidatesService', () => {
     });
 
     it('should return distinct skills when field is "skills"', async () => {
-      const mockSkills = [{ skill_name: 'JavaScript' }, { skill_name: 'TypeScript' }];
+      const mockSkills = [
+        { skill_name: 'JavaScript' },
+        { skill_name: 'TypeScript' },
+      ];
       mockPrisma.candidateSkill = {
         findMany: jest.fn().mockResolvedValue(mockSkills),
         groupBy: jest.fn(),
@@ -976,15 +1002,15 @@ describe('CandidatesService', () => {
           AND: [
             {
               country: {
-                not: null
-              }
+                not: null,
+              },
             },
             {
               country: {
-                not: 'N/A'
-              }
-            }
-          ]
+                not: 'N/A',
+              },
+            },
+          ],
         },
         distinct: ['country'],
         select: { country: true },
@@ -997,14 +1023,18 @@ describe('CandidatesService', () => {
       const mockSkills = [{ skill_name: 'JavaScript' }];
       const mockCountries = [{ country: 'USA' }];
 
-      mockPrisma.candidateLanguage = { findMany: jest.fn().mockResolvedValue(mockLanguages) };
+      mockPrisma.candidateLanguage = {
+        findMany: jest.fn().mockResolvedValue(mockLanguages),
+      };
       mockPrisma.candidateSkill = {
         findMany: jest.fn().mockResolvedValue(mockSkills),
         groupBy: jest.fn(),
       };
       mockPrisma.candidate.findMany.mockResolvedValue(mockCountries);
 
-      const result = await service.getProperties({ fields: 'languages,skills,country' });
+      const result = await service.getProperties({
+        fields: 'languages,skills,country',
+      });
 
       expect(result).toEqual({
         languages: mockLanguages,
@@ -1019,12 +1049,13 @@ describe('CandidatesService', () => {
         return Promise.reject(new Error('DB error'));
       });
 
-      await expect(service.getProperties({ fields: 'country' })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.getProperties({ fields: 'country' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('updateStatusHubspot', () => {
-
     beforeEach(() => {
       jest.clearAllMocks();
     });
@@ -1035,38 +1066,38 @@ describe('CandidatesService', () => {
     };
 
     it('should throw BadRequestException if candidate id is missing', async () => {
-      await expect(service.updateStatusHubspot('', { status: 'Available Candidates' }))
-        .rejects
-        .toThrow(BadRequestException);
+      await expect(
+        service.updateStatusHubspot('', { status: 'Available Candidates' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException if status is missing', async () => {
-      await expect(service.updateStatusHubspot('1', { status: '' }))
-        .rejects
-        .toThrow(BadRequestException);
+      await expect(
+        service.updateStatusHubspot('1', { status: '' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException if status is invalid', async () => {
-      await expect(service.updateStatusHubspot('1', { status: 'invalid-status' }))
-        .rejects
-        .toThrow(BadRequestException);
+      await expect(
+        service.updateStatusHubspot('1', { status: 'invalid-status' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw NotFoundException if candidate does not exist', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(null);
 
-      await expect(service.updateStatusHubspot('1', { status: 'Available Candidates' }))
-        .rejects
-        .toThrow(NotFoundException);
+      await expect(
+        service.updateStatusHubspot('1', { status: 'Available Candidates' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadGatewayException if HubSpot API fails', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(mockCandidate);
       mockedAxios.patch.mockResolvedValue({ status: 500 } as any);
 
-      await expect(service.updateStatusHubspot('1', { status: 'Available Candidates' }))
-        .rejects
-        .toThrow(BadGatewayException);
+      await expect(
+        service.updateStatusHubspot('1', { status: 'Available Candidates' }),
+      ).rejects.toThrow(BadGatewayException);
     });
 
     it('should throw BadGatewayException if prisma update fails', async () => {
@@ -1074,9 +1105,9 @@ describe('CandidatesService', () => {
       mockedAxios.patch.mockResolvedValue({ status: 200 } as any);
       mockPrisma.candidate.update.mockResolvedValue(null);
 
-      await expect(service.updateStatusHubspot('1', { status: 'Available Candidates' }))
-        .rejects
-        .toThrow(BadGatewayException);
+      await expect(
+        service.updateStatusHubspot('1', { status: 'Available Candidates' }),
+      ).rejects.toThrow(BadGatewayException);
     });
 
     it('should update candidate status successfully', async () => {
@@ -1085,7 +1116,9 @@ describe('CandidatesService', () => {
       mockedAxios.patch.mockResolvedValue({ status: 200 } as any);
       mockPrisma.candidate.update.mockResolvedValue(updatedCandidate);
 
-      const result = await service.updateStatusHubspot('1', { status: 'Available Candidates' });
+      const result = await service.updateStatusHubspot('1', {
+        status: 'Available Candidates',
+      });
 
       expect(mockPrisma.candidate.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
@@ -1127,20 +1160,25 @@ describe('CandidatesService', () => {
         gender: 'male',
         languages: [{ name: 'English' }],
         skills: [{ skill_name: 'JavaScript', skill_type: 'technical' }],
-        educations: [{ institution: 'University', degree: 'BSc', year: '2020' }],
-        experiences: [{
-          company: 'Company A',
-          position: 'Developer',
-          start_date: new Date('2021-01-01'),
-          end_date: new Date('2022-01-01'),
-          responsabilities: 'Development'
-        }],
+        educations: [
+          { institution: 'University', degree: 'BSc', year: '2020' },
+        ],
+        experiences: [
+          {
+            company: 'Company A',
+            position: 'Developer',
+            start_date: new Date('2021-01-01'),
+            end_date: new Date('2022-01-01'),
+            responsabilities: 'Development',
+          },
+        ],
         approved_positions_pairing: ['Developer'],
       }));
 
       mockPrisma.$transaction.mockResolvedValue([mockCandidates, 20]);
 
-      const result = await service.getRandomTalentPoolCandidates('berryvirtual');
+      const result =
+        await service.getRandomTalentPoolCandidates('berryvirtual');
 
       expect(mockPrisma.$transaction).toHaveBeenCalled();
 
@@ -1179,7 +1217,8 @@ describe('CandidatesService', () => {
 
       mockPrisma.$transaction.mockResolvedValue([mockCandidates, 10]);
 
-      const result = await service.getRandomTalentPoolCandidates('berryvirtual');
+      const result =
+        await service.getRandomTalentPoolCandidates('berryvirtual');
 
       expect(result.candidates).toHaveLength(5);
       expect(result.total).toBe(10);
@@ -1189,7 +1228,8 @@ describe('CandidatesService', () => {
     it('should return empty array if no candidates available', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 25]);
 
-      const result = await service.getRandomTalentPoolCandidates('berryvirtual' );
+      const result =
+        await service.getRandomTalentPoolCandidates('berryvirtual');
 
       expect(result.candidates).toHaveLength(0);
       expect(Array.isArray(result.candidates)).toBe(true);
@@ -1198,8 +1238,9 @@ describe('CandidatesService', () => {
     it('should handle database errors', async () => {
       mockPrisma.$transaction.mockRejectedValue(new Error('Database error'));
 
-      await expect(service.getRandomTalentPoolCandidates('berryvirtual')).
-        rejects.toThrow('Database error');
+      await expect(
+        service.getRandomTalentPoolCandidates('berryvirtual'),
+      ).rejects.toThrow('Database error');
     });
 
     it('should exclude candidates with specialization "n/a"', async () => {
@@ -1250,7 +1291,8 @@ describe('CandidatesService', () => {
 
       mockPrisma.$transaction.mockResolvedValue([[mockCandidates[0]], 25]); // Only the first one should be returned
 
-      const result = await service.getRandomTalentPoolCandidates('berryvirtual');
+      const result =
+        await service.getRandomTalentPoolCandidates('berryvirtual');
 
       expect(mockPrisma.$transaction).toHaveBeenCalled();
 
@@ -1322,7 +1364,9 @@ describe('CandidatesService', () => {
     it('applies NO business_unit filter when business_unit param is empty/undefined', async () => {
       businessUnitContextMock.poolFor.mockResolvedValue(null);
 
-      await service.getRandomTalentPoolCandidates(undefined as unknown as string);
+      await service.getRandomTalentPoolCandidates(
+        undefined as unknown as string,
+      );
 
       const findManyArgs = mockPrisma.candidate.findMany.mock.calls[0][0];
       const buCondition = findManyArgs.where.AND.find(
@@ -1340,7 +1384,7 @@ describe('CandidatesService', () => {
       id: candidateId,
       resume_url: `https://drive.google.com/file/d/${validFileId}/view`,
       first_name: 'John',
-      last_name: 'Doe'
+      last_name: 'Doe',
     };
 
     beforeEach(() => {
@@ -1362,27 +1406,29 @@ describe('CandidatesService', () => {
             role: 'Developer',
             start_date: '2020-01-01',
             end_date: null, // "Present" or missing
-            description: ['Worked hard']
-          }
+            description: ['Worked hard'],
+          },
         ],
         education: [
           {
             institution: 'Test University',
             degree: 'BSc',
-            year: '2020-05-01'
+            year: '2020-05-01',
           },
           {
             institution: 'Missing Year Uni',
             degree: 'PhD',
-            year: null
-          }
+            year: null,
+          },
         ],
-        skills: ['Node.js']
+        skills: ['Node.js'],
       };
 
       // Mock OpenAI service specific method for this test
       // Note: We need to cast to any because extractDataFromResumeImages is not in the initial mock definition at top of file
-      (service['openai'] as any).extractDataFromResumeImages = jest.fn().mockResolvedValue({ data: mockExtractedData, cost: 0 });
+      (service['openai'] as any).extractDataFromResumeImages = jest
+        .fn()
+        .mockResolvedValue({ data: mockExtractedData, cost: 0 });
 
       // We need to mock updateFromJson or let it run. Since it uses prisma calls, we can let it run and verify prisma calls.
       // But updateFromJson is private/internal. We are testing processData which calls it.
@@ -1391,8 +1437,14 @@ describe('CandidatesService', () => {
 
       expect(result).toBe(true);
       expect(result).toBe(true);
-      expect(googleMock.downloadFile).toHaveBeenCalledWith(validFileId, expect.any(String), expect.any(String));
-      expect((service['openai'] as any).extractDataFromResumeImages).toHaveBeenCalled();
+      expect(googleMock.downloadFile).toHaveBeenCalledWith(
+        validFileId,
+        expect.any(String),
+        expect.any(String),
+      );
+      expect(
+        (service['openai'] as any).extractDataFromResumeImages,
+      ).toHaveBeenCalled();
 
       // Verify Experience Mapping
       expect(mockPrisma.candidateExperience.createMany).toHaveBeenCalledWith({
@@ -1401,9 +1453,9 @@ describe('CandidatesService', () => {
             candidate_id: candidateId,
             company: 'Test Company',
             start_date: new Date('2020-01-01'),
-            end_date: null
-          })
-        ])
+            end_date: null,
+          }),
+        ]),
       });
 
       // Verify Education Mapping (Fix verification)
@@ -1413,15 +1465,15 @@ describe('CandidatesService', () => {
             candidate_id: candidateId,
             institution: 'Test University',
             degree: 'BSc',
-            year: '2020-05-01' // Should map year from item.year (which is '2020-05-01' here)
+            year: '2020-05-01', // Should map year from item.year (which is '2020-05-01' here)
           }),
           expect.objectContaining({
             candidate_id: candidateId,
             institution: 'Missing Year Uni',
             degree: 'PhD',
-            year: null // Should be null
-          })
-        ])
+            year: null, // Should be null
+          }),
+        ]),
       });
     });
 
@@ -1458,7 +1510,9 @@ describe('CandidatesService', () => {
       hireRequestStatus: string,
       otherPanels: { id: string }[] = [],
     ) => {
-      mockPrisma.hireRequest.findUnique.mockResolvedValue({ status: hireRequestStatus });
+      mockPrisma.hireRequest.findUnique.mockResolvedValue({
+        status: hireRequestStatus,
+      });
       mockPrisma.panelCandidate.count.mockResolvedValue(currentCount);
       mockPrisma.$transaction.mockImplementation(async (fn: any) => {
         const tx = {
@@ -1481,41 +1535,55 @@ describe('CandidatesService', () => {
 
     it('should throw BadRequestException if candidateId is missing', async () => {
       await expect(
-        service.removeCandidate({ candidateId: '', hireRequestId: 'hr-1' } as any, mockUser),
+        service.removeCandidate(
+          { candidateId: '', hireRequestId: 'hr-1' } as any,
+          mockUser,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException if hireRequestId is missing', async () => {
       await expect(
-        service.removeCandidate({ candidateId: 'c-1', hireRequestId: '' } as any, mockUser),
+        service.removeCandidate(
+          { candidateId: 'c-1', hireRequestId: '' } as any,
+          mockUser,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw NotFoundException if candidate does not exist', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(null);
 
-      await expect(service.removeCandidate(mockRemoveData, mockUser)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.removeCandidate(mockRemoveData, mockUser),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw NotFoundException if hire request does not exist', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(mockCandidateRecord);
       mockPrisma.hireRequest.findUnique.mockResolvedValue(null);
 
-      await expect(service.removeCandidate(mockRemoveData, mockUser)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.removeCandidate(mockRemoveData, mockUser),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException when removing last candidate from panel_ready hire request', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(mockCandidateRecord);
       setupScenario(1, 'panel_ready');
 
-      await expect(service.removeCandidate(mockRemoveData, mockUser)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.removeCandidate(mockRemoveData, mockUser),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException when removing last candidate from interview_scheduled hire request', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(mockCandidateRecord);
       setupScenario(1, 'interview_scheduled');
 
-      await expect(service.removeCandidate(mockRemoveData, mockUser)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.removeCandidate(mockRemoveData, mockUser),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should return shouldPromptCancel=true when removing last candidate from sourcing hire request', async () => {
@@ -1526,7 +1594,9 @@ describe('CandidatesService', () => {
 
       expect(result).toEqual({ success: true, shouldPromptCancel: true });
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-      expect(hubspotMock.updateOneCandidateFromHireRequest).not.toHaveBeenCalled();
+      expect(
+        hubspotMock.updateOneCandidateFromHireRequest,
+      ).not.toHaveBeenCalled();
     });
 
     it('should return shouldPromptCancel=true when removing last candidate from new hire request', async () => {
@@ -1547,7 +1617,9 @@ describe('CandidatesService', () => {
 
       expect(result).toEqual({ success: true, shouldPromptCancel: false });
       expect(HireRequestMock.updateStatus).not.toHaveBeenCalled();
-      expect(hubspotMock.updateOneCandidateFromHireRequest).toHaveBeenCalledWith(
+      expect(
+        hubspotMock.updateOneCandidateFromHireRequest,
+      ).toHaveBeenCalledWith(
         mockCandidateRecord.hubspot_id,
         mockCandidateRecord.pipeline_status_origin,
         mockUser.id,
@@ -1557,13 +1629,18 @@ describe('CandidatesService', () => {
     });
 
     it('should use Available Candidates pipeline status when pipeline_status_origin is null', async () => {
-      mockPrisma.candidate.findUnique.mockResolvedValue({ hubspot_id: 'hs-1', pipeline_status_origin: null });
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-1',
+        pipeline_status_origin: null,
+      });
       setupScenario(2, 'sourcing', []);
 
       const result = await service.removeCandidate(mockRemoveData, mockUser);
 
       expect(result).toEqual({ success: true, shouldPromptCancel: false });
-      expect(hubspotMock.updateOneCandidateFromHireRequest).toHaveBeenCalledWith(
+      expect(
+        hubspotMock.updateOneCandidateFromHireRequest,
+      ).toHaveBeenCalledWith(
         'hs-1',
         expect.any(String),
         mockUser.id,
@@ -1579,12 +1656,16 @@ describe('CandidatesService', () => {
       const result = await service.removeCandidate(mockRemoveData, mockUser);
 
       expect(result).toEqual({ success: true, shouldPromptCancel: false });
-      expect(hubspotMock.updateOneCandidateFromHireRequest).not.toHaveBeenCalled();
+      expect(
+        hubspotMock.updateOneCandidateFromHireRequest,
+      ).not.toHaveBeenCalled();
     });
 
     it('should return { success: false } when an unexpected error occurs during transaction', async () => {
       mockPrisma.candidate.findUnique.mockResolvedValue(mockCandidateRecord);
-      mockPrisma.hireRequest.findUnique.mockResolvedValue({ status: 'sourcing' });
+      mockPrisma.hireRequest.findUnique.mockResolvedValue({
+        status: 'sourcing',
+      });
       mockPrisma.panelCandidate.count.mockResolvedValue(2);
       mockPrisma.$transaction.mockRejectedValue(new Error('DB failure'));
 
@@ -1642,9 +1723,8 @@ describe('CandidatesService', () => {
       // Resolve the pool from the actual business_unit passed in, so the
       // MedVirtual vs. Berry cases below exercise their real branch instead
       // of both silently falling back to the default 'medical' mock.
-      businessUnitContextMock.poolFor.mockImplementation(
-        async (bu: string) =>
-          bu?.toLowerCase().includes('berry') ? 'non_medical' : 'medical',
+      businessUnitContextMock.poolFor.mockImplementation(async (bu: string) =>
+        bu?.toLowerCase().includes('berry') ? 'non_medical' : 'medical',
       );
     });
 
@@ -1665,7 +1745,9 @@ describe('CandidatesService', () => {
       ]);
 
       expect(mockPrisma.candidate.findMany).toHaveBeenCalledTimes(1);
-      expect(positionRateConfigMock.findAllUnpaginated).toHaveBeenCalledTimes(1);
+      expect(positionRateConfigMock.findAllUnpaginated).toHaveBeenCalledTimes(
+        1,
+      );
       expect(
         mockPrisma.candidate.findMany.mock.calls[0][0].where.id.in,
       ).toEqual(['cand-1', 'cand-2']);
@@ -1730,29 +1812,32 @@ describe('CandidatesService', () => {
       ['employment_type as ";"-joined string', { employment_type: '1;2' }],
       ['part-time employment_type', { employment_type: '2' }],
       ['null hourly_pay_rate', { hourly_pay_rate: null as any }],
-    ])('matches getTalentPoolCandidateById for a %s candidate', (_label, overrides) => {
-      it('produces identical rates and display fields', async () => {
-        const record = { ...baseCandidate, ...overrides };
-        mockPrisma.candidate.findMany.mockResolvedValue([record]);
-        mockPrisma.candidate.findUnique.mockResolvedValue(record);
+    ])(
+      'matches getTalentPoolCandidateById for a %s candidate',
+      (_label, overrides) => {
+        it('produces identical rates and display fields', async () => {
+          const record = { ...baseCandidate, ...overrides };
+          mockPrisma.candidate.findMany.mockResolvedValue([record]);
+          mockPrisma.candidate.findUnique.mockResolvedValue(record);
 
-        const single = await service.getTalentPoolCandidateById('cand-1');
-        const batched = (
-          await service.getTalentPoolCandidatesByIds(['cand-1'])
-        ).get('cand-1');
+          const single = await service.getTalentPoolCandidateById('cand-1');
+          const batched = (
+            await service.getTalentPoolCandidatesByIds(['cand-1'])
+          ).get('cand-1');
 
-        // The four rate fields are what an inverted transform order breaks.
-        expect(batched.bill_rate_hourly).toBe(single.bill_rate_hourly);
-        expect(batched.bill_rate_monthly).toBe(single.bill_rate_monthly);
-        expect(batched.salary).toBe(single.salary);
-        expect(batched.hourlySalary).toBe(single.hourlySalary);
+          // The four rate fields are what an inverted transform order breaks.
+          expect(batched.bill_rate_hourly).toBe(single.bill_rate_hourly);
+          expect(batched.bill_rate_monthly).toBe(single.bill_rate_monthly);
+          expect(batched.salary).toBe(single.salary);
+          expect(batched.hourlySalary).toBe(single.hourlySalary);
 
-        expect(batched.employment_type).toEqual(single.employment_type);
-        expect(batched.approved_positions_pairing).toEqual(
-          single.approved_positions_pairing,
-        );
-        expect(batched.avatar_url).toBe(single.avatar_url);
-      });
-    });
+          expect(batched.employment_type).toEqual(single.employment_type);
+          expect(batched.approved_positions_pairing).toEqual(
+            single.approved_positions_pairing,
+          );
+          expect(batched.avatar_url).toBe(single.avatar_url);
+        });
+      },
+    );
   });
 });

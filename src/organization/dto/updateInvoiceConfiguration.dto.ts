@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEnum, IsInt, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsInt,
+  IsBoolean,
+} from 'class-validator';
 import { BillingMode, BillingFrequency } from '@prisma/client';
 
 export class UpdateInvoiceConfigurationDto {

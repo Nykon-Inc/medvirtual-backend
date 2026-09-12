@@ -33,7 +33,10 @@ const SEED_KEYS = [
 
 // ── Template fixture factory ───────────────────────────────────────────────────
 
-function makeTemplate(key: string, overrides: Partial<Record<string, unknown>> = {}) {
+function makeTemplate(
+  key: string,
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id: `tpl-${key}`,
     key,
@@ -79,14 +82,18 @@ const THEME = {
 
 function makePrisma(findFirstResult: unknown = null) {
   return {
-    $transaction: jest.fn((ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
+    $transaction: jest.fn((ops: unknown[]) =>
+      Promise.all(ops as Promise<unknown>[]),
+    ),
     emailTemplate: {
       findFirst: jest.fn().mockResolvedValue(findFirstResult),
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
-      update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
-        Promise.resolve({ ...(findFirstResult as object), ...data }),
-      ),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ ...(findFirstResult as object), ...data }),
+        ),
     },
     emailTemplateHistory: {
       create: jest.fn().mockResolvedValue({ id: 'hist-1' }),
@@ -104,7 +111,9 @@ function makePrisma(findFirstResult: unknown = null) {
 
 // ── Module bootstrap helper ────────────────────────────────────────────────────
 
-async function buildModule(prismaOverride?: ReturnType<typeof makePrisma>): Promise<EmailTemplatesService> {
+async function buildModule(
+  prismaOverride?: ReturnType<typeof makePrisma>,
+): Promise<EmailTemplatesService> {
   const prisma = prismaOverride ?? makePrisma();
   const mail = { sendMail: jest.fn().mockResolvedValue(true) };
 
@@ -117,7 +126,6 @@ async function buildModule(prismaOverride?: ReturnType<typeof makePrisma>): Prom
   })
     .overrideProvider(EmailTemplatesService)
     .useFactory({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       factory: () => new (EmailTemplatesService as any)(prisma, mail),
     })
     .compile();
@@ -180,7 +188,10 @@ describe('Checkpoint 1 — All 16 seeded templates return content', () => {
 
     const result = await service.getTemplateContent(
       'invite-signup',
-      { '{{userName}}': 'Dr. Jones', '{{inviteLink}}': 'https://example.com/invite' },
+      {
+        '{{userName}}': 'Dr. Jones',
+        '{{inviteLink}}': 'https://example.com/invite',
+      },
       THEME,
       null,
     );
@@ -210,7 +221,9 @@ describe('Checkpoint 2 — Fallback when template is missing or inactive', () =>
   });
 
   it('returns null when template is_active = false', async () => {
-    const inactiveTemplate = makeTemplate('invite-signup', { is_active: false });
+    const inactiveTemplate = makeTemplate('invite-signup', {
+      is_active: false,
+    });
     const prisma = makePrisma(null); // query with is_active:true returns null
     const service = await buildModule(prisma);
 
@@ -223,7 +236,7 @@ describe('Checkpoint 2 — Fallback when template is missing or inactive', () =>
 
     expect(result).toBeNull();
     // Verify the query included is_active: true filter
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.findFirst).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ is_active: true }),
       }),
@@ -243,21 +256,27 @@ describe('Checkpoint 2 — Fallback when template is missing or inactive', () =>
     const prisma = makePrisma(null);
     const service = await buildModule(prisma);
 
-    await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne('nonexistent')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('getHistory() throws NotFoundException when template is missing', async () => {
     const prisma = makePrisma(null);
     const service = await buildModule(prisma);
 
-    await expect(service.getHistory('nonexistent')).rejects.toThrow(NotFoundException);
+    await expect(service.getHistory('nonexistent')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('preview() throws NotFoundException when template is missing', async () => {
     const prisma = makePrisma(null);
     const service = await buildModule(prisma);
 
-    await expect(service.preview('nonexistent', {})).rejects.toThrow(NotFoundException);
+    await expect(service.preview('nonexistent', {})).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });
 
@@ -284,14 +303,20 @@ describe('Checkpoint 3 — Sync anti-loop guarantee', () => {
     );
 
     // DB must have been written
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.create).toHaveBeenCalledWith(
+    expect(prisma.emailTemplateHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ changed_by: 'sync', reason: 'Auto-sync from PROD' }),
+        data: expect.objectContaining({
+          changed_by: 'sync',
+          reason: 'Auto-sync from PROD',
+        }),
       }),
     );
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.update).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ subject: 'Synced subject', updated_by: 'sync' }),
+        data: expect.objectContaining({
+          subject: 'Synced subject',
+          updated_by: 'sync',
+        }),
       }),
     );
 
@@ -307,12 +332,16 @@ describe('Checkpoint 3 — Sync anti-loop guarantee', () => {
 
     // Should not throw
     await expect(
-      service.receiveSyncFromPeer('ghost-template', { subject: 'x', body: 'y' }, 'PROD'),
+      service.receiveSyncFromPeer(
+        'ghost-template',
+        { subject: 'x', body: 'y' },
+        'PROD',
+      ),
     ).resolves.toBeUndefined();
 
     // History and update must NOT be called for an unknown key
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.create).not.toHaveBeenCalled();
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.update).not.toHaveBeenCalled();
+    expect(prisma.emailTemplateHistory.create).not.toHaveBeenCalled();
+    expect(prisma.emailTemplate.update).not.toHaveBeenCalled();
   });
 
   it('update() (UI save) calls syncToPeer when PEER_ENV_API_URL is set', async () => {
@@ -320,9 +349,11 @@ describe('Checkpoint 3 — Sync anti-loop guarantee', () => {
     process.env.INTER_ENV_SYNC_SECRET = 'test-secret';
     process.env.ENVIRONMENT = 'STAGE';
 
-    const prisma = makePrisma(makeTemplate('invite-signup', {
-      placeholders: ['{{companyName}}'],
-    }));
+    const prisma = makePrisma(
+      makeTemplate('invite-signup', {
+        placeholders: ['{{companyName}}'],
+      }),
+    );
     const service = await buildModule(prisma);
 
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
@@ -339,7 +370,9 @@ describe('Checkpoint 3 — Sync anti-loop guarantee', () => {
     // syncToPeer must fire exactly once, to the peer URL
     await new Promise((r) => setTimeout(r, 10)); // let fire-and-forget settle
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining('https://peer.example.com/email-templates/invite-signup/sync'),
+      expect.stringContaining(
+        'https://peer.example.com/email-templates/invite-signup/sync',
+      ),
       expect.objectContaining({
         headers: expect.objectContaining({ 'X-Sync-Origin': 'STAGE' }),
       }),
@@ -354,7 +387,9 @@ describe('Checkpoint 3 — Sync anti-loop guarantee', () => {
     delete process.env.PEER_ENV_API_URL;
     delete process.env.INTER_ENV_SYNC_SECRET;
 
-    const prisma = makePrisma(makeTemplate('invite-signup', { placeholders: ['{{companyName}}'] }));
+    const prisma = makePrisma(
+      makeTemplate('invite-signup', { placeholders: ['{{companyName}}'] }),
+    );
     const service = await buildModule(prisma);
 
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
@@ -388,7 +423,7 @@ describe('Checkpoint 4 — [DEV] prefix in MailService', () => {
 
     const service = buildMailService();
     const mockSend = jest.fn().mockResolvedValue({ data: { id: 'email-1' } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (service as any).resend = undefined; // will be reconstructed inside sendMail
 
     // Spy on Resend constructor to capture the from field
@@ -400,8 +435,10 @@ describe('Checkpoint 4 — [DEV] prefix in MailService', () => {
 
     // Since we can't easily intercept the internal Resend instance, test
     // the private method directly (it's the canonical source of truth)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (service as any).applyDevPrefix('MedVirtual <noreply@medvirtual.ai>');
+
+    const result = (service as any).applyDevPrefix(
+      'MedVirtual <noreply@medvirtual.ai>',
+    );
     expect(result).toBe('[DEV] MedVirtual <noreply@medvirtual.ai>');
 
     jest.dontMock('resend');
@@ -411,8 +448,10 @@ describe('Checkpoint 4 — [DEV] prefix in MailService', () => {
     process.env.ENVIRONMENT = 'PROD';
 
     const service = buildMailService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (service as any).applyDevPrefix('MedVirtual <noreply@medvirtual.ai>');
+
+    const result = (service as any).applyDevPrefix(
+      'MedVirtual <noreply@medvirtual.ai>',
+    );
     expect(result).toBe('MedVirtual <noreply@medvirtual.ai>');
   });
 
@@ -420,8 +459,10 @@ describe('Checkpoint 4 — [DEV] prefix in MailService', () => {
     delete process.env.ENVIRONMENT;
 
     const service = buildMailService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (service as any).applyDevPrefix('Berry Virtual <noreply@berryvirtual.ai>');
+
+    const result = (service as any).applyDevPrefix(
+      'Berry Virtual <noreply@berryvirtual.ai>',
+    );
     expect(result).toBe('[DEV] Berry Virtual <noreply@berryvirtual.ai>');
   });
 
@@ -429,8 +470,10 @@ describe('Checkpoint 4 — [DEV] prefix in MailService', () => {
     process.env.ENVIRONMENT = 'DEV';
 
     const service = buildMailService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = (service as any).applyDevPrefix('MedVirtual <noreply@medvirtual.ai>');
+
+    const result = (service as any).applyDevPrefix(
+      'MedVirtual <noreply@medvirtual.ai>',
+    );
     expect(result).toBe('[DEV] MedVirtual <noreply@medvirtual.ai>');
   });
 });
@@ -511,13 +554,19 @@ describe('Checkpoint 5 — Placeholder validation blocks invalid saves', () => {
 
 describe('Checkpoint 6 — History snapshotting and rollback', () => {
   it('creates a history entry before applying an update', async () => {
-    const template = makeTemplate('invite-signup', { placeholders: ['{{companyName}}'] });
+    const template = makeTemplate('invite-signup', {
+      placeholders: ['{{companyName}}'],
+    });
     const prisma = makePrisma(template);
     const service = await buildModule(prisma);
 
-    await service.update('invite-signup', { subject: 'New subject', body: 'Body {{companyName}}' }, 'user-1');
+    await service.update(
+      'invite-signup',
+      { subject: 'New subject', body: 'Body {{companyName}}' },
+      'user-1',
+    );
 
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.create).toHaveBeenCalledWith(
+    expect(prisma.emailTemplateHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           template_id: template.id,
@@ -532,12 +581,12 @@ describe('Checkpoint 6 — History snapshotting and rollback', () => {
     const template = makeTemplate('invite-signup');
     const prisma = makePrisma(template);
     // findUnique returns null → history entry not found
-    (prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.findUnique.mockResolvedValue(null);
+    prisma.emailTemplateHistory.findUnique.mockResolvedValue(null);
     const service = await buildModule(prisma);
 
-    await expect(service.rollback('invite-signup', 'bad-hist-id', 'user-1')).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      service.rollback('invite-signup', 'bad-hist-id', 'user-1'),
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('rollback restores subject/body from the snapshot', async () => {
@@ -554,12 +603,12 @@ describe('Checkpoint 6 — History snapshotting and rollback', () => {
       changed_at: new Date('2026-01-10'),
       reason: 'Manual edit',
     };
-    (prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.findUnique.mockResolvedValue(snapshot);
+    prisma.emailTemplateHistory.findUnique.mockResolvedValue(snapshot);
     const service = await buildModule(prisma);
 
     await service.rollback('invite-signup', 'hist-1', 'user-2');
 
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.update).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           subject: 'Rolled-back subject',
@@ -577,7 +626,9 @@ describe('Checkpoint 6 — History snapshotting and rollback', () => {
 
 describe('Checkpoint 7 — Per-BU branding applied to rendered HTML', () => {
   it('uses Berry Virtual branding when buSlug is "berry-virtual"', async () => {
-    const template = makeTemplate('invite-signup', { placeholders: ['{{companyName}}'] });
+    const template = makeTemplate('invite-signup', {
+      placeholders: ['{{companyName}}'],
+    });
     const berryBranding = {
       ...BRANDING,
       business_unit: 'berry-virtual',
@@ -587,19 +638,23 @@ describe('Checkpoint 7 — Per-BU branding applied to rendered HTML', () => {
     };
 
     const prisma = makePrisma(template);
-    (prisma as ReturnType<typeof makePrisma>).emailBranding.findUnique.mockResolvedValue(berryBranding);
+    prisma.emailBranding.findUnique.mockResolvedValue(berryBranding);
     const service = await buildModule(prisma);
 
-    const result = await service.preview('invite-signup', { business_unit: 'berry-virtual' });
+    const result = await service.preview('invite-signup', {
+      business_unit: 'berry-virtual',
+    });
 
     expect(result.data.html).toContain('#FD7171');
     expect(result.data.html).toContain('Berry Virtual');
   });
 
   it('falls back to default MedVirtual branding when buSlug has no DB entry', async () => {
-    const template = makeTemplate('invite-signup', { placeholders: ['{{companyName}}'] });
+    const template = makeTemplate('invite-signup', {
+      placeholders: ['{{companyName}}'],
+    });
     const prisma = makePrisma(template);
-    (prisma as ReturnType<typeof makePrisma>).emailBranding.findUnique.mockResolvedValue(null);
+    prisma.emailBranding.findUnique.mockResolvedValue(null);
     const service = await buildModule(prisma);
 
     const result = await service.preview('invite-signup', {});
@@ -618,9 +673,16 @@ describe('Checkpoint 8 — category/functionality filtering and snapshotting', (
     const prisma = makePrisma(null);
     const service = await buildModule(prisma);
 
-    await service.findAll(1, 25, '', undefined, 'alliance', 'Commission review');
+    await service.findAll(
+      1,
+      25,
+      '',
+      undefined,
+      'alliance',
+      'Commission review',
+    );
 
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.findMany).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           category: 'alliance',
@@ -628,7 +690,7 @@ describe('Checkpoint 8 — category/functionality filtering and snapshotting', (
         }),
       }),
     );
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.count).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           category: 'alliance',
@@ -658,7 +720,7 @@ describe('Checkpoint 8 — category/functionality filtering and snapshotting', (
       'user-1',
     );
 
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplateHistory.create).toHaveBeenCalledWith(
+    expect(prisma.emailTemplateHistory.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           category: 'talent',
@@ -666,7 +728,7 @@ describe('Checkpoint 8 — category/functionality filtering and snapshotting', (
         }),
       }),
     );
-    expect((prisma as ReturnType<typeof makePrisma>).emailTemplate.update).toHaveBeenCalledWith(
+    expect(prisma.emailTemplate.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           category: 'alliance',
@@ -680,7 +742,7 @@ describe('Checkpoint 8 — category/functionality filtering and snapshotting', (
 
   it('getFunctionalityOptions returns a distinct, non-empty list', async () => {
     const prisma = makePrisma(null);
-    (prisma as ReturnType<typeof makePrisma>).emailTemplate.findMany.mockResolvedValue([
+    prisma.emailTemplate.findMany.mockResolvedValue([
       { functionality: 'Onboarding' },
       { functionality: 'Commission review' },
     ]);

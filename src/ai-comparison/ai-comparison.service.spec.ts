@@ -220,9 +220,9 @@ describe('AiComparisonService', () => {
       // Content assertions rather than a strict shape match: the result is
       // normalized, so canonical schema fields are filled in.
       expect(result.openrouter.data.bio).toBe('A medical assistant.');
-      expect(result.openrouter.data.experience.map((e: any) => e.company)).toEqual(
-        ['A', 'B'],
-      );
+      expect(
+        result.openrouter.data.experience.map((e: any) => e.company),
+      ).toEqual(['A', 'B']);
       expect(
         result.openrouter.data.education.map((e: any) => e.institution),
       ).toEqual(['Uni', 'College']);

@@ -83,7 +83,7 @@ describe('HubstaffService', () => {
       expect(redisMock.set).toHaveBeenCalledWith(
         'test:hubstaff_token_1',
         'new-access-token',
-        { EX: 3600 }
+        { EX: 3600 },
       );
     });
 
@@ -102,7 +102,7 @@ describe('HubstaffService', () => {
       expect(redisMock.set).toHaveBeenCalledWith(
         'test:hubstaff_token_1',
         '__RATE_LIMIT__',
-        { EX: 3600 }
+        { EX: 3600 },
       );
     });
   });

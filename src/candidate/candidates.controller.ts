@@ -136,7 +136,8 @@ export class CandidatesController {
     name: 'medical_tools',
     required: false,
     type: String,
-    description: 'Comma-separated list of medical tools to filter by (OR logic)',
+    description:
+      'Comma-separated list of medical tools to filter by (OR logic)',
     example: 'Athena,eClinicalWorks',
   })
   @ApiQuery({
@@ -295,7 +296,8 @@ export class CandidatesController {
     name: 'medical_tools',
     required: false,
     type: String,
-    description: 'Comma-separated list of medical tools to filter by (OR logic)',
+    description:
+      'Comma-separated list of medical tools to filter by (OR logic)',
     example: 'Athena,eClinicalWorks',
   })
   @ApiQuery({

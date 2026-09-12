@@ -16,7 +16,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HubspotService } from './hubspot.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HubspotAuditService } from './hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 import { CandidatesService } from '../candidate/candidates.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
 
@@ -69,7 +73,13 @@ import { HandlerContactMerge } from './handlers/contactMerge';
 jest.mock('axios');
 jest.mock('@hubspot/api-client', () => ({
   Client: jest.fn().mockImplementation(() => ({
-    crm: { objects: { searchApi: { doSearch: jest.fn() }, batchApi: { update: jest.fn() }, basicApi: { update: jest.fn() } } },
+    crm: {
+      objects: {
+        searchApi: { doSearch: jest.fn() },
+        batchApi: { update: jest.fn() },
+        basicApi: { update: jest.fn() },
+      },
+    },
   })),
 }));
 jest.mock('../common/utils/hubspot.util', () => ({
@@ -145,48 +155,141 @@ async function buildModule(): Promise<HubspotService> {
       { provide: CandidatesService, useValue: candidateMock },
       { provide: CandidateAuditService, useValue: candidateAuditMock },
       { provide: HandlerObjectCreation, useValue: handlers.objectCreation },
-      { provide: HandlerObjectPropertyChange, useValue: handlers.objectPropertyChange },
+      {
+        provide: HandlerObjectPropertyChange,
+        useValue: handlers.objectPropertyChange,
+      },
       { provide: HandlerObjectDeletion, useValue: handlers.objectDeletion },
       { provide: HandlerObjectMerge, useValue: handlers.objectMerge },
-      { provide: HandlerOrganizationCreation, useValue: handlers.organizationCreation },
-      { provide: HandlerOrganizationPropertyChange, useValue: handlers.organizationPropertyChange },
-      { provide: HandlerOrganizationDeletion, useValue: handlers.organizationDeletion },
-      { provide: HandlerOrganizationRestore, useValue: handlers.organizationRestore },
-      { provide: HandlerOrganizationMerge, useValue: handlers.organizationMerge },
-      { provide: HandlerOrganizationAssociationChange, useValue: handlers.organizationAssociationChange },
+      {
+        provide: HandlerOrganizationCreation,
+        useValue: handlers.organizationCreation,
+      },
+      {
+        provide: HandlerOrganizationPropertyChange,
+        useValue: handlers.organizationPropertyChange,
+      },
+      {
+        provide: HandlerOrganizationDeletion,
+        useValue: handlers.organizationDeletion,
+      },
+      {
+        provide: HandlerOrganizationRestore,
+        useValue: handlers.organizationRestore,
+      },
+      {
+        provide: HandlerOrganizationMerge,
+        useValue: handlers.organizationMerge,
+      },
+      {
+        provide: HandlerOrganizationAssociationChange,
+        useValue: handlers.organizationAssociationChange,
+      },
       { provide: HandlerOwnerCreation, useValue: handlers.ownerCreation },
       { provide: HandlerOwnerDeletion, useValue: handlers.ownerDeletion },
-      { provide: HandlerOwnerPropertyChange, useValue: handlers.ownerPropertyChange },
+      {
+        provide: HandlerOwnerPropertyChange,
+        useValue: handlers.ownerPropertyChange,
+      },
       { provide: HandlerDealCreation, useValue: handlers.dealCreation },
-      { provide: HandlerDealPropertyChange, useValue: handlers.dealPropertyChange },
+      {
+        provide: HandlerDealPropertyChange,
+        useValue: handlers.dealPropertyChange,
+      },
       { provide: HandlerDealDeletion, useValue: handlers.dealDeletion },
-      { provide: HandlerDealAssociationChange, useValue: handlers.dealAssociationChange },
-      { provide: HireRequestCreationService, useValue: handlers.hireRequestCreation },
-      { provide: HireRequestUpdateService, useValue: handlers.hireRequestUpdate },
+      {
+        provide: HandlerDealAssociationChange,
+        useValue: handlers.dealAssociationChange,
+      },
+      {
+        provide: HireRequestCreationService,
+        useValue: handlers.hireRequestCreation,
+      },
+      {
+        provide: HireRequestUpdateService,
+        useValue: handlers.hireRequestUpdate,
+      },
       { provide: HandlerTicketCreation, useValue: handlers.ticketCreation },
       { provide: HandlerTicketDeletion, useValue: handlers.ticketDeletion },
       { provide: HandlerTicketRestore, useValue: handlers.ticketRestore },
-      { provide: HandlerTicketPropertyChange, useValue: handlers.ticketPropertyChange },
-      { provide: OrganizationCreationService, useValue: handlers.organizationCreationService },
-      { provide: OrganizationUpdateService, useValue: handlers.organizationUpdateService },
-      { provide: OwnerCreationService, useValue: handlers.ownerCreationService },
-      { provide: ContactCreationService, useValue: handlers.contactCreationService },
-      { provide: ContactFromCompanyCreationService, useValue: handlers.contactFromCompanyService },
-      { provide: AffiliateCreationService, useValue: handlers.affiliateCreationService },
-      { provide: AffiliateUpdateService, useValue: handlers.affiliateUpdateService },
-      { provide: ContactUpdateService, useValue: handlers.contactUpdateService },
-      { provide: ContactDeleteService, useValue: handlers.contactDeleteService },
-      { provide: CompanyDeleteService, useValue: handlers.companyDeleteService },
-      { provide: HandlerAffiliateCreation, useValue: handlers.affiliateCreation },
-      { provide: HandlerAffiliatePropertyChange, useValue: handlers.affiliatePropertyChange },
-      { provide: HandlerAffiliateDeletion, useValue: handlers.affiliateDeletion },
-      { provide: HandlerAffiliateAssociationChange, useValue: handlers.affiliateAssociationChange },
+      {
+        provide: HandlerTicketPropertyChange,
+        useValue: handlers.ticketPropertyChange,
+      },
+      {
+        provide: OrganizationCreationService,
+        useValue: handlers.organizationCreationService,
+      },
+      {
+        provide: OrganizationUpdateService,
+        useValue: handlers.organizationUpdateService,
+      },
+      {
+        provide: OwnerCreationService,
+        useValue: handlers.ownerCreationService,
+      },
+      {
+        provide: ContactCreationService,
+        useValue: handlers.contactCreationService,
+      },
+      {
+        provide: ContactFromCompanyCreationService,
+        useValue: handlers.contactFromCompanyService,
+      },
+      {
+        provide: AffiliateCreationService,
+        useValue: handlers.affiliateCreationService,
+      },
+      {
+        provide: AffiliateUpdateService,
+        useValue: handlers.affiliateUpdateService,
+      },
+      {
+        provide: ContactUpdateService,
+        useValue: handlers.contactUpdateService,
+      },
+      {
+        provide: ContactDeleteService,
+        useValue: handlers.contactDeleteService,
+      },
+      {
+        provide: CompanyDeleteService,
+        useValue: handlers.companyDeleteService,
+      },
+      {
+        provide: HandlerAffiliateCreation,
+        useValue: handlers.affiliateCreation,
+      },
+      {
+        provide: HandlerAffiliatePropertyChange,
+        useValue: handlers.affiliatePropertyChange,
+      },
+      {
+        provide: HandlerAffiliateDeletion,
+        useValue: handlers.affiliateDeletion,
+      },
+      {
+        provide: HandlerAffiliateAssociationChange,
+        useValue: handlers.affiliateAssociationChange,
+      },
       { provide: HandlerInvoiceCreation, useValue: handlers.invoiceCreation },
-      { provide: HandlerInvoicePropertyChange, useValue: handlers.invoicePropertyChange },
-      { provide: HandlerInvoiceAssociationChange, useValue: handlers.invoiceAssociationChange },
-      { provide: HandlerComissionCreation, useValue: handlers.comissionCreation },
+      {
+        provide: HandlerInvoicePropertyChange,
+        useValue: handlers.invoicePropertyChange,
+      },
+      {
+        provide: HandlerInvoiceAssociationChange,
+        useValue: handlers.invoiceAssociationChange,
+      },
+      {
+        provide: HandlerComissionCreation,
+        useValue: handlers.comissionCreation,
+      },
       { provide: HandlerContactCreation, useValue: handlers.contactCreation },
-      { provide: HandlerContactPropertyChange, useValue: handlers.contactPropertyChange },
+      {
+        provide: HandlerContactPropertyChange,
+        useValue: handlers.contactPropertyChange,
+      },
       { provide: HandlerContactDeletion, useValue: handlers.contactDeletion },
       { provide: HandlerContactMerge, useValue: handlers.contactMerge },
     ],
@@ -247,7 +350,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('company.propertyChange → logs UPDATE', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'company.propertyChange', objectId: 201, propertyName: 'name' },
+        {
+          subscriptionType: 'company.propertyChange',
+          objectId: 201,
+          propertyName: 'name',
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -477,7 +584,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
   describe('object.* events → entity_type based on objectTypeId', () => {
     it('object.creation with objectTypeId=2-5922196 → entity_type=candidate', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.creation', objectTypeId: '2-5922196', objectId: 700 },
+        {
+          subscriptionType: 'object.creation',
+          objectTypeId: '2-5922196',
+          objectId: 700,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -492,7 +603,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.deletion with objectTypeId=2-5922196 → logs DELETE for candidate', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.deletion', objectTypeId: '2-5922196', objectId: 701 },
+        {
+          subscriptionType: 'object.deletion',
+          objectTypeId: '2-5922196',
+          objectId: 701,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -506,7 +621,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.merge with objectTypeId=2-5922196 → logs SYNC for candidate', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.merge', objectTypeId: '2-5922196', objectId: 702 },
+        {
+          subscriptionType: 'object.merge',
+          objectTypeId: '2-5922196',
+          objectId: 702,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -520,7 +639,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.creation with objectTypeId=2-54072002 → entity_type=affiliate', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.creation', objectTypeId: '2-54072002', objectId: 710 },
+        {
+          subscriptionType: 'object.creation',
+          objectTypeId: '2-54072002',
+          objectId: 710,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -536,7 +659,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.creation with objectTypeId=0-53 → entity_type=invoice', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.creation', objectTypeId: '0-53', objectId: 720 },
+        {
+          subscriptionType: 'object.creation',
+          objectTypeId: '0-53',
+          objectId: 720,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -552,7 +679,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.associationChange with associationTypeId=179 → entity_type=invoice, action=UPDATE', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.associationChange', associationTypeId: '179', objectId: 721 },
+        {
+          subscriptionType: 'object.associationChange',
+          associationTypeId: '179',
+          objectId: 721,
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -566,7 +697,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('object.* with unknown objectTypeId → no audit log written', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'object.creation', objectTypeId: '99-UNKNOWN', objectId: 730 },
+        {
+          subscriptionType: 'object.creation',
+          objectTypeId: '99-UNKNOWN',
+          objectId: 730,
+        },
       ]);
 
       expect(auditMock.log).not.toHaveBeenCalled();
@@ -600,7 +735,9 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
     });
 
     it('logs success=false when deal.deletion handler throws', async () => {
-      handlers.dealDeletion.execute.mockRejectedValueOnce(new Error('Deal not found'));
+      handlers.dealDeletion.execute.mockRejectedValueOnce(
+        new Error('Deal not found'),
+      );
 
       await expect(
         service.changeDataFromHubspot([
@@ -670,7 +807,11 @@ describe('HubspotService => changeDataFromHubspot (webhook audit logging)', () =
 
     it('includes propertyName in payload for propertyChange events', async () => {
       await service.changeDataFromHubspot([
-        { subscriptionType: 'company.propertyChange', objectId: 1002, propertyName: 'address' },
+        {
+          subscriptionType: 'company.propertyChange',
+          objectId: 1002,
+          propertyName: 'address',
+        },
       ]);
 
       expect(auditMock.log).toHaveBeenCalledWith(

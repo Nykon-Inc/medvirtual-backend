@@ -4,7 +4,11 @@ import { HireRequestUpdateService } from './hireRequest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OwnerCreationService } from '../create/Owner';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -47,7 +51,9 @@ describe('HireRequestUpdateService', () => {
 
   describe('execute() — success', () => {
     beforeEach(() => {
-      mockedAxios.patch.mockResolvedValueOnce({ data: { id: 'hs-ticket-123' } });
+      mockedAxios.patch.mockResolvedValueOnce({
+        data: { id: 'hs-ticket-123' },
+      });
     });
 
     it('returns true on successful update', async () => {

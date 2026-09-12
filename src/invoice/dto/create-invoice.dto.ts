@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsUUID, IsDateString, IsOptional, IsArray, ValidateNested, IsBoolean, IsNumber } from 'class-validator';
+import {
+  IsUUID,
+  IsDateString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsBoolean,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 // isCustom/is_custom and allowFees/allow_fees each accept both casings because

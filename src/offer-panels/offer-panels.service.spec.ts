@@ -2105,10 +2105,7 @@ describe('OfferPanelsService', () => {
         true,
       );
 
-      const result = await service.resendPublicLink(
-        'panel-1',
-        makeAdminUser(),
-      );
+      const result = await service.resendPublicLink('panel-1', makeAdminUser());
 
       expect(result).toEqual({ sentTo: 'jane@sunrise.com' });
       expect(
@@ -2505,7 +2502,12 @@ describe('OfferPanelsService', () => {
           },
         ],
         [
-          { id: 'u1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@x' },
+          {
+            id: 'u1',
+            first_name: 'Ada',
+            last_name: 'Lovelace',
+            email: 'ada@x',
+          },
           { id: 'u2', first_name: null, last_name: null, email: 'bob@x' },
         ],
       );

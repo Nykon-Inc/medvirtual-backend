@@ -8,12 +8,17 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 @Controller('hubstaff')
 export class HubstaffController {
   constructor(
-    @Optional() @InjectQueue('hubstaff-sync') private readonly hubstaffSyncQueue: Queue | null,
+    @Optional()
+    @InjectQueue('hubstaff-sync')
+    private readonly hubstaffSyncQueue: Queue | null,
   ) {}
 
   @Post('sync')
   @ApiOperation({ summary: 'Trigger Hubstaff members sync' })
-  @ApiResponse({ status: 200, description: 'Sync event triggered successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sync event triggered successfully',
+  })
   async triggerSync() {
     if (!this.hubstaffSyncQueue) {
       return { message: 'Queue not available in local mode' };

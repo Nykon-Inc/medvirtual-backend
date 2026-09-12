@@ -60,7 +60,10 @@ describe('InvoiceWorker', () => {
         { provide: PusherService, useValue: {} },
         { provide: StripeService, useValue: {} },
         { provide: ConfigService, useValue: {} },
-        { provide: PositionRateConfigService, useValue: positionRateConfigMock },
+        {
+          provide: PositionRateConfigService,
+          useValue: positionRateConfigMock,
+        },
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
       ],
     }).compile();
@@ -106,7 +109,9 @@ describe('InvoiceWorker', () => {
       // Verify what was passed to invoiceLineItem.create
       expect(prismaMock.invoiceLineItem.create).toHaveBeenCalled();
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -145,7 +150,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -180,7 +187,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -215,7 +224,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -270,7 +281,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       // floor (18) + margin (2) = $20/hr — not the old hardcoded $12/hr fallback.

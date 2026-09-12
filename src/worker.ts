@@ -19,7 +19,9 @@ process.on('SIGINT', () => {
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const consumer = app.get(DealsQueueConsumerService);
-  const client = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
+  const client = new SQSClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+  });
   const queueUrl = process.env.DEALS_QUEUE_URL;
 
   if (!queueUrl) {

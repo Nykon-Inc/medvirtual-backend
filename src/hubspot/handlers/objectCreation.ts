@@ -4,7 +4,11 @@ import axios from 'axios';
 import { candidadeToDbDictionary } from '../../common/dictionaries/candidate-dictionary';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CandidatesService } from '../../candidate/candidates.service';
-import { Prisma, CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import {
+  Prisma,
+  CandidateAuditFieldGroup,
+  CandidateAuditSource,
+} from '@prisma/client';
 import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,

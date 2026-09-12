@@ -582,7 +582,7 @@ export class OrganizationService {
             hubspot_id: true,
           },
         },
-        invoiceConfiguration: true
+        invoiceConfiguration: true,
       },
     });
 
@@ -1196,10 +1196,7 @@ export class OrganizationService {
     }
   }
 
-  async convertToClient(
-    id: string,
-    data: ConvertToClientDto,
-  ): Promise<any> {
+  async convertToClient(id: string, data: ConvertToClientDto): Promise<any> {
     try {
       const organization = await this.prisma.organization.findUnique({
         where: { id },

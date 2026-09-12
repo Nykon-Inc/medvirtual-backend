@@ -40,7 +40,10 @@ export const INVOICE_DEFAULT_TEMPLATE = `
   <p>Please find the attached PDF copy of the invoice for your reference.</p>
 `;
 
-export function replaceInvoiceVariables(template: string, variables: Record<string, string>): string {
+export function replaceInvoiceVariables(
+  template: string,
+  variables: Record<string, string>,
+): string {
   let result = template;
   for (const [key, value] of Object.entries(variables)) {
     result = result.replace(new RegExp(`{{${key}}}`, 'g'), value);
@@ -48,7 +51,10 @@ export function replaceInvoiceVariables(template: string, variables: Record<stri
   return result;
 }
 
-export function getInvoiceEmail(status: string, variables: InvoiceEmailVariables) {
+export function getInvoiceEmail(
+  status: string,
+  variables: InvoiceEmailVariables,
+) {
   const theme = getEmailThemeByBusinessUnit(variables.businessUnit);
   const header = getEmailHeader(theme);
   const footer = getEmailFooter(theme);
@@ -96,7 +102,8 @@ export function getInvoiceEmail(status: string, variables: InvoiceEmailVariables
   }
 
   const innerHtml = replaceInvoiceVariables(selectedTemplate, replaceMap);
-  const frontendUrl = process.env.FRONTEND_URL || 'https://staging.medvirtual.ai';
+  const frontendUrl =
+    process.env.FRONTEND_URL || 'https://staging.medvirtual.ai';
 
   const html = `
 <!DOCTYPE html>

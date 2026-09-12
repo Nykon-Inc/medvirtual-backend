@@ -41,7 +41,11 @@ describe('S3Service', () => {
     it('should upload file and return filename with uuid prefix and correct extension', async () => {
       mockS3Send.mockResolvedValueOnce({});
 
-      const result = await service.uploadFile('/tmp/foto.png', 'foto.png', 'my-bucket');
+      const result = await service.uploadFile(
+        '/tmp/foto.png',
+        'foto.png',
+        'my-bucket',
+      );
 
       expect(result).toBe('test-uuid.png');
       expect(mockS3Send).toHaveBeenCalledTimes(1);

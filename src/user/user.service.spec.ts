@@ -83,7 +83,10 @@ describe('UserService', () => {
 
   describe('inviteUserToOrganization', () => {
     const currentUser: any = { id: 'admin-1', role: 'system_admin' };
-    const inviteData: any = { email: 'new@test.com', role: 'organization_admin' };
+    const inviteData: any = {
+      email: 'new@test.com',
+      role: 'organization_admin',
+    };
 
     beforeEach(() => {
       jest.clearAllMocks();
@@ -100,7 +103,9 @@ describe('UserService', () => {
       await expect(
         service.inviteUserToOrganization('org-1', inviteData, currentUser),
       ).rejects.toThrow(
-        new BadRequestException('Cannot invite users to an inactive organization'),
+        new BadRequestException(
+          'Cannot invite users to an inactive organization',
+        ),
       );
     });
 
@@ -109,7 +114,11 @@ describe('UserService', () => {
       prismaMock.organization.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.inviteUserToOrganization('org-missing', inviteData, currentUser),
+        service.inviteUserToOrganization(
+          'org-missing',
+          inviteData,
+          currentUser,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -374,7 +383,9 @@ describe('UserService', () => {
       });
 
       await expect(service.delete('user-1', 'actor-1')).rejects.toThrow(
-        new BadRequestException('Cannot delete Admin users for security reasons'),
+        new BadRequestException(
+          'Cannot delete Admin users for security reasons',
+        ),
       );
       expect(prismaMock.uSER.delete).not.toHaveBeenCalled();
     });

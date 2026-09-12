@@ -97,7 +97,9 @@ describe('TicketAuditService', () => {
     });
 
     it('should use the transaction client when one is provided', async () => {
-      const tx = { ticketAuditLog: { create: jest.fn().mockResolvedValue({}) } };
+      const tx = {
+        ticketAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
 
       await service.logOrThrow(
         { ...baseParams, event: TICKET_AUDIT_EVENTS.DELETED },

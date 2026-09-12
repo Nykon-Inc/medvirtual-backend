@@ -1197,7 +1197,7 @@ export class AffiliatesService {
 
     if (profile.user_id && user?.role === 'affiliate') {
       await this.prisma.uSER.update({
-        where: { id: profile.user_id! },
+        where: { id: profile.user_id },
         data: {
           status: 'inactive',
           status_before_deactivation: user.status,
@@ -1257,7 +1257,7 @@ export class AffiliatesService {
     // If user role is 'affiliate', restore the user account status
     if (profile.user_id && user?.role === 'affiliate') {
       await this.prisma.uSER.update({
-        where: { id: profile.user_id! },
+        where: { id: profile.user_id },
         data: {
           status: user.status_before_deactivation ?? 'active',
           status_before_deactivation: null,
@@ -1300,7 +1300,7 @@ export class AffiliatesService {
     if (!org) throw new NotFoundException('Organization not found');
 
     await this.prisma.uSER.update({
-      where: { id: profile.user_id! },
+      where: { id: profile.user_id },
       data: { organization_id: dto.organization_id },
     });
 

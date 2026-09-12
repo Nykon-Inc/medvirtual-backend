@@ -79,7 +79,8 @@ export class GetProfileDto {
   verified: boolean;
 
   @ApiProperty({
-    description: 'Whether the user has permanently dismissed the onboarding tour',
+    description:
+      'Whether the user has permanently dismissed the onboarding tour',
   })
   onboarding_tour_dismissed: boolean;
 

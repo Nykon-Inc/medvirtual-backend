@@ -9,7 +9,11 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { InvoiceLineType, InvoiceLineCategory, AdjustmentType } from '@prisma/client';
+import {
+  InvoiceLineType,
+  InvoiceLineCategory,
+  AdjustmentType,
+} from '@prisma/client';
 
 export class InvoiceLineItemDto {
   @ApiProperty({ required: false })

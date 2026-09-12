@@ -48,7 +48,10 @@ describe('BillComAuthService', () => {
         'admin-1',
         'sess-1',
       );
-      expect(result).toEqual({ nextStep: 'mfa_challenge', challengeId: 'chal-1' });
+      expect(result).toEqual({
+        nextStep: 'mfa_challenge',
+        challengeId: 'chal-1',
+      });
     });
 
     it('returns "no_device_configured" when Bill.com reports no device on file (BDC_1354)', async () => {

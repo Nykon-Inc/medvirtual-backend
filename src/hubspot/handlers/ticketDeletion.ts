@@ -58,7 +58,8 @@ export class HandlerTicketDeletion {
 
       await Promise.all(
         candidatesToUpdate.map(async (c) => {
-          const newPipelineStatus = c.pipeline_status_origin || c.pipeline_status;
+          const newPipelineStatus =
+            c.pipeline_status_origin || c.pipeline_status;
           await this.prisma.candidate.update({
             where: { id: c.id },
             data: {

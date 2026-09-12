@@ -3,7 +3,9 @@ import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
 @Injectable()
 export class SqsService {
-  private client = new SQSClient({ region: process.env.AWS_REGION || 'us-east-1' });
+  private client = new SQSClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+  });
 
   async sendMessage(payload: any) {
     return this.client.send(
