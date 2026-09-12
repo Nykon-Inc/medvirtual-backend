@@ -22,7 +22,7 @@
     "dev:debug": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true && rm -f tsconfig.build.tsbuildinfo && node --max-old-space-size=3072 ./node_modules/.bin/nest start --debug --watch",
     "start:debug": "node --max-old-space-size=3072 ./node_modules/.bin/nest start --debug --watch",
     "start:prod": "node --max-old-space-size=3072 dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint": "node --max-old-space-size=8192 ./node_modules/.bin/eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --runInBand",
     "test:watch": "npx jest --watch",
     "test:cov": "npx jest --coverage",

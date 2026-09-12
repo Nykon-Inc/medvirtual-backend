@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { ContactUpdateService } from './contact';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;

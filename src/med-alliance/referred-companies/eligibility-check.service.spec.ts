@@ -71,7 +71,9 @@ describe('EligibilityCheckService', () => {
         mockPrisma.organization.findUnique.mockResolvedValue(
           makeOrg({ hubspot_id: 'hs-123' }),
         );
-        mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'existing-client' });
+        mockPrisma.organization.findFirst.mockResolvedValueOnce({
+          id: 'existing-client',
+        });
 
         const result = await service.check('org-1');
 
@@ -126,7 +128,9 @@ describe('EligibilityCheckService', () => {
         mockPrisma.organization.findUnique.mockResolvedValue(
           makeOrg({ hubspot_id: null, email: 'shared@corp.com' }),
         );
-        mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'active-client-id' });
+        mockPrisma.organization.findFirst.mockResolvedValueOnce({
+          id: 'active-client-id',
+        });
 
         const result = await service.check('org-1');
 
@@ -187,12 +191,16 @@ describe('EligibilityCheckService', () => {
         makeOrg({ hubspot_id: 'hs-xyz', email: 'contact@acme.com' }),
       );
       // hubspot_id check finds a match → should return immediately without checking email
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'hubspot-match-id' });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({
+        id: 'hubspot-match-id',
+      });
 
       const result = await service.check('org-1');
 
       expect(result.eligible).toBe(false);
-      expect(result.reason).toBe('active_client_block: organization_active_by_hubspot_id');
+      expect(result.reason).toBe(
+        'active_client_block: organization_active_by_hubspot_id',
+      );
       // Only one findFirst call — email check was skipped
       expect(mockPrisma.organization.findFirst).toHaveBeenCalledTimes(1);
     });
@@ -279,7 +287,9 @@ describe('EligibilityCheckService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ hubspot_id: 'hs-999' }),
       );
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: 'client-org' });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({
+        id: 'client-org',
+      });
       mockPrisma.organization.update.mockResolvedValue({
         id: 'org-1',
         med_alliance_referral_status: 'not_eligible',
@@ -311,7 +321,9 @@ describe('EligibilityCheckService', () => {
 
     it('should set metadata.matched_organization_id only when there is a match', async () => {
       // eligible — no match
-      mockPrisma.organization.findUnique.mockResolvedValue(makeOrg({ email: 'a@b.com', hubspot_id: null }));
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        makeOrg({ email: 'a@b.com', hubspot_id: null }),
+      );
       mockPrisma.organization.findFirst.mockResolvedValue(null);
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});

@@ -137,7 +137,10 @@ describe('HandlerOrganizationCreation', () => {
 
   it('sets status to inactive on newly-created organizations regardless of BU', async () => {
     mockedAxios.post.mockResolvedValue(
-      hubspotCompanyResponse({ business_unit: 'Berry Virtual', name: 'Berry Co' }),
+      hubspotCompanyResponse({
+        business_unit: 'Berry Virtual',
+        name: 'Berry Co',
+      }),
     );
     businessUnitContextMock.isAllowedHubspotValue.mockResolvedValue(true);
     prismaMock.organization.findUnique.mockResolvedValue(null);

@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HubspotAuditService } from './hubspot-audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 const prismaMock = {
   hubspotAuditLog: {
@@ -151,7 +155,9 @@ describe('HubspotAuditService', () => {
 
   describe('error isolation', () => {
     it('swallows DB errors — never throws to the caller', async () => {
-      prismaMock.hubspotAuditLog.create.mockRejectedValueOnce(new Error('DB connection lost'));
+      prismaMock.hubspotAuditLog.create.mockRejectedValueOnce(
+        new Error('DB connection lost'),
+      );
 
       await expect(
         service.log({
@@ -166,8 +172,12 @@ describe('HubspotAuditService', () => {
     });
 
     it('logs the DB error to console.error but does not propagate', async () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-      prismaMock.hubspotAuditLog.create.mockRejectedValueOnce(new Error('Timeout'));
+      const consoleSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      prismaMock.hubspotAuditLog.create.mockRejectedValueOnce(
+        new Error('Timeout'),
+      );
 
       await service.log({
         entityType: HubspotEntityType.organization,

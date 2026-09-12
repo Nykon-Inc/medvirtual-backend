@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AffiliatesService } from './affiliates.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
@@ -107,13 +112,11 @@ const mockProfile = {
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
   user: mockUser,
-  payout_details:{
+  payout_details: {
     billcom_vendor_id: null,
   },
   banking_complete: false,
 };
-
-
 
 describe('AffiliatesService', () => {
   let service: AffiliatesService;
@@ -124,12 +127,27 @@ describe('AffiliatesService', () => {
         AffiliatesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
-        { provide: AffiliateCreationService , useValue: mockAffiliateCreationService },
-        { provide: AffiliateUpdateService , useValue: mockAffiliateUpdateService},
+        {
+          provide: AffiliateCreationService,
+          useValue: mockAffiliateCreationService,
+        },
+        {
+          provide: AffiliateUpdateService,
+          useValue: mockAffiliateUpdateService,
+        },
         { provide: HubspotService, useValue: mockHubspotService },
-        { provide: InvoiceIngestionService, useValue: mockInvoiceIngestionService },
-        { provide: AllianceNotificationsService, useValue: mockAllianceNotifications },
-        { provide: EmailTemplatesService, useValue: { getTemplateContent: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: InvoiceIngestionService,
+          useValue: mockInvoiceIngestionService,
+        },
+        {
+          provide: AllianceNotificationsService,
+          useValue: mockAllianceNotifications,
+        },
+        {
+          provide: EmailTemplatesService,
+          useValue: { getTemplateContent: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 
@@ -293,7 +311,8 @@ describe('AffiliatesService', () => {
 
       await service.findAll({});
 
-      const findManyArgs = mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
+      const findManyArgs =
+        mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
       expect(findManyArgs.where.AND).toBeUndefined();
     });
 
@@ -302,7 +321,8 @@ describe('AffiliatesService', () => {
 
       await service.findAll({ payable: true });
 
-      const findManyArgs = mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
+      const findManyArgs =
+        mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
       const countArgs = mockPrisma.affiliateProfile.count.mock.calls[0][0];
 
       expect(findManyArgs.where.AND).toContainEqual({
@@ -322,7 +342,8 @@ describe('AffiliatesService', () => {
 
       await service.findAll({ payable: true, search: 'jane' });
 
-      const findManyArgs = mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
+      const findManyArgs =
+        mockPrisma.affiliateProfile.findMany.mock.calls[0][0];
 
       expect(findManyArgs.where.AND).toContainEqual({
         OR: [
@@ -382,7 +403,15 @@ describe('AffiliatesService', () => {
   // -------------------------------------------------------------------------
   describe('findOneEnriched', () => {
     const mixedStatusPayouts = [
-      { id: 'payout-21', status: 'requested', paid_amount: null, paid_at: null, payment_method: null, transaction_reference: null, requested_amount: '100.00' },
+      {
+        id: 'payout-21',
+        status: 'requested',
+        paid_amount: null,
+        paid_at: null,
+        payment_method: null,
+        transaction_reference: null,
+        requested_amount: '100.00',
+      },
       ...Array.from({ length: 20 }, (_, i) => ({
         id: `payout-${i}`,
         status: 'paid',
@@ -450,7 +479,8 @@ describe('AffiliatesService', () => {
           select: expect.objectContaining({ status: true }),
         }),
       );
-      const callArgs = mockPrisma.affiliatePayoutRequest.findMany.mock.calls[0][0];
+      const callArgs =
+        mockPrisma.affiliatePayoutRequest.findMany.mock.calls[0][0];
       expect(callArgs.take).toBeUndefined();
       expect(callArgs.where.status).toBeUndefined();
     });
@@ -492,7 +522,8 @@ describe('AffiliatesService', () => {
 
       const result = await service.getMyStats(mockUser as any);
 
-      const findManyArgs = mockPrisma.affiliateCommission.findMany.mock.calls[0][0];
+      const findManyArgs =
+        mockPrisma.affiliateCommission.findMany.mock.calls[0][0];
       expect(findManyArgs.include).toEqual(
         expect.objectContaining({
           hubspotInvoiceSnapshot: {
@@ -572,7 +603,9 @@ describe('AffiliatesService', () => {
       const updated = { ...mockProfile, status: 'inactive' };
       mockPrisma.affiliateProfile.update.mockResolvedValue(updated);
 
-      const result = await service.update('profile-1', { status: 'inactive' as any });
+      const result = await service.update('profile-1', {
+        status: 'inactive' as any,
+      });
 
       expect(result.status).toBe('inactive');
     });
@@ -581,11 +614,15 @@ describe('AffiliatesService', () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.affiliateProfile.update.mockResolvedValue(mockProfile);
 
-      await service.update('profile-1', { payout_preference_method: undefined });
+      await service.update('profile-1', {
+        payout_preference_method: undefined,
+      });
 
       expect(mockPrisma.affiliateProfile.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.not.objectContaining({ payout_preference_method: undefined }),
+          data: expect.not.objectContaining({
+            payout_preference_method: undefined,
+          }),
         }),
       );
     });
@@ -627,7 +664,9 @@ describe('AffiliatesService', () => {
       });
 
       await expect(
-        service.updateOwn(mockUser as any, { payout_preference_method: 'wire' as any }),
+        service.updateOwn(mockUser as any, {
+          payout_preference_method: 'wire' as any,
+        }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -659,7 +698,9 @@ describe('AffiliatesService', () => {
 
       expect(mockPrisma.affiliateProfile.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.not.objectContaining({ commission_percent_default: expect.anything() }),
+          data: expect.not.objectContaining({
+            commission_percent_default: expect.anything(),
+          }),
         }),
       );
     });
@@ -673,7 +714,8 @@ describe('AffiliatesService', () => {
     const daysAgo = (n: number) => new Date(Date.now() - n * DAY_MS);
 
     const mockPreviewProfile = {
-      commission_percent_default: new (require('@prisma/client/runtime/library').Decimal)('10.00'),
+      commission_percent_default:
+        new (require('@prisma/client/runtime/library').Decimal)('10.00'),
     };
 
     const baseOrg = {
@@ -696,7 +738,9 @@ describe('AffiliatesService', () => {
     const paidInvoice = (overrides: any = {}) => ({
       id: 'inv-' + Math.random().toString(36).slice(2),
       hubspot_id: 'hs-inv',
-      invoice_amount: new (require('@prisma/client/runtime/library').Decimal)('100.00'),
+      invoice_amount: new (require('@prisma/client/runtime/library').Decimal)(
+        '100.00',
+      ),
       invoice_status: 'paid',
       payment_status: null,
       currency: 'USD',
@@ -707,11 +751,16 @@ describe('AffiliatesService', () => {
     });
 
     beforeEach(() => {
-      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockPreviewProfile);
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(
+        mockPreviewProfile,
+      );
     });
 
     it('should mark pending with full count when paid invoices have paid_at null (bug repro)', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ ...baseOrg, deployment_date: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...baseOrg,
+        deployment_date: null,
+      });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidInvoice({ createdAt: daysAgo(50) }),
         paidInvoice({ createdAt: daysAgo(48) }),
@@ -729,7 +778,10 @@ describe('AffiliatesService', () => {
     });
 
     it('should remain pending with full count when paid_at is resolved (regression guard)', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ ...baseOrg, deployment_date: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...baseOrg,
+        deployment_date: null,
+      });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidInvoice({ paid_at: daysAgo(50), createdAt: daysAgo(50) }),
         paidInvoice({ paid_at: daysAgo(48), createdAt: daysAgo(48) }),
@@ -760,11 +812,15 @@ describe('AffiliatesService', () => {
     });
 
     it('should exclude zero-amount invoices from projected count', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ ...baseOrg, deployment_date: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...baseOrg,
+        deployment_date: null,
+      });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidInvoice({ createdAt: daysAgo(50) }),
         paidInvoice({
-          invoice_amount: new (require('@prisma/client/runtime/library').Decimal)('0.00'),
+          invoice_amount:
+            new (require('@prisma/client/runtime/library').Decimal)('0.00'),
           createdAt: daysAgo(48),
         }),
       ]);
@@ -775,7 +831,10 @@ describe('AffiliatesService', () => {
     });
 
     it('should exclude invoices with failed payment_status', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ ...baseOrg, deployment_date: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...baseOrg,
+        deployment_date: null,
+      });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidInvoice({ createdAt: daysAgo(50) }),
         paidInvoice({ payment_status: 'failed', createdAt: daysAgo(48) }),
@@ -787,7 +846,10 @@ describe('AffiliatesService', () => {
     });
 
     it('should return no_invoices when there are no invoices and no deployment_date', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ ...baseOrg, deployment_date: null });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...baseOrg,
+        deployment_date: null,
+      });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([]);
 
       const result = await service.previewAssociation('profile-1', 'org-1');
@@ -859,14 +921,16 @@ describe('AffiliatesService', () => {
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockInvoiceIngestionService.run.mockResolvedValue(undefined);
-      mockHubspotService.setCompanyAffiliateReferral.mockResolvedValue(undefined);
+      mockHubspotService.setCompanyAffiliateReferral.mockResolvedValue(
+        undefined,
+      );
     });
 
     it('should throw NotFoundException when affiliate profile does not exist', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.associateCompany('profile-1', 'org-1', mockAdminUser as any),
+        service.associateCompany('profile-1', 'org-1', mockAdminUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -877,7 +941,7 @@ describe('AffiliatesService', () => {
       });
 
       await expect(
-        service.associateCompany('profile-1', 'org-1', mockAdminUser as any),
+        service.associateCompany('profile-1', 'org-1', mockAdminUser),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -886,7 +950,7 @@ describe('AffiliatesService', () => {
       mockPrisma.organization.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        service.associateCompany('profile-1', 'org-1', mockAdminUser as any),
+        service.associateCompany('profile-1', 'org-1', mockAdminUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -898,7 +962,7 @@ describe('AffiliatesService', () => {
       });
 
       await expect(
-        service.associateCompany('profile-1', 'org-1', mockAdminUser as any),
+        service.associateCompany('profile-1', 'org-1', mockAdminUser),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -908,7 +972,10 @@ describe('AffiliatesService', () => {
         .mockResolvedValueOnce(mockProfile); // inner lookup in _backfillOnAssociation
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null }) // ownership check
-        .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: null }); // backfill lookup
+        .mockResolvedValueOnce({
+          hubspot_id: 'hs-org-1',
+          deployment_date: null,
+        }); // backfill lookup
       const anchorDate = daysAgo(10);
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidSnapshot({ paid_at: anchorDate }),
@@ -918,7 +985,9 @@ describe('AffiliatesService', () => {
       // findOne() is called at the end — stub whatever it needs minimally via findUnique.
       mockPrisma.affiliateProfile.findUnique.mockResolvedValueOnce(mockProfile);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
       expect(mockPrisma.organization.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -943,12 +1012,17 @@ describe('AffiliatesService', () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
-        .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: oldAnchor });
+        .mockResolvedValueOnce({
+          hubspot_id: 'hs-org-1',
+          deployment_date: oldAnchor,
+        });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidSnapshot({ paid_at: oldAnchor }),
       ]);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
       const updateCallArgs = mockPrisma.organization.update.mock.calls.find(
         (c: any) => c[0].data?.med_alliance_referral_status,
@@ -965,12 +1039,17 @@ describe('AffiliatesService', () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
-        .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: anchorDate });
+        .mockResolvedValueOnce({
+          hubspot_id: 'hs-org-1',
+          deployment_date: anchorDate,
+        });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
         paidSnapshot({ paid_at: anchorDate }),
       ]);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
       expect(mockPrisma.affiliateCommission.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -983,12 +1062,20 @@ describe('AffiliatesService', () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
-        .mockResolvedValueOnce({ hubspot_id: 'hs-org-1', deployment_date: null });
+        .mockResolvedValueOnce({
+          hubspot_id: 'hs-org-1',
+          deployment_date: null,
+        });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([]);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
-      expect(mockInvoiceIngestionService.run).toHaveBeenCalledWith('org-1', 'hs-org-1');
+      expect(mockInvoiceIngestionService.run).toHaveBeenCalledWith(
+        'org-1',
+        'hs-org-1',
+      );
     });
 
     it('should return early (no eligibility-status update) when there are no candidate invoices and no deployment_date', async () => {
@@ -998,7 +1085,9 @@ describe('AffiliatesService', () => {
         .mockResolvedValueOnce({ hubspot_id: null, deployment_date: null });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([]);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
       // The initial `referred_by_affiliate_id` link update always happens, but the
       // backfill's eligibility-status update must NOT run in this early-return case.
@@ -1016,13 +1105,13 @@ describe('AffiliatesService', () => {
         .mockResolvedValueOnce({ hubspot_id: null, deployment_date: null });
       mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([]);
 
-      await service.associateCompany('profile-1', 'org-1', mockAdminUser as any).catch(() => {});
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
 
-      expect(mockHubspotService.setCompanyAffiliateReferral).toHaveBeenCalledWith(
-        'org-1',
-        'affiliate-user-1',
-        mockAdminUser.id,
-      );
+      expect(
+        mockHubspotService.setCompanyAffiliateReferral,
+      ).toHaveBeenCalledWith('org-1', 'affiliate-user-1', mockAdminUser.id);
     });
   });
 });

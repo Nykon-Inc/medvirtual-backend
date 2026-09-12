@@ -29,21 +29,27 @@ import { queuesEnabled } from '../common/app-config';
  */
 @Processor('invoice-reconciliation')
 @Injectable()
-export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleInit {
+export class InvoiceReconciliationWorker
+  extends WorkerHost
+  implements OnModuleInit
+{
   private readonly logger = new Logger(InvoiceReconciliationWorker.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
     private readonly configService: ConfigService,
-    @InjectQueue('invoice-reconciliation') private readonly reconciliationQueue: Queue,
+    @InjectQueue('invoice-reconciliation')
+    private readonly reconciliationQueue: Queue,
   ) {
     super();
   }
 
   async onModuleInit() {
     if (!queuesEnabled(this.configService)) {
-      this.logger.warn('LOCAL mode — Stripe reconciliation recurring job NOT scheduled.');
+      this.logger.warn(
+        'LOCAL mode — Stripe reconciliation recurring job NOT scheduled.',
+      );
       return;
     }
     // Recurring hourly job
@@ -71,7 +77,9 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
       },
     );
 
-    this.logger.log('Scheduled Stripe invoice reconciliation every hour (immediate run queued)');
+    this.logger.log(
+      'Scheduled Stripe invoice reconciliation every hour (immediate run queued)',
+    );
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
@@ -179,7 +187,10 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
   /**
    * Stripe invoice has been voided — mirror that on our side.
    */
-  private async handleVoided(invoice: { id: string; reference: string | null; status: InvoiceStatus }, _stripeInvoice: any): Promise<void> {
+  private async handleVoided(
+    invoice: { id: string; reference: string | null; status: InvoiceStatus },
+    _stripeInvoice: any,
+  ): Promise<void> {
     if (invoice.status === InvoiceStatus.voided) {
       // Already voided — just ensure stripe_status is in sync
       await this.prisma.invoice.update({
@@ -218,7 +229,9 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
   ): Promise<void> {
     const dataToUpdate: any = {
       stripe_status: 'paid',
-      ...(stripeInvoice.number ? { stripe_invoice_number: stripeInvoice.number } : {}),
+      ...(stripeInvoice.number
+        ? { stripe_invoice_number: stripeInvoice.number }
+        : {}),
     };
 
     if (invoice.status !== InvoiceStatus.paid) {
@@ -241,7 +254,8 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
         : stripeInvoice.id) || '';
 
     // Stripe amounts are in cents; convert to a decimal currency amount.
-    const amountDecimal = (stripeInvoice.amount_paid ?? stripeInvoice.total ?? 0) / 100;
+    const amountDecimal =
+      (stripeInvoice.amount_paid ?? stripeInvoice.total ?? 0) / 100;
 
     const paidAt = stripeInvoice.status_transitions?.paid_at
       ? new Date(stripeInvoice.status_transitions.paid_at * 1000)
@@ -279,7 +293,9 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
           event: `[Reconciliation] Invoice ${invoice.reference || invoice.id} marked as paid (Stripe confirmed)`,
         },
       });
-      this.logger.log(`Invoice ${invoice.id} marked as paid via reconciliation`);
+      this.logger.log(
+        `Invoice ${invoice.id} marked as paid via reconciliation`,
+      );
     }
   }
 
@@ -291,7 +307,9 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
       where: { id: invoice.id },
       data: { stripe_status: 'uncollectible' },
     });
-    this.logger.log(`Invoice ${invoice.id} marked uncollectible via reconciliation`);
+    this.logger.log(
+      `Invoice ${invoice.id} marked uncollectible via reconciliation`,
+    );
   }
 
   /**
@@ -313,7 +331,9 @@ export class InvoiceReconciliationWorker extends WorkerHost implements OnModuleI
         where: { id: invoice.id },
         data: { stripe_status: newStripeStatus },
       });
-      this.logger.log(`Invoice ${invoice.id} stripe_status updated to "${newStripeStatus}"`);
+      this.logger.log(
+        `Invoice ${invoice.id} stripe_status updated to "${newStripeStatus}"`,
+      );
     }
   }
 }

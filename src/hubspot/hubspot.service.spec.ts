@@ -57,9 +57,6 @@ import { HandlerContactMerge } from './handlers/contactMerge';
 import { HubspotAuditService } from './hubspot-audit.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
 
-
-
-
 jest.mock('axios', () => ({
   __esModule: true,
   default: {
@@ -86,7 +83,7 @@ jest.mock('@hubspot/api-client', () => {
 
 const googleMock = {
   downloadFile: jest.fn(),
-}
+};
 
 const prismaMock = {
   candidate: {
@@ -98,7 +95,7 @@ const prismaMock = {
 
 const candidateMock = {
   processData: jest.fn(),
-}
+};
 
 const handlerObjectCreationMock = {
   execute: jest.fn(),
@@ -110,67 +107,67 @@ const handlerObjectPropertyChangeMock = {
 
 const handlerObjectDeletionmock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerObjectMergeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationCreationMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationPropertyChangeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationAssociationChangeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationDeletionMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationRestoreMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOrganizationMergeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerObjectDeletionMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOwnerCreationMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOwnerPropertyChangeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerOwnerDeletionMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerDealCreationMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerDealPropertyChangeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerDealDeletionMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerDealAssociationChangeMock = {
   execute: jest.fn(),
-}
+};
 
 const HandlerTicketCreationMock = {
   execute: jest.fn(),
@@ -297,11 +294,11 @@ const candidateAuditMock = {
 jest.mock('../common/utils/hubspot.util', () => ({
   extractDriveFileId: jest.fn(),
   mapHubspotToDb: jest.fn((props: Record<string, unknown>) => ({ ...props })),
-  mapOrganizationToDbHubspot: jest.fn((props: Record<string, unknown>) => ({ ...props })),
+  mapOrganizationToDbHubspot: jest.fn((props: Record<string, unknown>) => ({
+    ...props,
+  })),
   mapContactToDb: jest.fn((props: Record<string, unknown>) => ({ ...props })),
 }));
-
-
 
 describe('HubspotService => GetCandidates', () => {
   let service: HubspotService;
@@ -310,164 +307,346 @@ describe('HubspotService => GetCandidates', () => {
     virtualAssistant: '12345',
     filters: [
       { field: 'status', value: 'active' },
-      { field: 'location', value: 'remote' }
+      { field: 'location', value: 'remote' },
     ],
-    properties: ['name', 'email']
+    properties: ['name', 'email'],
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [HubspotService,
-        {provide: GoogledriveService, useValue: googleMock},
-        {provide: PrismaService, useValue: prismaMock},
-        {provide: HandlerObjectCreation, useValue: handlerObjectCreationMock},
-        {provide: HandlerObjectPropertyChange, useValue: handlerObjectPropertyChangeMock},
-        {provide: HandlerObjectDeletion, useValue: handlerObjectDeletionmock},
-        {provide: HandlerObjectMerge, useValue: HandlerObjectMergeMock},
-        {provide: HandlerOrganizationCreation, useValue: HandlerOrganizationCreationMock},
-        {provide: HandlerOrganizationPropertyChange, useValue: HandlerOrganizationPropertyChangeMock},
-        {provide: HandlerOrganizationAssociationChange, useValue: HandlerOrganizationAssociationChangeMock},
-        {provide: HandlerOrganizationDeletion, useValue: HandlerOrganizationDeletionMock},
-        {provide: HandlerOrganizationRestore, useValue: HandlerOrganizationRestoreMock},
-        {provide: HandlerOrganizationMerge, useValue: HandlerOrganizationMergeMock},
-        {provide: HandlerOwnerCreation, useValue: HandlerOwnerCreationMock},
-        {provide: HandlerOwnerDeletion, useValue: HandlerOwnerDeletionMock},
-        {provide: HandlerOwnerPropertyChange , useValue: HandlerOwnerPropertyChangeMock},
-        {provide: CandidatesService, useValue: candidateMock},
-        {provide: HandlerDealCreation, useValue: HandlerDealCreationMock},
-        {provide: HandlerDealPropertyChange, useValue: HandlerDealPropertyChangeMock},
-        {provide: HandlerDealDeletion, useValue: HandlerDealDeletionMock},
-        {provide: HandlerDealAssociationChange, useValue: HandlerDealAssociationChangeMock},
-        {provide: HireRequestCreationService, useValue: hireRequestCreationServiceMock},
-        {provide: HireRequestUpdateService, useValue: hireRequestUpdateServiceMock},
-        {provide: HandlerTicketCreation, useValue: HandlerTicketCreationMock},
-        {provide: HandlerTicketDeletion, useValue: HandlerTicketDeletionMock},
-        {provide: HandlerTicketRestore, useValue: HandlerTicketRestoreMock},
-        {provide: HandlerTicketPropertyChange, useValue: HandlerTicketPropertyChangeMock},
-        {provide: OrganizationCreationService, useValue: organizationCreationServiceMock},
-        {provide: OrganizationUpdateService, useValue: organizationUpdateServiceMock},
-        {provide: OwnerCreationService, useValue: ownerCreationServiceMock},
-        {provide: ContactCreationService, useValue: contactCreationServiceMock},
-        {provide: ContactFromCompanyCreationService, useValue: contactCreationFromCompanyServiceMock},
-        {provide: ContactUpdateService, useValue: updateContactServiceMock},
-        {provide: ContactDeleteService, useValue: deleteContactServiceMock},
-        {provide: CompanyDeleteService, useValue: companyDeleteServiceMock},
-        {provide: HandlerAffiliateCreation, useValue: HandlerAffiliateCreationMock},
-        {provide: HandlerAffiliatePropertyChange, useValue: HandlerAffiliatePropertyChangeMock},
-        {provide: HandlerAffiliateDeletion, useValue: HandlerAffiliateDeletionMock},
-        {provide: HandlerAffiliateAssociationChange, useValue: HandlerAffiliateAssociationChangeMock},
-        {provide: HandlerInvoiceCreation, useValue: HandlerInvoiceCreationMock},
-        {provide: HandlerInvoicePropertyChange, useValue: HandlerInvoicePropertyChangeMock},
-        {provide: HandlerInvoiceAssociationChange, useValue: HandlerInvoiceAssociationChangeMock},
-        {provide: HandlerComissionCreation, useValue: HandlerComissionCreationMock},
-        {provide: AffiliateCreationService, useValue: affiliateCreationServiceMock},
-        {provide: AffiliateUpdateService, useValue: AffiliateUpdateServiceMock},
-        {provide: HandlerContactCreation, useValue: handlerContactCreationMock},
-        {provide: HandlerContactPropertyChange, useValue: handlerContactPropertyChangeMock},
-        {provide: HandlerContactDeletion, useValue: handlerContactDeletionMock},
-        {provide: HandlerContactMerge, useValue: handlerContactMergeMock},
-        {provide: HubspotAuditService, useValue: auditServiceMock},
-        {provide: CandidateAuditService, useValue: candidateAuditMock},
+      providers: [
+        HubspotService,
+        { provide: GoogledriveService, useValue: googleMock },
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: HandlerObjectCreation, useValue: handlerObjectCreationMock },
+        {
+          provide: HandlerObjectPropertyChange,
+          useValue: handlerObjectPropertyChangeMock,
+        },
+        { provide: HandlerObjectDeletion, useValue: handlerObjectDeletionmock },
+        { provide: HandlerObjectMerge, useValue: HandlerObjectMergeMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: HandlerOrganizationCreationMock,
+        },
+        {
+          provide: HandlerOrganizationPropertyChange,
+          useValue: HandlerOrganizationPropertyChangeMock,
+        },
+        {
+          provide: HandlerOrganizationAssociationChange,
+          useValue: HandlerOrganizationAssociationChangeMock,
+        },
+        {
+          provide: HandlerOrganizationDeletion,
+          useValue: HandlerOrganizationDeletionMock,
+        },
+        {
+          provide: HandlerOrganizationRestore,
+          useValue: HandlerOrganizationRestoreMock,
+        },
+        {
+          provide: HandlerOrganizationMerge,
+          useValue: HandlerOrganizationMergeMock,
+        },
+        { provide: HandlerOwnerCreation, useValue: HandlerOwnerCreationMock },
+        { provide: HandlerOwnerDeletion, useValue: HandlerOwnerDeletionMock },
+        {
+          provide: HandlerOwnerPropertyChange,
+          useValue: HandlerOwnerPropertyChangeMock,
+        },
+        { provide: CandidatesService, useValue: candidateMock },
+        { provide: HandlerDealCreation, useValue: HandlerDealCreationMock },
+        {
+          provide: HandlerDealPropertyChange,
+          useValue: HandlerDealPropertyChangeMock,
+        },
+        { provide: HandlerDealDeletion, useValue: HandlerDealDeletionMock },
+        {
+          provide: HandlerDealAssociationChange,
+          useValue: HandlerDealAssociationChangeMock,
+        },
+        {
+          provide: HireRequestCreationService,
+          useValue: hireRequestCreationServiceMock,
+        },
+        {
+          provide: HireRequestUpdateService,
+          useValue: hireRequestUpdateServiceMock,
+        },
+        { provide: HandlerTicketCreation, useValue: HandlerTicketCreationMock },
+        { provide: HandlerTicketDeletion, useValue: HandlerTicketDeletionMock },
+        { provide: HandlerTicketRestore, useValue: HandlerTicketRestoreMock },
+        {
+          provide: HandlerTicketPropertyChange,
+          useValue: HandlerTicketPropertyChangeMock,
+        },
+        {
+          provide: OrganizationCreationService,
+          useValue: organizationCreationServiceMock,
+        },
+        {
+          provide: OrganizationUpdateService,
+          useValue: organizationUpdateServiceMock,
+        },
+        { provide: OwnerCreationService, useValue: ownerCreationServiceMock },
+        {
+          provide: ContactCreationService,
+          useValue: contactCreationServiceMock,
+        },
+        {
+          provide: ContactFromCompanyCreationService,
+          useValue: contactCreationFromCompanyServiceMock,
+        },
+        { provide: ContactUpdateService, useValue: updateContactServiceMock },
+        { provide: ContactDeleteService, useValue: deleteContactServiceMock },
+        { provide: CompanyDeleteService, useValue: companyDeleteServiceMock },
+        {
+          provide: HandlerAffiliateCreation,
+          useValue: HandlerAffiliateCreationMock,
+        },
+        {
+          provide: HandlerAffiliatePropertyChange,
+          useValue: HandlerAffiliatePropertyChangeMock,
+        },
+        {
+          provide: HandlerAffiliateDeletion,
+          useValue: HandlerAffiliateDeletionMock,
+        },
+        {
+          provide: HandlerAffiliateAssociationChange,
+          useValue: HandlerAffiliateAssociationChangeMock,
+        },
+        {
+          provide: HandlerInvoiceCreation,
+          useValue: HandlerInvoiceCreationMock,
+        },
+        {
+          provide: HandlerInvoicePropertyChange,
+          useValue: HandlerInvoicePropertyChangeMock,
+        },
+        {
+          provide: HandlerInvoiceAssociationChange,
+          useValue: HandlerInvoiceAssociationChangeMock,
+        },
+        {
+          provide: HandlerComissionCreation,
+          useValue: HandlerComissionCreationMock,
+        },
+        {
+          provide: AffiliateCreationService,
+          useValue: affiliateCreationServiceMock,
+        },
+        {
+          provide: AffiliateUpdateService,
+          useValue: AffiliateUpdateServiceMock,
+        },
+        {
+          provide: HandlerContactCreation,
+          useValue: handlerContactCreationMock,
+        },
+        {
+          provide: HandlerContactPropertyChange,
+          useValue: handlerContactPropertyChangeMock,
+        },
+        {
+          provide: HandlerContactDeletion,
+          useValue: handlerContactDeletionMock,
+        },
+        { provide: HandlerContactMerge, useValue: handlerContactMergeMock },
+        { provide: HubspotAuditService, useValue: auditServiceMock },
+        { provide: CandidateAuditService, useValue: candidateAuditMock },
       ],
     }).compile();
 
     service = module.get<HubspotService>(HubspotService);
-
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  it ('should return 400 if the vitual Assistant is not provided', async () =>{
+  it('should return 400 if the vitual Assistant is not provided', async () => {
     const dataFakeWithoutData = {
       virtualAssistant: '',
       filters: [
         { field: 'status', value: 'active' },
-        { field: 'location', value: 'remote' }
+        { field: 'location', value: 'remote' },
       ],
-      properties: ['name', 'email']
+      properties: ['name', 'email'],
     };
 
-    await expect(service.getCandidates(dataFakeWithoutData)).rejects.toThrow('Virtual Assistant identifier is required');
-  })
+    await expect(service.getCandidates(dataFakeWithoutData)).rejects.toThrow(
+      'Virtual Assistant identifier is required',
+    );
+  });
 
   it('should return 400 if the fetch candidates fails', async () => {
     const mockError = new Error('Hubspot API error');
     doSearchMock.mockRejectedValue(mockError);
 
-    await expect(service.getCandidates(dataFake)).rejects.toThrow('Error fetching candidates');
-  })
-})
+    await expect(service.getCandidates(dataFake)).rejects.toThrow(
+      'Error fetching candidates',
+    );
+  });
+});
 
 // test HubspotService => changeDataFromHubspot
 
-
 describe('HubspotService => changeDataToHubspot', () => {
-
   let service: HubspotService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [HubspotService,
-        {provide: GoogledriveService, useValue: googleMock},
-        {provide: PrismaService, useValue: prismaMock},
-        {provide: HandlerObjectCreation, useValue: handlerObjectCreationMock},
-        {provide: HandlerObjectPropertyChange, useValue: handlerObjectPropertyChangeMock},
-        {provide: HandlerObjectDeletion, useValue: handlerObjectDeletionmock},
-        {provide: HandlerObjectMerge, useValue: HandlerObjectMergeMock},
-        {provide: HandlerOrganizationCreation, useValue: HandlerOrganizationCreationMock},
-        {provide: HandlerOrganizationPropertyChange, useValue: HandlerOrganizationPropertyChangeMock},
-        {provide: HandlerOrganizationAssociationChange, useValue: HandlerOrganizationAssociationChangeMock},
-        {provide: HandlerOrganizationDeletion, useValue: HandlerOrganizationDeletionMock},
-        {provide: HandlerOrganizationRestore, useValue: HandlerOrganizationRestoreMock},
-        {provide: HandlerOrganizationMerge, useValue: HandlerOrganizationMergeMock},
-        {provide: HandlerOwnerCreation, useValue: HandlerOwnerCreationMock},
-        {provide: HandlerOwnerDeletion, useValue: HandlerOwnerDeletionMock},
-        {provide: HandlerOwnerPropertyChange , useValue: HandlerOwnerPropertyChangeMock},
-        {provide: CandidatesService, useValue: candidateMock},
-        {provide: HandlerDealCreation, useValue: HandlerDealCreationMock},
-        {provide: HandlerDealPropertyChange, useValue: HandlerDealPropertyChangeMock},
-        {provide: HandlerDealDeletion, useValue: HandlerDealDeletionMock},
-        {provide: HandlerDealAssociationChange, useValue: HandlerDealAssociationChangeMock},
-        {provide: HireRequestCreationService, useValue: hireRequestCreationServiceMock},
-        {provide: HireRequestUpdateService, useValue: hireRequestUpdateServiceMock},
-        {provide: HandlerTicketCreation, useValue: HandlerTicketCreationMock},
-        {provide: HandlerTicketDeletion, useValue: HandlerTicketDeletionMock},
-        {provide: HandlerTicketRestore, useValue: HandlerTicketRestoreMock},
-        {provide: HandlerTicketPropertyChange, useValue: HandlerTicketPropertyChangeMock},
-        {provide: OrganizationCreationService, useValue: organizationCreationServiceMock},
-        {provide: OrganizationUpdateService, useValue: organizationUpdateServiceMock},
-        {provide: OwnerCreationService, useValue: ownerCreationServiceMock},
-        {provide: ContactCreationService, useValue: contactCreationServiceMock},
-        {provide: ContactFromCompanyCreationService, useValue: contactCreationFromCompanyServiceMock},
-        {provide: ContactUpdateService, useValue: updateContactServiceMock},
-        {provide: ContactDeleteService, useValue: deleteContactServiceMock},
-        {provide: CompanyDeleteService, useValue: companyDeleteServiceMock},
-        {provide: HandlerAffiliateCreation, useValue: HandlerAffiliateCreationMock},
-        {provide: HandlerAffiliatePropertyChange, useValue: HandlerAffiliatePropertyChangeMock},
-        {provide: HandlerAffiliateDeletion, useValue: HandlerAffiliateDeletionMock},
-        {provide: HandlerAffiliateAssociationChange, useValue: HandlerAffiliateAssociationChangeMock},
-        {provide: HandlerInvoiceCreation, useValue: HandlerInvoiceCreationMock},
-        {provide: HandlerInvoicePropertyChange, useValue: HandlerInvoicePropertyChangeMock},
-        {provide: HandlerInvoiceAssociationChange, useValue: HandlerInvoiceAssociationChangeMock},
-        {provide: HandlerComissionCreation, useValue: HandlerComissionCreationMock},
-        {provide: AffiliateCreationService, useValue: affiliateCreationServiceMock},
-        {provide: AffiliateUpdateService, useValue: AffiliateUpdateServiceMock},
-        {provide: HandlerContactCreation, useValue: handlerContactCreationMock},
-        {provide: HandlerContactPropertyChange, useValue: handlerContactPropertyChangeMock},
-        {provide: HandlerContactDeletion, useValue: handlerContactDeletionMock},
-        {provide: HandlerContactMerge, useValue: handlerContactMergeMock},
-        {provide: HubspotAuditService, useValue: auditServiceMock},
-        {provide: CandidateAuditService, useValue: candidateAuditMock},
-      ]
+      providers: [
+        HubspotService,
+        { provide: GoogledriveService, useValue: googleMock },
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: HandlerObjectCreation, useValue: handlerObjectCreationMock },
+        {
+          provide: HandlerObjectPropertyChange,
+          useValue: handlerObjectPropertyChangeMock,
+        },
+        { provide: HandlerObjectDeletion, useValue: handlerObjectDeletionmock },
+        { provide: HandlerObjectMerge, useValue: HandlerObjectMergeMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: HandlerOrganizationCreationMock,
+        },
+        {
+          provide: HandlerOrganizationPropertyChange,
+          useValue: HandlerOrganizationPropertyChangeMock,
+        },
+        {
+          provide: HandlerOrganizationAssociationChange,
+          useValue: HandlerOrganizationAssociationChangeMock,
+        },
+        {
+          provide: HandlerOrganizationDeletion,
+          useValue: HandlerOrganizationDeletionMock,
+        },
+        {
+          provide: HandlerOrganizationRestore,
+          useValue: HandlerOrganizationRestoreMock,
+        },
+        {
+          provide: HandlerOrganizationMerge,
+          useValue: HandlerOrganizationMergeMock,
+        },
+        { provide: HandlerOwnerCreation, useValue: HandlerOwnerCreationMock },
+        { provide: HandlerOwnerDeletion, useValue: HandlerOwnerDeletionMock },
+        {
+          provide: HandlerOwnerPropertyChange,
+          useValue: HandlerOwnerPropertyChangeMock,
+        },
+        { provide: CandidatesService, useValue: candidateMock },
+        { provide: HandlerDealCreation, useValue: HandlerDealCreationMock },
+        {
+          provide: HandlerDealPropertyChange,
+          useValue: HandlerDealPropertyChangeMock,
+        },
+        { provide: HandlerDealDeletion, useValue: HandlerDealDeletionMock },
+        {
+          provide: HandlerDealAssociationChange,
+          useValue: HandlerDealAssociationChangeMock,
+        },
+        {
+          provide: HireRequestCreationService,
+          useValue: hireRequestCreationServiceMock,
+        },
+        {
+          provide: HireRequestUpdateService,
+          useValue: hireRequestUpdateServiceMock,
+        },
+        { provide: HandlerTicketCreation, useValue: HandlerTicketCreationMock },
+        { provide: HandlerTicketDeletion, useValue: HandlerTicketDeletionMock },
+        { provide: HandlerTicketRestore, useValue: HandlerTicketRestoreMock },
+        {
+          provide: HandlerTicketPropertyChange,
+          useValue: HandlerTicketPropertyChangeMock,
+        },
+        {
+          provide: OrganizationCreationService,
+          useValue: organizationCreationServiceMock,
+        },
+        {
+          provide: OrganizationUpdateService,
+          useValue: organizationUpdateServiceMock,
+        },
+        { provide: OwnerCreationService, useValue: ownerCreationServiceMock },
+        {
+          provide: ContactCreationService,
+          useValue: contactCreationServiceMock,
+        },
+        {
+          provide: ContactFromCompanyCreationService,
+          useValue: contactCreationFromCompanyServiceMock,
+        },
+        { provide: ContactUpdateService, useValue: updateContactServiceMock },
+        { provide: ContactDeleteService, useValue: deleteContactServiceMock },
+        { provide: CompanyDeleteService, useValue: companyDeleteServiceMock },
+        {
+          provide: HandlerAffiliateCreation,
+          useValue: HandlerAffiliateCreationMock,
+        },
+        {
+          provide: HandlerAffiliatePropertyChange,
+          useValue: HandlerAffiliatePropertyChangeMock,
+        },
+        {
+          provide: HandlerAffiliateDeletion,
+          useValue: HandlerAffiliateDeletionMock,
+        },
+        {
+          provide: HandlerAffiliateAssociationChange,
+          useValue: HandlerAffiliateAssociationChangeMock,
+        },
+        {
+          provide: HandlerInvoiceCreation,
+          useValue: HandlerInvoiceCreationMock,
+        },
+        {
+          provide: HandlerInvoicePropertyChange,
+          useValue: HandlerInvoicePropertyChangeMock,
+        },
+        {
+          provide: HandlerInvoiceAssociationChange,
+          useValue: HandlerInvoiceAssociationChangeMock,
+        },
+        {
+          provide: HandlerComissionCreation,
+          useValue: HandlerComissionCreationMock,
+        },
+        {
+          provide: AffiliateCreationService,
+          useValue: affiliateCreationServiceMock,
+        },
+        {
+          provide: AffiliateUpdateService,
+          useValue: AffiliateUpdateServiceMock,
+        },
+        {
+          provide: HandlerContactCreation,
+          useValue: handlerContactCreationMock,
+        },
+        {
+          provide: HandlerContactPropertyChange,
+          useValue: handlerContactPropertyChangeMock,
+        },
+        {
+          provide: HandlerContactDeletion,
+          useValue: handlerContactDeletionMock,
+        },
+        { provide: HandlerContactMerge, useValue: handlerContactMergeMock },
+        { provide: HubspotAuditService, useValue: auditServiceMock },
+        { provide: CandidateAuditService, useValue: candidateAuditMock },
+      ],
     }).compile();
 
     service = module.get<HubspotService>(HubspotService);
 
     jest.clearAllMocks();
-  })
-
+  });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
@@ -475,91 +654,163 @@ describe('HubspotService => changeDataToHubspot', () => {
 
   it('should return 400 if data is not provided', async () => {
     const dataFake = {
-      properties: [
-        { field: 'status', value: 'active' }
-      ]
+      properties: [{ field: 'status', value: 'active' }],
     };
-  await expect(service.changeDataToHubspot('', dataFake)).rejects.toThrow('Object ID is required');
-  })
+    await expect(service.changeDataToHubspot('', dataFake)).rejects.toThrow(
+      'Object ID is required',
+    );
+  });
 
   it('Should return true if data is changed successfully', async () => {
     const dataFake = {
-      properties: [
-        { field: 'status', value: 'active' }
-      ]
+      properties: [{ field: 'status', value: 'active' }],
     };
 
     (axios.patch as jest.Mock).mockResolvedValue({ status: 200 });
 
     const result = await service.changeDataToHubspot('12345', dataFake);
     expect(result).toBe(true);
-  })
+  });
 
   it('should throw BadRequestException when axios.patch fails', async () => {
     const dataFake = {
-      properties: [
-        { field: 'status', value: 'active' }
-      ]
+      properties: [{ field: 'status', value: 'active' }],
     };
 
     (axios.patch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    await expect(service.changeDataToHubspot('12345', dataFake)).rejects.toThrow('Error updating data in HubSpot');
-  })
-})
+    await expect(
+      service.changeDataToHubspot('12345', dataFake),
+    ).rejects.toThrow('Error updating data in HubSpot');
+  });
+});
 
 // ─── Shared module setup helper ──────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildProviders(): any[] {
   return [
     HubspotService,
     { provide: GoogledriveService, useValue: googleMock },
     { provide: PrismaService, useValue: prismaMock },
     { provide: HandlerObjectCreation, useValue: handlerObjectCreationMock },
-    { provide: HandlerObjectPropertyChange, useValue: handlerObjectPropertyChangeMock },
+    {
+      provide: HandlerObjectPropertyChange,
+      useValue: handlerObjectPropertyChangeMock,
+    },
     { provide: HandlerObjectDeletion, useValue: handlerObjectDeletionmock },
     { provide: HandlerObjectMerge, useValue: HandlerObjectMergeMock },
-    { provide: HandlerOrganizationCreation, useValue: HandlerOrganizationCreationMock },
-    { provide: HandlerOrganizationPropertyChange, useValue: HandlerOrganizationPropertyChangeMock },
-    { provide: HandlerOrganizationAssociationChange, useValue: HandlerOrganizationAssociationChangeMock },
-    { provide: HandlerOrganizationDeletion, useValue: HandlerOrganizationDeletionMock },
-    { provide: HandlerOrganizationRestore, useValue: HandlerOrganizationRestoreMock },
-    { provide: HandlerOrganizationMerge, useValue: HandlerOrganizationMergeMock },
+    {
+      provide: HandlerOrganizationCreation,
+      useValue: HandlerOrganizationCreationMock,
+    },
+    {
+      provide: HandlerOrganizationPropertyChange,
+      useValue: HandlerOrganizationPropertyChangeMock,
+    },
+    {
+      provide: HandlerOrganizationAssociationChange,
+      useValue: HandlerOrganizationAssociationChangeMock,
+    },
+    {
+      provide: HandlerOrganizationDeletion,
+      useValue: HandlerOrganizationDeletionMock,
+    },
+    {
+      provide: HandlerOrganizationRestore,
+      useValue: HandlerOrganizationRestoreMock,
+    },
+    {
+      provide: HandlerOrganizationMerge,
+      useValue: HandlerOrganizationMergeMock,
+    },
     { provide: HandlerOwnerCreation, useValue: HandlerOwnerCreationMock },
     { provide: HandlerOwnerDeletion, useValue: HandlerOwnerDeletionMock },
-    { provide: HandlerOwnerPropertyChange, useValue: HandlerOwnerPropertyChangeMock },
+    {
+      provide: HandlerOwnerPropertyChange,
+      useValue: HandlerOwnerPropertyChangeMock,
+    },
     { provide: CandidatesService, useValue: candidateMock },
     { provide: HandlerDealCreation, useValue: HandlerDealCreationMock },
-    { provide: HandlerDealPropertyChange, useValue: HandlerDealPropertyChangeMock },
+    {
+      provide: HandlerDealPropertyChange,
+      useValue: HandlerDealPropertyChangeMock,
+    },
     { provide: HandlerDealDeletion, useValue: HandlerDealDeletionMock },
-    { provide: HandlerDealAssociationChange, useValue: HandlerDealAssociationChangeMock },
-    { provide: HireRequestCreationService, useValue: hireRequestCreationServiceMock },
-    { provide: HireRequestUpdateService, useValue: hireRequestUpdateServiceMock },
+    {
+      provide: HandlerDealAssociationChange,
+      useValue: HandlerDealAssociationChangeMock,
+    },
+    {
+      provide: HireRequestCreationService,
+      useValue: hireRequestCreationServiceMock,
+    },
+    {
+      provide: HireRequestUpdateService,
+      useValue: hireRequestUpdateServiceMock,
+    },
     { provide: HandlerTicketCreation, useValue: HandlerTicketCreationMock },
     { provide: HandlerTicketDeletion, useValue: HandlerTicketDeletionMock },
     { provide: HandlerTicketRestore, useValue: HandlerTicketRestoreMock },
-    { provide: HandlerTicketPropertyChange, useValue: HandlerTicketPropertyChangeMock },
-    { provide: OrganizationCreationService, useValue: organizationCreationServiceMock },
-    { provide: OrganizationUpdateService, useValue: organizationUpdateServiceMock },
+    {
+      provide: HandlerTicketPropertyChange,
+      useValue: HandlerTicketPropertyChangeMock,
+    },
+    {
+      provide: OrganizationCreationService,
+      useValue: organizationCreationServiceMock,
+    },
+    {
+      provide: OrganizationUpdateService,
+      useValue: organizationUpdateServiceMock,
+    },
     { provide: OwnerCreationService, useValue: ownerCreationServiceMock },
     { provide: ContactCreationService, useValue: contactCreationServiceMock },
-    { provide: ContactFromCompanyCreationService, useValue: contactCreationFromCompanyServiceMock },
+    {
+      provide: ContactFromCompanyCreationService,
+      useValue: contactCreationFromCompanyServiceMock,
+    },
     { provide: ContactUpdateService, useValue: updateContactServiceMock },
     { provide: ContactDeleteService, useValue: deleteContactServiceMock },
     { provide: CompanyDeleteService, useValue: companyDeleteServiceMock },
-    { provide: HandlerAffiliateCreation, useValue: HandlerAffiliateCreationMock },
-    { provide: HandlerAffiliatePropertyChange, useValue: HandlerAffiliatePropertyChangeMock },
-    { provide: HandlerAffiliateDeletion, useValue: HandlerAffiliateDeletionMock },
-    { provide: HandlerAffiliateAssociationChange, useValue: HandlerAffiliateAssociationChangeMock },
+    {
+      provide: HandlerAffiliateCreation,
+      useValue: HandlerAffiliateCreationMock,
+    },
+    {
+      provide: HandlerAffiliatePropertyChange,
+      useValue: HandlerAffiliatePropertyChangeMock,
+    },
+    {
+      provide: HandlerAffiliateDeletion,
+      useValue: HandlerAffiliateDeletionMock,
+    },
+    {
+      provide: HandlerAffiliateAssociationChange,
+      useValue: HandlerAffiliateAssociationChangeMock,
+    },
     { provide: HandlerInvoiceCreation, useValue: HandlerInvoiceCreationMock },
-    { provide: HandlerInvoicePropertyChange, useValue: HandlerInvoicePropertyChangeMock },
-    { provide: HandlerInvoiceAssociationChange, useValue: HandlerInvoiceAssociationChangeMock },
-    { provide: HandlerComissionCreation, useValue: HandlerComissionCreationMock },
-    { provide: AffiliateCreationService, useValue: affiliateCreationServiceMock },
+    {
+      provide: HandlerInvoicePropertyChange,
+      useValue: HandlerInvoicePropertyChangeMock,
+    },
+    {
+      provide: HandlerInvoiceAssociationChange,
+      useValue: HandlerInvoiceAssociationChangeMock,
+    },
+    {
+      provide: HandlerComissionCreation,
+      useValue: HandlerComissionCreationMock,
+    },
+    {
+      provide: AffiliateCreationService,
+      useValue: affiliateCreationServiceMock,
+    },
     { provide: AffiliateUpdateService, useValue: AffiliateUpdateServiceMock },
     { provide: HandlerContactCreation, useValue: handlerContactCreationMock },
-    { provide: HandlerContactPropertyChange, useValue: handlerContactPropertyChangeMock },
+    {
+      provide: HandlerContactPropertyChange,
+      useValue: handlerContactPropertyChangeMock,
+    },
     { provide: HandlerContactDeletion, useValue: handlerContactDeletionMock },
     { provide: HandlerContactMerge, useValue: handlerContactMergeMock },
     { provide: HubspotAuditService, useValue: auditServiceMock },
@@ -581,7 +832,9 @@ describe('HubspotService => getCandidates happy path', () => {
   });
 
   it('should return response from HubSpot when candidates are found', async () => {
-    const fakeResponse = { results: [{ id: '1', properties: { name: 'Jane' } }] };
+    const fakeResponse = {
+      results: [{ id: '1', properties: { name: 'Jane' } }],
+    };
     doSearchMock.mockResolvedValue(fakeResponse);
 
     const result = await service.getCandidates({
@@ -610,7 +863,9 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should skip webhook when appId does not match expected', async () => {
     process.env.HUBSPOT_APP_ID = '9999';
-    const data = [{ appId: 1111, subscriptionType: 'company.creation', objectId: '1' }];
+    const data = [
+      { appId: 1111, subscriptionType: 'company.creation', objectId: '1' },
+    ];
     const result = await service.changeDataFromHubspot(data);
     expect(result).toBeUndefined();
     delete process.env.HUBSPOT_APP_ID;
@@ -618,86 +873,168 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should process object.creation for Virtual Assistant (2-5922196)', async () => {
     handlerObjectCreationMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.creation', objectTypeId: '2-5922196', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '2-5922196',
+        objectId: '42',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(handlerObjectCreationMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.restore for Virtual Assistant (2-5922196)', async () => {
     handlerObjectCreationMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.restore', objectTypeId: '2-5922196', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.restore',
+        objectTypeId: '2-5922196',
+        objectId: '42',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(handlerObjectCreationMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.creation for Growth Partner (2-54072002)', async () => {
     HandlerAffiliateCreationMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.creation', objectTypeId: '2-54072002', objectId: '43' }];
+    const data = [
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '2-54072002',
+        objectId: '43',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(HandlerAffiliateCreationMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.creation for Invoice (0-53)', async () => {
     HandlerInvoiceCreationMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.creation', objectTypeId: '0-53', objectId: '44' }];
+    const data = [
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '0-53',
+        objectId: '44',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(HandlerInvoiceCreationMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.propertyChange for Virtual Assistant', async () => {
     handlerObjectPropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.propertyChange', objectTypeId: '2-5922196', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.propertyChange',
+        objectTypeId: '2-5922196',
+        objectId: '42',
+      },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(handlerObjectPropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(handlerObjectPropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process object.propertyChange for Growth Partner', async () => {
     HandlerAffiliatePropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.propertyChange', objectTypeId: '2-54072002', objectId: '43' }];
+    const data = [
+      {
+        subscriptionType: 'object.propertyChange',
+        objectTypeId: '2-54072002',
+        objectId: '43',
+      },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerAffiliatePropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerAffiliatePropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process object.propertyChange for Invoice (0-53)', async () => {
     HandlerInvoicePropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.propertyChange', objectTypeId: '0-53', objectId: '44' }];
+    const data = [
+      {
+        subscriptionType: 'object.propertyChange',
+        objectTypeId: '0-53',
+        objectId: '44',
+      },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerInvoicePropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerInvoicePropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process object.deletion for Virtual Assistant', async () => {
     handlerObjectDeletionmock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.deletion', objectTypeId: '2-5922196', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.deletion',
+        objectTypeId: '2-5922196',
+        objectId: '42',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(handlerObjectDeletionmock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.deletion for Growth Partner', async () => {
     HandlerAffiliateDeletionMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.deletion', objectTypeId: '2-54072002', objectId: '43' }];
+    const data = [
+      {
+        subscriptionType: 'object.deletion',
+        objectTypeId: '2-54072002',
+        objectId: '43',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(HandlerAffiliateDeletionMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.merge for Virtual Assistant', async () => {
     HandlerObjectMergeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.merge', objectTypeId: '2-5922196', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.merge',
+        objectTypeId: '2-5922196',
+        objectId: '42',
+      },
+    ];
     await service.changeDataFromHubspot(data);
     expect(HandlerObjectMergeMock.execute).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process object.associationChange for invoice association (179)', async () => {
     HandlerInvoiceAssociationChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.associationChange', associationTypeId: '179', objectId: '50' }];
+    const data = [
+      {
+        subscriptionType: 'object.associationChange',
+        associationTypeId: '179',
+        objectId: '50',
+      },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerInvoiceAssociationChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerInvoiceAssociationChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process object.associationChange for invoice association (180)', async () => {
     HandlerInvoiceAssociationChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'object.associationChange', associationTypeId: '180', objectId: '50' }];
+    const data = [
+      {
+        subscriptionType: 'object.associationChange',
+        associationTypeId: '180',
+        objectId: '50',
+      },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerInvoiceAssociationChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerInvoiceAssociationChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process owners.creation', async () => {
@@ -723,38 +1060,52 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should process owners.propertyChange', async () => {
     HandlerOwnerPropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'owners.propertyChange', objectId: '62' }];
+    const data = [
+      { subscriptionType: 'owners.propertyChange', objectId: '62' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOwnerPropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerOwnerPropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process company.creation', async () => {
     HandlerOrganizationCreationMock.execute.mockResolvedValue(undefined);
     const data = [{ subscriptionType: 'company.creation', objectId: '70' }];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOrganizationCreationMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerOrganizationCreationMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process company.restore with the restore handler, not the creation handler', async () => {
     HandlerOrganizationRestoreMock.execute.mockResolvedValue(undefined);
     const data = [{ subscriptionType: 'company.restore', objectId: '70' }];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOrganizationRestoreMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerOrganizationRestoreMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
     expect(HandlerOrganizationCreationMock.execute).not.toHaveBeenCalled();
   });
 
   it('should process company.propertyChange', async () => {
     HandlerOrganizationPropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'company.propertyChange', objectId: '71' }];
+    const data = [
+      { subscriptionType: 'company.propertyChange', objectId: '71' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOrganizationPropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerOrganizationPropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process company.deletion', async () => {
     HandlerOrganizationDeletionMock.execute.mockResolvedValue(undefined);
     const data = [{ subscriptionType: 'company.deletion', objectId: '72' }];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOrganizationDeletionMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerOrganizationDeletionMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process company.merge', async () => {
@@ -765,10 +1116,16 @@ describe('HubspotService => changeDataFromHubspot', () => {
   });
 
   it('should process company.associationChange', async () => {
-    HandlerOrganizationAssociationChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'company.associationChange', objectId: '74' }];
+    HandlerOrganizationAssociationChangeMock.execute.mockResolvedValue(
+      undefined,
+    );
+    const data = [
+      { subscriptionType: 'company.associationChange', objectId: '74' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerOrganizationAssociationChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(
+      HandlerOrganizationAssociationChangeMock.execute,
+    ).toHaveBeenCalledWith(data[0]);
   });
 
   it('should process deal.creation', async () => {
@@ -801,9 +1158,13 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should process deal.associationChange', async () => {
     HandlerDealAssociationChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'deal.associationChange', objectId: '83' }];
+    const data = [
+      { subscriptionType: 'deal.associationChange', objectId: '83' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerDealAssociationChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerDealAssociationChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process ticket.deletion', async () => {
@@ -815,9 +1176,13 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should process ticket.propertyChange', async () => {
     HandlerTicketPropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'ticket.propertyChange', objectId: '91' }];
+    const data = [
+      { subscriptionType: 'ticket.propertyChange', objectId: '91' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(HandlerTicketPropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(HandlerTicketPropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process contact.creation', async () => {
@@ -829,9 +1194,13 @@ describe('HubspotService => changeDataFromHubspot', () => {
 
   it('should process contact.propertyChange', async () => {
     handlerContactPropertyChangeMock.execute.mockResolvedValue(undefined);
-    const data = [{ subscriptionType: 'contact.propertyChange', objectId: '101' }];
+    const data = [
+      { subscriptionType: 'contact.propertyChange', objectId: '101' },
+    ];
     await service.changeDataFromHubspot(data);
-    expect(handlerContactPropertyChangeMock.execute).toHaveBeenCalledWith(data[0]);
+    expect(handlerContactPropertyChangeMock.execute).toHaveBeenCalledWith(
+      data[0],
+    );
   });
 
   it('should process contact.deletion', async () => {
@@ -852,7 +1221,11 @@ describe('HubspotService => changeDataFromHubspot', () => {
     handlerObjectCreationMock.execute.mockResolvedValue(undefined);
     HandlerDealCreationMock.execute.mockResolvedValue(undefined);
     const data = [
-      { subscriptionType: 'object.creation', objectTypeId: '2-5922196', objectId: '1' },
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '2-5922196',
+        objectId: '1',
+      },
       { subscriptionType: 'deal.creation', objectId: '2' },
     ];
     await service.changeDataFromHubspot(data);
@@ -866,7 +1239,9 @@ describe('HubspotService => changeDataFromHubspot', () => {
     auditServiceMock.log.mockResolvedValue(undefined);
 
     const data = [{ subscriptionType: 'company.creation', objectId: '70' }];
-    await expect(service.changeDataFromHubspot(data)).rejects.toThrow('handler failure');
+    await expect(service.changeDataFromHubspot(data)).rejects.toThrow(
+      'handler failure',
+    );
   });
 
   it('should handle unknown subscriptionType gracefully (no handler called)', async () => {
@@ -908,7 +1283,12 @@ describe('HubspotService => updateManyCandidatesFromHireRequest', () => {
     batchUpdateMock.mockResolvedValue({});
 
     const candidates = [{ hubspot_id: 'hs1' }, { hubspot_id: 'hs2' }];
-    const result = await service.updateManyCandidatesFromHireRequest(candidates, 'stage1', 'user-1', 'hr-1');
+    const result = await service.updateManyCandidatesFromHireRequest(
+      candidates,
+      'stage1',
+      'user-1',
+      'hr-1',
+    );
 
     expect(result).toBe(true);
     expect(batchUpdateMock).toHaveBeenCalled();
@@ -966,7 +1346,11 @@ describe('HubspotService => updateOneCandidateFromHireRequest', () => {
     process.env.HUBSPOT_CUSTOM_OBJECT = '2-5922196';
     basicUpdateMock.mockResolvedValue({});
 
-    const result = await service.updateOneCandidateFromHireRequest('hs-42', 'stage2', 'user-1');
+    const result = await service.updateOneCandidateFromHireRequest(
+      'hs-42',
+      'stage2',
+      'user-1',
+    );
 
     expect(result).toBe(true);
     expect(basicUpdateMock).toHaveBeenCalled();
@@ -1004,63 +1388,128 @@ describe('HubspotService => delegation methods', () => {
   });
 
   it('createHireRequestInHubspot should delegate to hireRequestCreationService', async () => {
-    hireRequestCreationServiceMock.execute.mockResolvedValue({ id: 'hs-ticket-1' });
-    const result = await service.createHireRequestInHubspot({ title: 'req' }, 'user-1');
+    hireRequestCreationServiceMock.execute.mockResolvedValue({
+      id: 'hs-ticket-1',
+    });
+    const result = await service.createHireRequestInHubspot(
+      { title: 'req' },
+      'user-1',
+    );
     expect(result).toEqual({ id: 'hs-ticket-1' });
-    expect(hireRequestCreationServiceMock.execute).toHaveBeenCalledWith({ title: 'req' }, 'user-1', undefined);
+    expect(hireRequestCreationServiceMock.execute).toHaveBeenCalledWith(
+      { title: 'req' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('updateHireRequestInHubspot should delegate to hireRequestUpdateService', async () => {
-    hireRequestUpdateServiceMock.execute.mockResolvedValue({ id: 'hs-ticket-1' });
-    const result = await service.updateHireRequestInHubspot({ id: 'r1' }, 'status', 'user-1');
+    hireRequestUpdateServiceMock.execute.mockResolvedValue({
+      id: 'hs-ticket-1',
+    });
+    const result = await service.updateHireRequestInHubspot(
+      { id: 'r1' },
+      'status',
+      'user-1',
+    );
     expect(result).toEqual({ id: 'hs-ticket-1' });
-    expect(hireRequestUpdateServiceMock.execute).toHaveBeenCalledWith({ id: 'r1' }, 'status', 'user-1', undefined);
+    expect(hireRequestUpdateServiceMock.execute).toHaveBeenCalledWith(
+      { id: 'r1' },
+      'status',
+      'user-1',
+      undefined,
+    );
   });
 
   it('createOrganizationInHubspot should delegate to organizationCreationService', async () => {
-    organizationCreationServiceMock.execute.mockResolvedValue({ id: 'hs-co-1' });
-    const result = await service.createOrganizationInHubspot({ name: 'Clinic' }, 'user-1');
+    organizationCreationServiceMock.execute.mockResolvedValue({
+      id: 'hs-co-1',
+    });
+    const result = await service.createOrganizationInHubspot(
+      { name: 'Clinic' },
+      'user-1',
+    );
     expect(result).toEqual({ id: 'hs-co-1' });
-    expect(organizationCreationServiceMock.execute).toHaveBeenCalledWith({ name: 'Clinic' }, 'user-1', undefined);
+    expect(organizationCreationServiceMock.execute).toHaveBeenCalledWith(
+      { name: 'Clinic' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('updateOrganizationInHubspot should delegate to organizationUpdateService', async () => {
     organizationUpdateServiceMock.execute.mockResolvedValue(undefined);
     await service.updateOrganizationInHubspot({ id: 'org-1' }, 'user-1');
-    expect(organizationUpdateServiceMock.execute).toHaveBeenCalledWith({ id: 'org-1' }, 'user-1', undefined);
+    expect(organizationUpdateServiceMock.execute).toHaveBeenCalledWith(
+      { id: 'org-1' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('createContactInHubspot should delegate to contactCreationService', async () => {
     contactCreationServiceMock.execute.mockResolvedValue({ id: 'hs-ct-1' });
-    const result = await service.createContactInHubspot({ email: 'a@b.com' }, 'user-1');
+    const result = await service.createContactInHubspot(
+      { email: 'a@b.com' },
+      'user-1',
+    );
     expect(result).toEqual({ id: 'hs-ct-1' });
-    expect(contactCreationServiceMock.execute).toHaveBeenCalledWith({ email: 'a@b.com' }, 'user-1', undefined);
+    expect(contactCreationServiceMock.execute).toHaveBeenCalledWith(
+      { email: 'a@b.com' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('createContactFromReferredCompanyInHubspot should delegate to contactCreationFromCompanyService', async () => {
-    contactCreationFromCompanyServiceMock.execute.mockResolvedValue({ id: 'hs-ct-2' });
-    const result = await service.createContactFromReferredCompanyInHubspot({ companyId: 'c1' }, 'user-1');
+    contactCreationFromCompanyServiceMock.execute.mockResolvedValue({
+      id: 'hs-ct-2',
+    });
+    const result = await service.createContactFromReferredCompanyInHubspot(
+      { companyId: 'c1' },
+      'user-1',
+    );
     expect(result).toEqual({ id: 'hs-ct-2' });
-    expect(contactCreationFromCompanyServiceMock.execute).toHaveBeenCalledWith({ companyId: 'c1' }, 'user-1');
+    expect(contactCreationFromCompanyServiceMock.execute).toHaveBeenCalledWith(
+      { companyId: 'c1' },
+      'user-1',
+    );
   });
 
   it('updateContactInHubspot should delegate to contactUpdateService', async () => {
     updateContactServiceMock.execute.mockResolvedValue(undefined);
     await service.updateContactInHubspot({ id: 'ct-1' }, 'user-1');
-    expect(updateContactServiceMock.execute).toHaveBeenCalledWith({ id: 'ct-1' }, 'user-1', undefined);
+    expect(updateContactServiceMock.execute).toHaveBeenCalledWith(
+      { id: 'ct-1' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('deleteContactInHubspot should delegate to contactDeleteService', async () => {
     deleteContactServiceMock.execute.mockResolvedValue(undefined);
     await service.deleteContactInHubspot({ id: 'ct-1' }, 'user-1');
-    expect(deleteContactServiceMock.execute).toHaveBeenCalledWith({ id: 'ct-1' }, 'user-1', undefined);
+    expect(deleteContactServiceMock.execute).toHaveBeenCalledWith(
+      { id: 'ct-1' },
+      'user-1',
+      undefined,
+    );
   });
 
   it('deleteCompanyInHubspot should delegate to companyDeleteService', async () => {
     companyDeleteServiceMock.execute.mockResolvedValue(true);
-    const result = await service.deleteCompanyInHubspot('hs-co-1', 'user-1', 'org-1');
+    const result = await service.deleteCompanyInHubspot(
+      'hs-co-1',
+      'user-1',
+      'org-1',
+    );
     expect(result).toBe(true);
-    expect(companyDeleteServiceMock.execute).toHaveBeenCalledWith('hs-co-1', 'user-1', 'org-1', undefined);
+    expect(companyDeleteServiceMock.execute).toHaveBeenCalledWith(
+      'hs-co-1',
+      'user-1',
+      'org-1',
+      undefined,
+    );
   });
 });
 
@@ -1098,7 +1547,11 @@ describe('HubspotService => createCandidates', () => {
             candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
             organization: { findMany: jest.fn(), update: jest.fn() },
             contact: { findUnique: jest.fn(), create: jest.fn() },
-            uSER: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+            uSER: {
+              findFirst: jest.fn(),
+              findUnique: jest.fn(),
+              update: jest.fn(),
+            },
           },
         },
       ],
@@ -1110,7 +1563,9 @@ describe('HubspotService => createCandidates', () => {
 
   it('should throw BadRequestException when no candidates found in HubSpot', async () => {
     doSearchMock.mockResolvedValue({ results: [], total: 0 });
-    await expect(service.createCandidates('stage1')).rejects.toThrow('No candidates data found');
+    await expect(service.createCandidates('stage1')).rejects.toThrow(
+      'No candidates data found',
+    );
   });
 
   it('should create candidate when not found in DB and return success message', async () => {
@@ -1131,17 +1586,21 @@ describe('HubspotService => createCandidates', () => {
     const extendedClientMock = {
       crm: {
         objects: {
-          searchApi: { doSearch: jest.fn().mockResolvedValue({
-            results: [{
-              properties: {
-                hs_object_id: '111',
-                name: 'Test VA',
-                career_highlights_relevant_job_experiences: 'skill1;skill2',
-                language_spoken: 'English&Spanish',
-              },
-            }],
-            total: 1,
-          })},
+          searchApi: {
+            doSearch: jest.fn().mockResolvedValue({
+              results: [
+                {
+                  properties: {
+                    hs_object_id: '111',
+                    name: 'Test VA',
+                    career_highlights_relevant_job_experiences: 'skill1;skill2',
+                    language_spoken: 'English&Spanish',
+                  },
+                },
+              ],
+              total: 1,
+            }),
+          },
           batchApi: { update: jest.fn() },
           basicApi: { update: jest.fn() },
         },
@@ -1152,7 +1611,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1187,12 +1646,18 @@ describe('HubspotService => createCandidates', () => {
 
     const { Client } = jest.requireMock('@hubspot/api-client');
     Client.mockImplementation(() => ({
-      crm: { objects: { searchApi: { doSearch: localDoSearch }, batchApi: { update: jest.fn() }, basicApi: { update: jest.fn() } } },
+      crm: {
+        objects: {
+          searchApi: { doSearch: localDoSearch },
+          batchApi: { update: jest.fn() },
+          basicApi: { update: jest.fn() },
+        },
+      },
     }));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1227,15 +1692,17 @@ describe('HubspotService => updateCandidates', () => {
     };
 
     const localDoSearch = jest.fn().mockResolvedValue({
-      results: [{
-        properties: {
-          hs_object_id: '111',
-          name: 'Test VA',
-          career_highlights_relevant_job_experiences: 'skill1;skill2',
-          language_spoken: 'English&Spanish',
-          approved_positions_pairing: 'pos1;pos2',
+      results: [
+        {
+          properties: {
+            hs_object_id: '111',
+            name: 'Test VA',
+            career_highlights_relevant_job_experiences: 'skill1;skill2',
+            language_spoken: 'English&Spanish',
+            approved_positions_pairing: 'pos1;pos2',
+          },
         },
-      }],
+      ],
     });
 
     const { Client } = jest.requireMock('@hubspot/api-client');
@@ -1251,7 +1718,7 @@ describe('HubspotService => updateCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1284,12 +1751,18 @@ describe('HubspotService => updateCandidates', () => {
     const localDoSearch = jest.fn().mockResolvedValue({ results: [] });
     const { Client } = jest.requireMock('@hubspot/api-client');
     Client.mockImplementation(() => ({
-      crm: { objects: { searchApi: { doSearch: localDoSearch }, batchApi: { update: jest.fn() }, basicApi: { update: jest.fn() } } },
+      crm: {
+        objects: {
+          searchApi: { doSearch: localDoSearch },
+          batchApi: { update: jest.fn() },
+          basicApi: { update: jest.fn() },
+        },
+      },
     }));
 
     const module2: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1308,7 +1781,12 @@ describe('HubspotService => alignOwners', () => {
 
   beforeEach(async () => {
     fakePrisma = {
-      candidate: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+      candidate: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn(),
+      },
       candidateSkill: { create: jest.fn(), deleteMany: jest.fn() },
       candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
       organization: { findMany: jest.fn(), update: jest.fn() },
@@ -1329,7 +1807,7 @@ describe('HubspotService => alignOwners', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1383,10 +1861,19 @@ describe('HubspotService => populateContactsFromHubspot', () => {
 
   beforeEach(async () => {
     fakePrisma = {
-      candidate: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+      candidate: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn(),
+      },
       candidateSkill: { create: jest.fn(), deleteMany: jest.fn() },
       candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
-      organization: { findMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+      organization: {
+        findMany: jest.fn(),
+        update: jest.fn(),
+        findUnique: jest.fn(),
+      },
       contact: { findUnique: jest.fn(), create: jest.fn() },
       uSER: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     };
@@ -1404,7 +1891,7 @@ describe('HubspotService => populateContactsFromHubspot', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1418,7 +1905,12 @@ describe('HubspotService => populateContactsFromHubspot', () => {
         results: [
           {
             id: 'ct-1',
-            properties: { lifecyclestage: 'customer', email: 'doc@clinic.com', firstname: 'Doc', lastname: 'Smith' },
+            properties: {
+              lifecyclestage: 'customer',
+              email: 'doc@clinic.com',
+              firstname: 'Doc',
+              lastname: 'Smith',
+            },
             associations: { companies: { results: [{ id: 'co-1' }] } },
           },
         ],
@@ -1445,7 +1937,10 @@ describe('HubspotService => populateContactsFromHubspot', () => {
         results: [
           {
             id: 'ct-2',
-            properties: { lifecyclestage: 'customer', email: 'existing@clinic.com' },
+            properties: {
+              lifecyclestage: 'customer',
+              email: 'existing@clinic.com',
+            },
             associations: {},
           },
         ],
@@ -1512,7 +2007,10 @@ describe('HubspotService => populateContactsFromHubspot', () => {
         results: [
           {
             id: 'ct-5',
-            properties: { lifecyclestage: 'customer', email: 'linked@clinic.com' },
+            properties: {
+              lifecyclestage: 'customer',
+              email: 'linked@clinic.com',
+            },
             associations: {},
           },
         ],
@@ -1521,14 +2019,19 @@ describe('HubspotService => populateContactsFromHubspot', () => {
     });
 
     fakePrisma.contact.findUnique.mockResolvedValue(null);
-    fakePrisma.uSER.findFirst.mockResolvedValue({ id: 'user-99', contact: null });
+    fakePrisma.uSER.findFirst.mockResolvedValue({
+      id: 'user-99',
+      contact: null,
+    });
     fakePrisma.contact.create.mockResolvedValue({ id: 'new-ct-linked' });
 
     const result = await service.populateContactsFromHubspot();
 
     expect(result.created).toBe(1);
     expect(fakePrisma.contact.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ user_id: 'user-99' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ user_id: 'user-99' }),
+      }),
     );
   });
 });
@@ -1541,10 +2044,19 @@ describe('HubspotService => updateOrganizations', () => {
 
   beforeEach(async () => {
     fakePrisma = {
-      candidate: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn(), findMany: jest.fn() },
+      candidate: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn(),
+      },
       candidateSkill: { create: jest.fn(), deleteMany: jest.fn() },
       candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
-      organization: { findMany: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+      organization: {
+        findMany: jest.fn(),
+        update: jest.fn(),
+        findUnique: jest.fn(),
+      },
       contact: { findUnique: jest.fn(), create: jest.fn() },
       uSER: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     };
@@ -1565,7 +2077,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1585,23 +2097,30 @@ describe('HubspotService => updateOrganizations', () => {
 
   it('should update organization type when HubSpot returns data', async () => {
     fakePrisma.organization.findMany.mockResolvedValue([
-      { id: 'org-1', hubspot_id: 'hs-co-1', name: 'Test Clinic', owner_id: null },
+      {
+        id: 'org-1',
+        hubspot_id: 'hs-co-1',
+        name: 'Test Clinic',
+        owner_id: null,
+      },
     ]);
     fakePrisma.organization.update.mockResolvedValue({});
 
     const companySearchFn = jest.fn().mockResolvedValue({
-      results: [{
-        properties: {
-          hs_object_id: 'hs-co-1',
-          name: 'Test Clinic',
-          hs_object_type: 'prospect',
-          industry: 'healthcare',
-          specialties: 'cardiology,oncology',
-          number_of_employees: '50',
-          email: 'test@clinic.com',
-          organization_role: 'Prospect',
+      results: [
+        {
+          properties: {
+            hs_object_id: 'hs-co-1',
+            name: 'Test Clinic',
+            hs_object_type: 'prospect',
+            industry: 'healthcare',
+            specialties: 'cardiology,oncology',
+            number_of_employees: '50',
+            email: 'test@clinic.com',
+            organization_role: 'Prospect',
+          },
         },
-      }],
+      ],
     });
 
     const { Client } = jest.requireMock('@hubspot/api-client');
@@ -1618,7 +2137,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module2: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1631,7 +2150,12 @@ describe('HubspotService => updateOrganizations', () => {
 
   it('should skip organization when HubSpot returns no results for its hubspot_id', async () => {
     fakePrisma.organization.findMany.mockResolvedValue([
-      { id: 'org-2', hubspot_id: 'hs-co-2', name: 'Ghost Clinic', owner_id: null },
+      {
+        id: 'org-2',
+        hubspot_id: 'hs-co-2',
+        name: 'Ghost Clinic',
+        owner_id: null,
+      },
     ]);
 
     const emptySearchFn = jest.fn().mockResolvedValue({ results: [] });
@@ -1649,7 +2173,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module3: TestingModule = await Test.createTestingModule({
       providers: [
-        ...buildProviders().filter(p => p.provide !== PrismaService),
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
     }).compile();
@@ -1679,7 +2203,11 @@ describe('HubspotService => changeDataFromHubspot sort edge cases', () => {
     HandlerOrganizationCreationMock.execute.mockResolvedValue(undefined);
     // 'company.creation' < 'object.creation' alphabetically, so sorting should handle both orders
     const data = [
-      { subscriptionType: 'object.creation', objectTypeId: '2-5922196', objectId: '1' },
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '2-5922196',
+        objectId: '1',
+      },
       { subscriptionType: 'company.creation', objectId: '2' },
     ];
     await service.changeDataFromHubspot(data);
@@ -1689,7 +2217,13 @@ describe('HubspotService => changeDataFromHubspot sort edge cases', () => {
 
   it('should handle resolveWebhookMeta returning null for unrecognized objectTypeId in object event', async () => {
     // object.creation with unknown objectTypeId — meta is null, no audit call needed
-    const data = [{ subscriptionType: 'object.creation', objectTypeId: '9-unknown', objectId: '42' }];
+    const data = [
+      {
+        subscriptionType: 'object.creation',
+        objectTypeId: '9-unknown',
+        objectId: '42',
+      },
+    ];
     await expect(service.changeDataFromHubspot(data)).resolves.toBeUndefined();
   });
 });
@@ -1720,13 +2254,15 @@ describe('HubspotService => fetchPropertiesAndCandidates', () => {
 
   it('should fetch candidates successfully with vaid in properties', async () => {
     process.env.HUBSPOT_CUSTOM_OBJECT = 'custom_obj';
-    doSearchMock.mockResolvedValueOnce({
-      results: [{ id: '1', properties: {} }],
-      paging: { next: { after: 'next_page' } },
-    }).mockResolvedValueOnce({
-      results: [{ id: '2', properties: {} }],
-      paging: undefined,
-    });
+    doSearchMock
+      .mockResolvedValueOnce({
+        results: [{ id: '1', properties: {} }],
+        paging: { next: { after: 'next_page' } },
+      })
+      .mockResolvedValueOnce({
+        results: [{ id: '2', properties: {} }],
+        paging: undefined,
+      });
 
     const result = await service.fetchPropertiesAndCandidates();
     expect(result).toEqual({
@@ -1737,8 +2273,12 @@ describe('HubspotService => fetchPropertiesAndCandidates', () => {
     });
 
     expect(doSearchMock).toHaveBeenCalledTimes(2);
-    expect(doSearchMock).toHaveBeenNthCalledWith(1, 'custom_obj', expect.objectContaining({
-      properties: expect.arrayContaining(['vaid']),
-    }));
+    expect(doSearchMock).toHaveBeenNthCalledWith(
+      1,
+      'custom_obj',
+      expect.objectContaining({
+        properties: expect.arrayContaining(['vaid']),
+      }),
+    );
   });
 });

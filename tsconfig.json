@@ -23,5 +23,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "test", "prisma", "scripts", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "test", "prisma", "scripts"]
 }

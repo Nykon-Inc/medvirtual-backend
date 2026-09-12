@@ -9,7 +9,10 @@ export class ListInvoicesDto {
   @IsOptional()
   status?: string;
 
-  @ApiProperty({ required: false, description: 'Search by reference, invoice number, or organization name' })
+  @ApiProperty({
+    required: false,
+    description: 'Search by reference, invoice number, or organization name',
+  })
   @IsString()
   @IsOptional()
   search?: string;
@@ -20,7 +23,9 @@ export class ListInvoicesDto {
   @ApiProperty({ required: false, type: [String] })
   @IsUUID(undefined, { each: true })
   @IsOptional()
-  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
+  @Transform(({ value }) =>
+    Array.isArray(value) ? value : value ? [value] : undefined,
+  )
   organizationIds?: string[];
 
   @ApiProperty({ enum: ['arrears', 'prebill'], required: false })
@@ -28,12 +33,18 @@ export class ListInvoicesDto {
   @IsOptional()
   billingMode?: 'arrears' | 'prebill';
 
-  @ApiProperty({ required: false, description: 'Filter by billing start date (gte)' })
+  @ApiProperty({
+    required: false,
+    description: 'Filter by billing start date (gte)',
+  })
   @IsString()
   @IsOptional()
   startDate?: string;
 
-  @ApiProperty({ required: false, description: 'Filter by billing end date (lte)' })
+  @ApiProperty({
+    required: false,
+    description: 'Filter by billing end date (lte)',
+  })
   @IsString()
   @IsOptional()
   endDate?: string;

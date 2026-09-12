@@ -117,8 +117,7 @@ export const candidadeToDbDictionary: Record<string, string | string[]> = {
   emrehr_data_entry__chart_updating: 'emrehr_data_entry__chart_updating',
   patient_intake__demographics_documentation_accuracy:
     'patient_intake__demographics_documentation_accuracy',
-  referrals_sending_receiving_tracking:
-    'referrals_sending_receiving_tracking',
+  referrals_sending_receiving_tracking: 'referrals_sending_receiving_tracking',
   total_score_medical__dental_admin: 'total_score_medical__dental_admin',
   notes_medical__dental_admin: 'notes_medical__dental_admin',
 

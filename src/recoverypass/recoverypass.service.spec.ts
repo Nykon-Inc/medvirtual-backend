@@ -47,7 +47,10 @@ describe('RecoverypassService', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: PrismaService, useValue: prismaServiceMock },
         { provide: MailService, useValue: mailServiceMock },
-        { provide: EmailTemplatesService, useValue: { getTemplateContent: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: EmailTemplatesService,
+          useValue: { getTemplateContent: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 
@@ -60,8 +63,9 @@ describe('RecoverypassService', () => {
 
   describe('forgotPassword', () => {
     it('should throw 400 if email is empty', async () => {
-      await expect(service.forgotPassword({ email: '' }))
-        .rejects.toThrow('Email is required');
+      await expect(service.forgotPassword({ email: '' })).rejects.toThrow(
+        'Email is required',
+      );
     });
 
     it('should return Error if user does not exist (anti-enumeration)', async () => {
@@ -132,7 +136,10 @@ describe('RecoverypassService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       await expect(
-        service.setPassword({ token: 'wrong-token', password: 'newPassword123' }),
+        service.setPassword({
+          token: 'wrong-token',
+          password: 'newPassword123',
+        }),
       ).rejects.toThrow('Invalid or expired token');
     });
 

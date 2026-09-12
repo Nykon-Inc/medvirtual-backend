@@ -11,7 +11,12 @@ import { BillComPayoutService } from './bill-com-payout.service';
 import { BillWebhookDto } from './dto/bill-com-webhook.dto';
 import { BillWebhookGuard } from './guards/bill-com-webhook.guard';
 
-const TERMINAL_SUCCESS_STATUSES = new Set(['PROCESSED', 'PAID', 'COMPLETED', 'SUCCESS']);
+const TERMINAL_SUCCESS_STATUSES = new Set([
+  'PROCESSED',
+  'PAID',
+  'COMPLETED',
+  'SUCCESS',
+]);
 
 @ApiTags('webhooks')
 @Controller('webhooks')

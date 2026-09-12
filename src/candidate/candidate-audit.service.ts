@@ -78,7 +78,9 @@ export class CandidateAuditService {
    */
   async log(params: CandidateAuditLogParams): Promise<void> {
     try {
-      await this.prisma.candidateAuditLog.create({ data: this.buildData(params) });
+      await this.prisma.candidateAuditLog.create({
+        data: this.buildData(params),
+      });
     } catch (err) {
       console.error('[CandidateAudit] Failed to write audit log:', err);
     }

@@ -1678,7 +1678,7 @@ describe('CronService', () => {
 
       // upsert (not create) is used both times — no duplicate rows possible
       expect(prismaServiceMock.businessUnit.upsert).toHaveBeenCalled();
-      const createCalls = (prismaServiceMock.businessUnit as any).create;
+      const createCalls = prismaServiceMock.businessUnit.create;
       expect(createCalls).toBeUndefined();
     });
   });

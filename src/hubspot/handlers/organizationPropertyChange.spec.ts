@@ -33,8 +33,14 @@ describe('HandlerOrganizationPropertyChange', () => {
       providers: [
         HandlerOrganizationPropertyChange,
         { provide: PrismaService, useValue: prismaMock },
-        { provide: HandlerOrganizationCreation, useValue: organizationCreationMock },
-        { provide: HandlerOrganizationDeletion, useValue: organizationDeletionMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: organizationCreationMock,
+        },
+        {
+          provide: HandlerOrganizationDeletion,
+          useValue: organizationDeletionMock,
+        },
         {
           provide: HandlerOrganizationReactivation,
           useValue: organizationReactivationMock,
@@ -59,7 +65,8 @@ describe('HandlerOrganizationPropertyChange', () => {
     // Default: MedVirtual/Berry Virtual allowed, anything else not — individual
     // tests override this via mockResolvedValueOnce/mockImplementation as needed.
     businessUnitContextMock.isAllowedHubspotValue.mockImplementation(
-      (v: string) => Promise.resolve(v === 'MedVirtual' || v === 'Berry Virtual'),
+      (v: string) =>
+        Promise.resolve(v === 'MedVirtual' || v === 'Berry Virtual'),
     );
   });
 
@@ -556,7 +563,9 @@ describe('HandlerOrganizationPropertyChange', () => {
     );
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ event: 'eligibility_pending_confirmation' }),
+        data: expect.objectContaining({
+          event: 'eligibility_pending_confirmation',
+        }),
       }),
     );
     expect(result).toBe(true);
@@ -634,7 +643,9 @@ describe('HandlerOrganizationPropertyChange', () => {
     );
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ event: 'eligibility_pending_confirmation' }),
+        data: expect.objectContaining({
+          event: 'eligibility_pending_confirmation',
+        }),
       }),
     );
     expect(result).toBe(true);

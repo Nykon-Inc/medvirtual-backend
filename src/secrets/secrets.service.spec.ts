@@ -55,16 +55,18 @@ describe('SecretsService', () => {
 
   describe('getAllSecrets', () => {
     it('should compile and structure all secrets correctly', async () => {
-      jest.spyOn(service, 'getSecret').mockImplementation(async (secretId: string) => {
-        if (secretId === 'prod/stripe/key01') {
-          return { stripe_secret_key: 'sk_test_123' };
-        }
-        if (secretId.startsWith('prod/hubstaff/')) {
-          const num = secretId.substring(secretId.length - 2);
-          return { api_key: `hk_${num}` };
-        }
-        return null;
-      });
+      jest
+        .spyOn(service, 'getSecret')
+        .mockImplementation(async (secretId: string) => {
+          if (secretId === 'prod/stripe/key01') {
+            return { stripe_secret_key: 'sk_test_123' };
+          }
+          if (secretId.startsWith('prod/hubstaff/')) {
+            const num = secretId.substring(secretId.length - 2);
+            return { api_key: `hk_${num}` };
+          }
+          return null;
+        });
 
       const secrets = await service.getAllSecrets();
       expect(secrets).toEqual({

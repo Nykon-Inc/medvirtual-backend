@@ -3,7 +3,11 @@ import axios from 'axios';
 import { HireRequestCreationService } from './hireRequest';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -50,7 +54,9 @@ describe('HireRequestCreationService', () => {
       ],
     }).compile();
 
-    service = module.get<HireRequestCreationService>(HireRequestCreationService);
+    service = module.get<HireRequestCreationService>(
+      HireRequestCreationService,
+    );
   });
 
   // ── Success path ─────────────────────────────────────────────────────────────
@@ -108,7 +114,9 @@ describe('HireRequestCreationService', () => {
       await service.execute(baseData, 'user-abc');
       expect(auditMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
-          payload: expect.objectContaining({ organizationId: 'hs-company-123' }),
+          payload: expect.objectContaining({
+            organizationId: 'hs-company-123',
+          }),
         }),
       );
     });
@@ -118,7 +126,11 @@ describe('HireRequestCreationService', () => {
 
   describe('execute() — failure', () => {
     it('logs CREATE audit with success=false when Hubspot API returns HTTP error', async () => {
-      const apiError = { response: { data: 'Bad request', status: 400 }, message: 'Request failed', code: undefined };
+      const apiError = {
+        response: { data: 'Bad request', status: 400 },
+        message: 'Request failed',
+        code: undefined,
+      };
       mockedAxios.post.mockRejectedValueOnce(apiError);
 
       await service.execute(baseData, 'user-abc');

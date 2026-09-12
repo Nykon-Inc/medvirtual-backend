@@ -3,7 +3,11 @@ import axios from 'axios';
 import { ContactCreationService } from './contact';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -48,7 +52,9 @@ describe('ContactCreationService', () => {
 
   describe('execute() — success', () => {
     beforeEach(() => {
-      mockedAxios.post.mockResolvedValueOnce({ data: { id: 'hs-contact-555' } });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'hs-contact-555' },
+      });
       prismaMock.uSER.update.mockResolvedValueOnce({});
     });
 

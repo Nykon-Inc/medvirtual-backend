@@ -56,9 +56,9 @@ describe('renderOfferPanelCandidateCards', () => {
   it('returns an empty string when there are no candidates', () => {
     expect(renderOfferPanelCandidateCards([], makeTheme(), false)).toBe('');
     expect(renderOfferPanelCandidateCards(null, makeTheme(), false)).toBe('');
-    expect(
-      renderOfferPanelCandidateCards(undefined, makeTheme(), false),
-    ).toBe('');
+    expect(renderOfferPanelCandidateCards(undefined, makeTheme(), false)).toBe(
+      '',
+    );
   });
 
   // Placeholder values are injected raw, and names come from HubSpot.
@@ -105,9 +105,7 @@ describe('renderOfferPanelCandidateCards', () => {
       expect(html).toContain('$1,500');
       // The promo price may still appear in the banner headline, so assert on
       // the card's own rate markup rather than the whole document.
-      expect(html).not.toContain(
-        'letter-spacing:-0.3px;">$1,760',
-      );
+      expect(html).not.toContain('letter-spacing:-0.3px;">$1,760');
     });
 
     // Regression: the banner was designed but never implemented, so a promo
@@ -229,9 +227,9 @@ describe('renderOfferPanelCandidateCards', () => {
     });
 
     it('masks the denormalized name column too', () => {
-      expect(
-        maskCandidateName({ name: 'Carlos Eduardo Mendes' }),
-      ).toBe('Carlos Eduardo M.');
+      expect(maskCandidateName({ name: 'Carlos Eduardo Mendes' })).toBe(
+        'Carlos Eduardo M.',
+      );
     });
 
     it('never emits a full surname in the rendered card', () => {

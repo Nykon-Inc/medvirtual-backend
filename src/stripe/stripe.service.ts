@@ -216,7 +216,9 @@ export class StripeService implements OnModuleInit {
         this.logger.warn(
           `Found ${sameUrl.length} Stripe webhook endpoints for URL ${webhookUrl} (${sameUrl
             .map((e) => e.id)
-            .join(', ')}). Deleting all and creating a single managed endpoint.`,
+            .join(
+              ', ',
+            )}). Deleting all and creating a single managed endpoint.`,
         );
         for (const item of sameUrl) {
           await this.stripe.webhookEndpoints.del(item.id);
@@ -644,7 +646,7 @@ export class StripeService implements OnModuleInit {
           this.logger.log(
             `Handling invoice.finalized for Stripe ID: ${event.id}`,
           );
-          const finalizedInvoice = event.data.object as StripeCore.Invoice;
+          const finalizedInvoice = event.data.object;
           const internalInvoice = await this.prisma.invoice.findUnique({
             where: { stripe_invoice_id: finalizedInvoice.id },
           });
@@ -715,9 +717,7 @@ export class StripeService implements OnModuleInit {
             if (dueDateMs > now) {
               const delayMs = dueDateMs - now;
               const jobId = `attempt-collection-${internalInvoice.id}`;
-              if (
-                !queuesEnabled(this.configService)
-              ) {
+              if (!queuesEnabled(this.configService)) {
                 this.logger.warn(
                   'LOCAL mode — attempt-collection job NOT scheduled.',
                 );
@@ -1284,7 +1284,9 @@ export class StripeService implements OnModuleInit {
       // When the line carries a real discount, Stripe must see the GROSS amount and
       // apply the discount itself via a coupon — otherwise the discount would be
       // subtracted twice (once in our own final_total, again by Stripe).
-      const grossAmount = isDiscount ? finalTotal - adjustmentAmount : finalTotal;
+      const grossAmount = isDiscount
+        ? finalTotal - adjustmentAmount
+        : finalTotal;
 
       if (Math.round(grossAmount * 100) === 0) {
         continue;
@@ -1547,7 +1549,9 @@ export class StripeService implements OnModuleInit {
     }
 
     const customer = await this.safeStripeCall(() =>
-      this.stripe.customers.retrieve(invoiceConfig.stripe_customer_id as string),
+      this.stripe.customers.retrieve(
+        invoiceConfig.stripe_customer_id as string,
+      ),
     );
 
     if (customer.deleted) {

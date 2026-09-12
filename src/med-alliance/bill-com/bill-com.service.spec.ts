@@ -53,7 +53,12 @@ describe('BillComService', () => {
     it('persists a trusted session to billcom_session_id and clears pending', async () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({ ...baseUser });
       mockedAxios.post.mockResolvedValue({
-        data: { sessionId: 'sess-1', trusted: true, organizationId: 'org-1', userId: 'u-1' },
+        data: {
+          sessionId: 'sess-1',
+          trusted: true,
+          organizationId: 'org-1',
+          userId: 'u-1',
+        },
       } as any);
 
       const result = await service.login('admin-1', {
@@ -76,7 +81,12 @@ describe('BillComService', () => {
     it('holds an untrusted session only in billcom_pending_session_id, never billcom_session_id', async () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({ ...baseUser });
       mockedAxios.post.mockResolvedValue({
-        data: { sessionId: 'sess-2', trusted: false, organizationId: 'org-1', userId: 'u-1' },
+        data: {
+          sessionId: 'sess-2',
+          trusted: false,
+          organizationId: 'org-1',
+          userId: 'u-1',
+        },
       } as any);
 
       const result = await service.login('admin-1', {
@@ -98,10 +108,18 @@ describe('BillComService', () => {
         billcom_device: 'MedVirtual Admin - admin@medvirtual.ai',
       });
       mockedAxios.post.mockResolvedValue({
-        data: { sessionId: 'sess-3', trusted: true, organizationId: 'org-1', userId: 'u-1' },
+        data: {
+          sessionId: 'sess-3',
+          trusted: true,
+          organizationId: 'org-1',
+          userId: 'u-1',
+        },
       } as any);
 
-      await service.login('admin-1', { username: 'admin@medvirtual.ai', password: 'secret' });
+      await service.login('admin-1', {
+        username: 'admin@medvirtual.ai',
+        password: 'secret',
+      });
 
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.stringContaining('/login'),
@@ -129,7 +147,11 @@ describe('BillComService', () => {
       mockedAxios.post.mockRejectedValue({
         response: {
           data: [
-            { code: 'BDC_5324', severity: 'ERROR', message: 'Mfa action blocked.' },
+            {
+              code: 'BDC_5324',
+              severity: 'ERROR',
+              message: 'Mfa action blocked.',
+            },
           ],
         },
       });
@@ -173,7 +195,9 @@ describe('BillComService', () => {
   // ---------------------------------------------------------------------
   describe('requestMfaChallenge', () => {
     it('returns the challengeId from Bill.com', async () => {
-      mockedAxios.post.mockResolvedValue({ data: { challengeId: 'chal-1' } } as any);
+      mockedAxios.post.mockResolvedValue({
+        data: { challengeId: 'chal-1' },
+      } as any);
       await expect(
         service.requestMfaChallenge('admin-1', 'sess-1'),
       ).resolves.toEqual({ challengeId: 'chal-1' });
@@ -186,7 +210,8 @@ describe('BillComService', () => {
             {
               code: 'BDC_1354',
               severity: 'ERROR',
-              message: 'Specified 2-Step Verification phone is not setup or is invalid.',
+              message:
+                'Specified 2-Step Verification phone is not setup or is invalid.',
             },
           ],
         },
@@ -201,7 +226,11 @@ describe('BillComService', () => {
       mockedAxios.post.mockRejectedValue({
         response: {
           data: [
-            { code: 'BDC_1570', severity: 'ERROR', message: 'Shield Service Errors.' },
+            {
+              code: 'BDC_1570',
+              severity: 'ERROR',
+              message: 'Shield Service Errors.',
+            },
           ],
         },
       });
@@ -262,7 +291,9 @@ describe('BillComService', () => {
   // ---------------------------------------------------------------------
   describe('addPhoneForMfaSetup', () => {
     it('posts to /mfa/setup with exactly the documented payload (no device/primary)', async () => {
-      mockedAxios.post.mockResolvedValue({ data: { setupId: 'setup-1' } } as any);
+      mockedAxios.post.mockResolvedValue({
+        data: { setupId: 'setup-1' },
+      } as any);
 
       const result = await service.addPhoneForMfaSetup(
         'admin-1',
@@ -283,7 +314,9 @@ describe('BillComService', () => {
     });
 
     it('does NOT persist billcom_device (regression guard: premature persistence caused a BDC_5324 retry loop)', async () => {
-      mockedAxios.post.mockResolvedValue({ data: { setupId: 'setup-1' } } as any);
+      mockedAxios.post.mockResolvedValue({
+        data: { setupId: 'setup-1' },
+      } as any);
 
       await service.addPhoneForMfaSetup('admin-1', 'sess-1', '+14155552671');
 
@@ -294,7 +327,11 @@ describe('BillComService', () => {
       mockedAxios.post.mockRejectedValue({
         response: {
           data: [
-            { code: 'BDC_5324', severity: 'ERROR', message: 'Mfa action blocked.' },
+            {
+              code: 'BDC_5324',
+              severity: 'ERROR',
+              message: 'Mfa action blocked.',
+            },
           ],
         },
       });
@@ -309,7 +346,11 @@ describe('BillComService', () => {
       mockedAxios.post.mockRejectedValue({
         response: {
           data: [
-            { code: 'BDC_1570', severity: 'ERROR', message: 'Shield Service Errors.' },
+            {
+              code: 'BDC_1570',
+              severity: 'ERROR',
+              message: 'Shield Service Errors.',
+            },
           ],
         },
       });
@@ -319,7 +360,9 @@ describe('BillComService', () => {
       ).rejects.not.toThrow(BillComAlreadyEnrolledException);
       await expect(
         service.addPhoneForMfaSetup('admin-1', 'sess-1', '+14155552671'),
-      ).rejects.toThrow('Bill.com addPhoneForMfaSetup failed: Shield Service Errors.');
+      ).rejects.toThrow(
+        'Bill.com addPhoneForMfaSetup failed: Shield Service Errors.',
+      );
     });
   });
 
@@ -351,7 +394,9 @@ describe('BillComService', () => {
 
     it('does NOT persist billcom_device (regression guard: premature persistence caused a BDC_5324 retry loop)', async () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({ ...baseUser });
-      mockedAxios.post.mockResolvedValue({ data: { setupId: 'setup-1' } } as any);
+      mockedAxios.post.mockResolvedValue({
+        data: { setupId: 'setup-1' },
+      } as any);
 
       await service.addPhoneForMfaSetup('admin-1', 'sess-1', '+14155552671');
 
@@ -362,7 +407,9 @@ describe('BillComService', () => {
   describe('validatePhoneForMfaSetup', () => {
     it('persists billcom_device on SUCCESS', async () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({ ...baseUser });
-      mockedAxios.post.mockResolvedValue({ data: { status: 'SUCCESS' } } as any);
+      mockedAxios.post.mockResolvedValue({
+        data: { status: 'SUCCESS' },
+      } as any);
 
       const result = await service.validatePhoneForMfaSetup(
         'admin-1',
@@ -397,12 +444,23 @@ describe('BillComService', () => {
       mockPrisma.uSER.findUniqueOrThrow.mockResolvedValue({ ...baseUser });
       mockedAxios.post.mockRejectedValue({
         response: {
-          data: [{ code: 'BDC_5324', severity: 'ERROR', message: 'Mfa action blocked.' }],
+          data: [
+            {
+              code: 'BDC_5324',
+              severity: 'ERROR',
+              message: 'Mfa action blocked.',
+            },
+          ],
         },
       });
 
       await expect(
-        service.validatePhoneForMfaSetup('admin-1', 'sess-1', 'setup-1', '654321'),
+        service.validatePhoneForMfaSetup(
+          'admin-1',
+          'sess-1',
+          'setup-1',
+          '654321',
+        ),
       ).rejects.toThrow('Mfa action blocked.');
 
       expect(mockPrisma.uSER.update).not.toHaveBeenCalled();
@@ -523,7 +581,12 @@ describe('BillComService', () => {
     it('never grants a payable session on login alone when trusted is false — only a validated MFA code (or a later trusted:true login) does', async () => {
       // 1) Initial login comes back untrusted.
       mockedAxios.post.mockResolvedValueOnce({
-        data: { sessionId: 'sess-pending', organizationId: 'org-1', userId: 'admin-1', trusted: false },
+        data: {
+          sessionId: 'sess-pending',
+          organizationId: 'org-1',
+          userId: 'admin-1',
+          trusted: false,
+        },
       } as any);
       const loginResult = await statefulService.login('admin-1', {
         username: 'admin@medvirtual.ai',
@@ -553,7 +616,10 @@ describe('BillComService', () => {
         'chal-1',
         '123456',
       );
-      expect(validateResult).toEqual({ sessionId: 'sess-pending', trusted: true });
+      expect(validateResult).toEqual({
+        sessionId: 'sess-pending',
+        trusted: true,
+      });
 
       // Now payments are unlocked, using the MFA-validated session directly.
       mockedAxios.post.mockResolvedValueOnce({

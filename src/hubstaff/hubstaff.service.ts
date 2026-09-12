@@ -5,7 +5,11 @@ import Bottleneck from 'bottleneck';
 import { SecretsService } from '../secrets/secrets.service';
 import * as redis from 'redis';
 import { keyPrefix } from '../common/app-config';
-import { HubstaffMember, HubstaffUser, HubstaffTimeOffRequest } from './hubstaff.interface';
+import {
+  HubstaffMember,
+  HubstaffUser,
+  HubstaffTimeOffRequest,
+} from './hubstaff.interface';
 
 export enum ActivityType {
   WORK = 'WORK',
@@ -41,7 +45,7 @@ export class HubstaffService implements OnModuleInit {
   private globalRefreshLimiter: Bottleneck;
   private refreshQueues: Record<string, Bottleneck>;
   private hubstaffGlobalLimiter: Bottleneck;
-  private organizationId: string = "355251";
+  private organizationId: string = '355251';
   private readonly API_BASE_URL = 'https://api.hubstaff.com/';
 
   constructor(
@@ -59,10 +63,10 @@ export class HubstaffService implements OnModuleInit {
 
     // Layer 2: Per-rotation Queue (ensures atomicity of the token cache)
     this.refreshQueues = {
-      "1": new Bottleneck({ maxConcurrent: 1 }),
-      "2": new Bottleneck({ maxConcurrent: 1 }),
-      "3": new Bottleneck({ maxConcurrent: 1 }),
-      "4": new Bottleneck({ maxConcurrent: 1 }),
+      '1': new Bottleneck({ maxConcurrent: 1 }),
+      '2': new Bottleneck({ maxConcurrent: 1 }),
+      '3': new Bottleneck({ maxConcurrent: 1 }),
+      '4': new Bottleneck({ maxConcurrent: 1 }),
     };
 
     // Centralized request handler for all Hubstaff API calls.
@@ -89,7 +93,11 @@ export class HubstaffService implements OnModuleInit {
   /**
    * Redis-like setter using actual Redis client
    */
-  private async redisSet(key: string, value: string, options?: { EX: number }): Promise<void> {
+  private async redisSet(
+    key: string,
+    value: string,
+    options?: { EX: number },
+  ): Promise<void> {
     if (options?.EX) {
       await this.redisClient.set(key, value, { EX: options.EX });
     } else {
@@ -105,7 +113,7 @@ export class HubstaffService implements OnModuleInit {
     for (let i = 1; i <= 4; i++) {
       const key = `${this.keyPrefix}hubstaff_token_${i}`;
       const cached = await this.redisGet(key);
-      if (cached !== "__RATE_LIMIT__") {
+      if (cached !== '__RATE_LIMIT__') {
         return true;
       }
     }
@@ -119,7 +127,7 @@ export class HubstaffService implements OnModuleInit {
     const key = `${this.keyPrefix}hubstaff_token_${rotation}`;
     const cached = await this.redisGet(key);
 
-    if (cached && cached !== "__RATE_LIMIT__") {
+    if (cached && cached !== '__RATE_LIMIT__') {
       return cached;
     }
 
@@ -129,27 +137,30 @@ export class HubstaffService implements OnModuleInit {
       return this.refreshQueues[rotation].schedule(async () => {
         // Check cache *again* after waiting in the two queues
         const cachedInside = await this.redisGet(key);
-        if (cachedInside && cachedInside !== "__RATE_LIMIT__") {
+        if (cachedInside && cachedInside !== '__RATE_LIMIT__') {
           return cachedInside;
         }
 
         // Fetch refresh token from secrets
         const secrets = await this.secretsService.getAllSecrets();
         const hubstaffKeys = secrets.hubstaff;
-        const refreshToken = hubstaffKeys[`key0${rotation}` as keyof typeof hubstaffKeys];
+        const refreshToken =
+          hubstaffKeys[`key0${rotation}` as keyof typeof hubstaffKeys];
         if (!refreshToken) {
-          console.warn(`[Hubstaff] ⚠️ Refresh token for rotation ${rotation} not found in secrets.`);
+          console.warn(
+            `[Hubstaff] ⚠️ Refresh token for rotation ${rotation} not found in secrets.`,
+          );
           return null;
         }
 
         const params = new URLSearchParams({
-          grant_type: "refresh_token",
+          grant_type: 'refresh_token',
           refresh_token: refreshToken,
         });
 
         try {
           const res = await axios.post(token_endpoint, params, {
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 10_000,
           });
 
@@ -158,13 +169,18 @@ export class HubstaffService implements OnModuleInit {
           return access_token;
         } catch (err: any) {
           const errorData = err.response?.data;
-          if (errorData?.error === "rate_limit") {
-            console.warn(`[Hubstaff] 🚦 Rate limit hit on token refresh (rotation ${rotation})`);
+          if (errorData?.error === 'rate_limit') {
+            console.warn(
+              `[Hubstaff] 🚦 Rate limit hit on token refresh (rotation ${rotation})`,
+            );
             // Mark the token as rate-limited for 1 hour
-            await this.redisSet(key, "__RATE_LIMIT__", { EX: 3600 });
+            await this.redisSet(key, '__RATE_LIMIT__', { EX: 3600 });
             return null;
           }
-          console.error(`[Hubstaff] ❌ Error refreshing token for rotation ${rotation}:`, err.message);
+          console.error(
+            `[Hubstaff] ❌ Error refreshing token for rotation ${rotation}:`,
+            err.message,
+          );
           throw err;
         }
       });
@@ -175,7 +191,7 @@ export class HubstaffService implements OnModuleInit {
    * Centralized request handler for all Hubstaff API calls.
    */
   public async hubstaffRequest<T = any>(
-    method: "get" | "post" | "put" | "delete",
+    method: 'get' | 'post' | 'put' | 'delete',
     endpoint: string,
     opts: { params?: any; data?: any; retryCount?: number } = {},
   ): Promise<AxiosResponse<T>> {
@@ -189,7 +205,9 @@ export class HubstaffService implements OnModuleInit {
         const pauseTimeMs = 60_000; // Pause for 60 seconds
 
         if (pauseCount === 1) {
-          console.warn(`[Hubstaff] 🚧 All tokens are marked rate-limited. Idling for ${pauseTimeMs / 1000}s until one resets.`);
+          console.warn(
+            `[Hubstaff] 🚧 All tokens are marked rate-limited. Idling for ${pauseTimeMs / 1000}s until one resets.`,
+          );
         }
 
         await new Promise((resolve) => setTimeout(resolve, pauseTimeMs));
@@ -198,7 +216,7 @@ export class HubstaffService implements OnModuleInit {
       const rotationKey = `${this.keyPrefix}hubstaff_token_rotation`;
 
       // Determine which rotation token to use based on simple round-robin
-      let rotation = (await this.redisGet(rotationKey)) || "1";
+      let rotation = (await this.redisGet(rotationKey)) || '1';
 
       const tokenEndpoint = await this._getConfig();
       let accessToken: string | null = null;
@@ -208,27 +226,32 @@ export class HubstaffService implements OnModuleInit {
       while (rotationAttempts < 4) {
         accessToken = await this._getAccessToken_new(tokenEndpoint, rotation);
 
-        if (accessToken && accessToken !== "__RATE_LIMIT__") {
+        if (accessToken && accessToken !== '__RATE_LIMIT__') {
           break;
         }
 
-        console.warn(`[Hubstaff] ❌ Rotation ${rotation} unavailable, switching to next.`);
+        console.warn(
+          `[Hubstaff] ❌ Rotation ${rotation} unavailable, switching to next.`,
+        );
 
         // Cycle to the next rotation for the next attempt/next request
-        rotation = rotation === "4" ? "1" : (Number(rotation) + 1).toString();
+        rotation = rotation === '4' ? '1' : (Number(rotation) + 1).toString();
         rotationAttempts++;
 
         if (rotationAttempts >= 4) {
-          throw new Error(`[Hubstaff] ❌ All token rotations unavailable after ${rotationAttempts} checks.`);
+          throw new Error(
+            `[Hubstaff] ❌ All token rotations unavailable after ${rotationAttempts} checks.`,
+          );
         }
       }
 
       // Atomically set the NEXT rotation for the *next* hubstaffRequest call
-      const nextRotation = rotation === "4" ? "1" : (Number(rotation) + 1).toString();
+      const nextRotation =
+        rotation === '4' ? '1' : (Number(rotation) + 1).toString();
       await this.redisSet(rotationKey, nextRotation);
 
       if (!accessToken) {
-        throw new Error("[Hubstaff] Failed to secure an access token.");
+        throw new Error('[Hubstaff] Failed to secure an access token.');
       }
 
       try {
@@ -239,7 +262,7 @@ export class HubstaffService implements OnModuleInit {
           data,
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           timeout: 30000,
           validateStatus: () => true,
@@ -247,13 +270,15 @@ export class HubstaffService implements OnModuleInit {
 
         // ⚠️ Cloudflare HTML / 520 handling
         if (
-          typeof res.data === "string" &&
-          res.data.includes("<!DOCTYPE html>") &&
-          res.data.includes("cloudflare.com")
+          typeof res.data === 'string' &&
+          res.data.includes('<!DOCTYPE html>') &&
+          res.data.includes('cloudflare.com')
         ) {
           if (retryCount < 5) {
             const delay = 1000 * Math.pow(2, retryCount + 1);
-            console.log(`[Hubstaff] 🕐 Retrying Cloudflare 520 after ${delay / 1000}s`);
+            console.log(
+              `[Hubstaff] 🕐 Retrying Cloudflare 520 after ${delay / 1000}s`,
+            );
             await new Promise((r) => setTimeout(r, delay));
             return this.hubstaffRequest(method, endpoint, {
               params,
@@ -270,14 +295,14 @@ export class HubstaffService implements OnModuleInit {
         }
 
         // 🚦 Handle explicit rate limits (429 or code: 'rate_limit')
-        const code = (res.data as any)?.code;
-        if (res.status === 429 || code === "rate_limit") {
+        const code = res.data?.code;
+        if (res.status === 429 || code === 'rate_limit') {
           console.warn(`[Hubstaff] 🚦 Rate limit hit (rotation ${rotation})`);
 
           // Explicitly mark the token as rate-limited for 1 hour to skip it
           await this.redisSet(
             `${this.keyPrefix}hubstaff_token_${rotation}`,
-            "__RATE_LIMIT__",
+            '__RATE_LIMIT__',
             { EX: 3600 },
           );
 
@@ -297,7 +322,9 @@ export class HubstaffService implements OnModuleInit {
 
         // 🔁 Handle expired token (401)
         if (res.status === 401 && retryCount < 2) {
-          console.log(`[Hubstaff] 🔁 Token expired. Forcing refresh on rotation ${rotation}`);
+          console.log(
+            `[Hubstaff] 🔁 Token expired. Forcing refresh on rotation ${rotation}`,
+          );
           await this._getAccessToken_new(tokenEndpoint, rotation);
 
           return this.hubstaffRequest(method, endpoint, {
@@ -308,9 +335,14 @@ export class HubstaffService implements OnModuleInit {
         }
 
         console.error(`[Hubstaff] Error response:`, res.data);
-        throw new Error(`[Hubstaff] ❌ Unexpected status ${res.status} - ${res.statusText}`);
+        throw new Error(
+          `[Hubstaff] ❌ Unexpected status ${res.status} - ${res.statusText}`,
+        );
       } catch (err: any) {
-        console.error(`[Hubstaff] ❌ Network error on ${endpoint.split("?")[0]}:`, err.message);
+        console.error(
+          `[Hubstaff] ❌ Network error on ${endpoint.split('?')[0]}:`,
+          err.message,
+        );
         throw err;
       }
     });
@@ -320,7 +352,10 @@ export class HubstaffService implements OnModuleInit {
    * Fetches a project by ID.
    */
   public async getProjectById(projectId: string) {
-    const res = await this.hubstaffRequest('get', `https://api.hubstaff.com/v2/projects/${projectId}`);
+    const res = await this.hubstaffRequest(
+      'get',
+      `https://api.hubstaff.com/v2/projects/${projectId}`,
+    );
     return res.data;
   }
 
@@ -338,15 +373,23 @@ export class HubstaffService implements OnModuleInit {
         params.page_start_id = nextPageStartId;
       }
       params.membership_roles = 'user';
-      params.include = "users";
-      const res = await this.hubstaffRequest('get', `https://api.hubstaff.com/v2/projects/${projectId}/members`, {
-        params,
-      });
-
+      params.include = 'users';
+      const res = await this.hubstaffRequest(
+        'get',
+        `https://api.hubstaff.com/v2/projects/${projectId}/members`,
+        {
+          params,
+        },
+      );
 
       const { members, pagination, users } = res.data;
       if (members) {
-        allMembers = allMembers.concat(members.map(e => ({ ...e, user: users.find(u => u.id === e.user_id) })));
+        allMembers = allMembers.concat(
+          members.map((e) => ({
+            ...e,
+            user: users.find((u) => u.id === e.user_id),
+          })),
+        );
       }
       nextPageStartId = pagination?.next_page_start_id;
     } while (nextPageStartId);
@@ -360,7 +403,7 @@ export class HubstaffService implements OnModuleInit {
    */
   public async getProjectDailyActivity(
     projectId: string,
-    query: { startDate: string; endDate: string; userIds?: string[] }
+    query: { startDate: string; endDate: string; userIds?: string[] },
   ) {
     let allActivities: any[] = [];
     let nextPageStartId: number | undefined = undefined;
@@ -376,12 +419,16 @@ export class HubstaffService implements OnModuleInit {
     }
 
     do {
-      const res = await this.hubstaffRequest('get', `https://api.hubstaff.com/v2/projects/${projectId}/activities/daily`, {
-        params: {
-          ...baseParams,
-          ...(nextPageStartId ? { page_start_id: nextPageStartId } : {}),
+      const res = await this.hubstaffRequest(
+        'get',
+        `https://api.hubstaff.com/v2/projects/${projectId}/activities/daily`,
+        {
+          params: {
+            ...baseParams,
+            ...(nextPageStartId ? { page_start_id: nextPageStartId } : {}),
+          },
         },
-      });
+      );
 
       const { activities, pagination } = res.data;
       if (activities) {
@@ -407,23 +454,34 @@ export class HubstaffService implements OnModuleInit {
         params.page_start_id = nextPageStartId;
       }
       params.membership_roles = 'user';
-      params.include = "users";
-      params.include_profile = true
-      const res = await this.hubstaffRequest('get', `https://api.hubstaff.com/v2/organizations/${this.organizationId}/members`, {
-        params,
-      });
+      params.include = 'users';
+      params.include_profile = true;
+      const res = await this.hubstaffRequest(
+        'get',
+        `https://api.hubstaff.com/v2/organizations/${this.organizationId}/members`,
+        {
+          params,
+        },
+      );
 
-      const { members, pagination, users } = res.data as { members: HubstaffMember[], pagination: any, users: HubstaffUser[] };
+      const { members, pagination, users } = res.data as {
+        members: HubstaffMember[];
+        pagination: any;
+        users: HubstaffUser[];
+      };
       if (members) {
-        allMembers = allMembers.concat(members.map(e => ({ ...e, user: users.find(u => u.id === e.user_id) })));
+        allMembers = allMembers.concat(
+          members.map((e) => ({
+            ...e,
+            user: users.find((u) => u.id === e.user_id),
+          })),
+        );
       }
       nextPageStartId = pagination?.next_page_start_id;
     } while (nextPageStartId);
 
     return allMembers;
   }
-
-
 
   public async getHubstaffDailyActivityForInvoice({
     hubstaffId,
@@ -435,14 +493,14 @@ export class HubstaffService implements OnModuleInit {
     end_date: string;
   }) {
     try {
-      let activities: Omit<
+      const activities: Omit<
         ActivityAttributes,
-        "id" | "created_at" | "updated_at"
+        'id' | 'created_at' | 'updated_at'
       >[] = [];
-      let nextCursor: string | null = "yes";
+      let nextCursor: string | null = 'yes';
       while (nextCursor) {
         let q = `page_limit=500&include=users&date[start]=${start_date}&date[stop]=${end_date}`;
-        if (nextCursor && nextCursor !== "yes") {
+        if (nextCursor && nextCursor !== 'yes') {
           q += `&page_start_id=${nextCursor}`;
         }
         const res = await this.hubstaffRequest<{
@@ -450,13 +508,13 @@ export class HubstaffService implements OnModuleInit {
           users?: { id: number; name: string }[];
           pagination: { next_page_start_id: string };
         }>(
-          "get",
+          'get',
           `${this.API_BASE_URL}v2/projects/${hubstaffId}/activities/daily?${q}`,
         );
 
         const data = res.data;
         const userMap = new Map<number, string>(
-          data.users?.map((u) => [u.id, u.name]) || []
+          data.users?.map((u) => [u.id, u.name]) || [],
         );
 
         activities.push(
@@ -524,7 +582,7 @@ export class HubstaffService implements OnModuleInit {
       }>(
         'get',
         `https://api.hubstaff.com/v2/organizations/${this.organizationId}/time_off_requests`,
-        { params }
+        { params },
       );
 
       const { time_off_requests, pagination } = res.data;
@@ -536,6 +594,4 @@ export class HubstaffService implements OnModuleInit {
 
     return allRequests;
   }
-
 }
-

@@ -7,7 +7,11 @@ import { AllianceNotificationsService } from '../notifications/notifications.ser
 // Mocks
 // ---------------------------------------------------------------------------
 const mockPrisma = {
-  organization: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+  organization: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
   affiliateProfile: { findFirst: jest.fn() },
   hubspotInvoiceSnapshot: { findMany: jest.fn(), findFirst: jest.fn() },
   affiliateCommission: { create: jest.fn() },
@@ -69,7 +73,9 @@ describe('CommissionDetectionService', () => {
       ],
     }).compile();
 
-    service = module.get<CommissionDetectionService>(CommissionDetectionService);
+    service = module.get<CommissionDetectionService>(
+      CommissionDetectionService,
+    );
 
     // trackFirstPaidInvoice runs unconditionally at the top of run() whenever
     // org.first_paid_invoice_at is falsy — default to a no-op find so it never
@@ -123,7 +129,10 @@ describe('CommissionDetectionService', () => {
   describe('trackFirstPaidInvoice', () => {
     it('should backfill first_paid_invoice_at when org has none and an earliest paid snapshot exists', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(
-        makeOrg({ referred_by_affiliate_id: null, first_paid_invoice_at: null }),
+        makeOrg({
+          referred_by_affiliate_id: null,
+          first_paid_invoice_at: null,
+        }),
       );
       mockPrisma.hubspotInvoiceSnapshot.findFirst.mockResolvedValue({
         paid_at: new Date('2026-01-01'),
@@ -140,7 +149,10 @@ describe('CommissionDetectionService', () => {
 
     it('should not attempt to backfill when no earliest paid snapshot exists', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(
-        makeOrg({ referred_by_affiliate_id: null, first_paid_invoice_at: null }),
+        makeOrg({
+          referred_by_affiliate_id: null,
+          first_paid_invoice_at: null,
+        }),
       );
       mockPrisma.hubspotInvoiceSnapshot.findFirst.mockResolvedValue(null);
 
@@ -151,12 +163,17 @@ describe('CommissionDetectionService', () => {
 
     it('should skip trackFirstPaidInvoice entirely when org already has first_paid_invoice_at', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(
-        makeOrg({ referred_by_affiliate_id: null, first_paid_invoice_at: new Date('2026-01-01') }),
+        makeOrg({
+          referred_by_affiliate_id: null,
+          first_paid_invoice_at: new Date('2026-01-01'),
+        }),
       );
 
       await service.run('org-1');
 
-      expect(mockPrisma.hubspotInvoiceSnapshot.findFirst).not.toHaveBeenCalled();
+      expect(
+        mockPrisma.hubspotInvoiceSnapshot.findFirst,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -167,7 +184,8 @@ describe('CommissionDetectionService', () => {
     mockPrisma.organization.findUnique.mockResolvedValue(
       makeOrg({
         med_alliance_referral_status: 'not_eligible',
-        med_alliance_block_reason: 'active_client_block: organization_active_by_email',
+        med_alliance_block_reason:
+          'active_client_block: organization_active_by_email',
       }),
     );
 
@@ -368,9 +386,21 @@ describe('CommissionDetectionService', () => {
     mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
     mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
       makeSnapshot({ payment_status: null }), // eligible
-      makeSnapshot({ id: 'snap-2', hubspot_id: 'inv-2', payment_status: 'succeeded' }), // eligible
-      makeSnapshot({ id: 'snap-3', hubspot_id: 'inv-3', payment_status: 'failed' }), // filtered out
-      makeSnapshot({ id: 'snap-4', hubspot_id: 'inv-4', payment_status: 'pending' }), // filtered out
+      makeSnapshot({
+        id: 'snap-2',
+        hubspot_id: 'inv-2',
+        payment_status: 'succeeded',
+      }), // eligible
+      makeSnapshot({
+        id: 'snap-3',
+        hubspot_id: 'inv-3',
+        payment_status: 'failed',
+      }), // filtered out
+      makeSnapshot({
+        id: 'snap-4',
+        hubspot_id: 'inv-4',
+        payment_status: 'pending',
+      }), // filtered out
     ]);
     mockPrisma.affiliateCommission.create.mockResolvedValue({});
     mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
@@ -428,7 +458,9 @@ describe('CommissionDetectionService', () => {
     it('should set audit log source to sync', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -450,7 +482,9 @@ describe('CommissionDetectionService', () => {
         makeOrg({ med_alliance_referral_status: 'eligible' }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.uSER.findUnique.mockResolvedValue({
         email: 'affiliate@example.com',
         first_name: 'Jane',
@@ -462,7 +496,9 @@ describe('CommissionDetectionService', () => {
 
       expect(mockPrisma.affiliateCommission.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'pending_admin_confirmation' }),
+          data: expect.objectContaining({
+            status: 'pending_admin_confirmation',
+          }),
         }),
       );
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
@@ -473,7 +509,9 @@ describe('CommissionDetectionService', () => {
           }),
         }),
       );
-      expect(mockAllianceNotifications.notifyAdminCommissionPending).toHaveBeenCalledWith(
+      expect(
+        mockAllianceNotifications.notifyAdminCommissionPending,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationName: 'Acme Corp',
           affiliateName: 'affiliate@example.com',
@@ -487,7 +525,9 @@ describe('CommissionDetectionService', () => {
         makeOrg({ med_alliance_referral_status: 'pending_confirmation' }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -499,13 +539,17 @@ describe('CommissionDetectionService', () => {
           data: expect.objectContaining({ status: 'detected' }),
         }),
       );
-      expect(mockAllianceNotifications.notifyAdminCommissionPending).not.toHaveBeenCalled();
+      expect(
+        mockAllianceNotifications.notifyAdminCommissionPending,
+      ).not.toHaveBeenCalled();
     });
 
     it('should create commission as "detected" for not_eligible org (standard deployed state)', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -526,10 +570,17 @@ describe('CommissionDetectionService', () => {
     it('should count as skipped when P2002 unique constraint is violated', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
 
-      const prismaUniqueError = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
-      mockPrisma.affiliateCommission.create.mockRejectedValue(prismaUniqueError);
+      const prismaUniqueError = Object.assign(
+        new Error('Unique constraint failed'),
+        { code: 'P2002' },
+      );
+      mockPrisma.affiliateCommission.create.mockRejectedValue(
+        prismaUniqueError,
+      );
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
       const result = await service.run('org-1');
@@ -542,7 +593,9 @@ describe('CommissionDetectionService', () => {
 
     it('should produce the same idempotency_key for the same inputs', async () => {
       const profile = makeProfile();
-      const snap = makeSnapshot({ paid_at: new Date('2026-02-10T00:00:00.000Z') });
+      const snap = makeSnapshot({
+        paid_at: new Date('2026-02-10T00:00:00.000Z'),
+      });
 
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(profile);
@@ -552,7 +605,8 @@ describe('CommissionDetectionService', () => {
 
       await service.run('org-1');
       const key1 =
-        mockPrisma.affiliateCommission.create.mock.calls[0][0].data.idempotency_key;
+        mockPrisma.affiliateCommission.create.mock.calls[0][0].data
+          .idempotency_key;
 
       jest.clearAllMocks();
       mockPrisma.hubspotInvoiceSnapshot.findFirst.mockResolvedValue(null);
@@ -565,7 +619,8 @@ describe('CommissionDetectionService', () => {
 
       await service.run('org-1');
       const key2 =
-        mockPrisma.affiliateCommission.create.mock.calls[0][0].data.idempotency_key;
+        mockPrisma.affiliateCommission.create.mock.calls[0][0].data
+          .idempotency_key;
 
       expect(key1).toBe(key2);
       expect(key1).toHaveLength(64); // SHA-256 hex
@@ -586,7 +641,8 @@ describe('CommissionDetectionService', () => {
         mockPrisma.affiliateCommission.create.mockResolvedValue({});
         mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
         await service.run('org-1');
-        return mockPrisma.affiliateCommission.create.mock.calls[0][0].data.idempotency_key;
+        return mockPrisma.affiliateCommission.create.mock.calls[0][0].data
+          .idempotency_key;
       };
 
       const key1 = await runWith('inv-1500');
@@ -628,7 +684,9 @@ describe('CommissionDetectionService', () => {
       });
       mockPrisma.organization.findUnique.mockResolvedValue(newOrg);
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
@@ -654,7 +712,9 @@ describe('CommissionDetectionService', () => {
         makeOrg({ referral_stage: 'deployed' }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -672,7 +732,9 @@ describe('CommissionDetectionService', () => {
         }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -689,7 +751,9 @@ describe('CommissionDetectionService', () => {
         makeOrg({ referral_stage: 'canceled' }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
 
       const result = await service.run('org-1');
 
@@ -707,7 +771,9 @@ describe('CommissionDetectionService', () => {
         }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
 
       const result = await service.run('org-1');
 
@@ -729,8 +795,13 @@ describe('CommissionDetectionService', () => {
         }),
       );
       mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([makeSnapshot()]);
-      mockPrisma.uSER.findUnique.mockResolvedValue({ email: 'a@b.com', first_name: 'A' });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot(),
+      ]);
+      mockPrisma.uSER.findUnique.mockResolvedValue({
+        email: 'a@b.com',
+        first_name: 'A',
+      });
       mockPrisma.affiliateCommission.create.mockResolvedValue({ id: 'c1' });
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -738,7 +809,9 @@ describe('CommissionDetectionService', () => {
 
       expect(mockPrisma.affiliateCommission.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'pending_admin_confirmation' }),
+          data: expect.objectContaining({
+            status: 'pending_admin_confirmation',
+          }),
         }),
       );
     });

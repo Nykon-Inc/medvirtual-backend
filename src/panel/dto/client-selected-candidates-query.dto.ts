@@ -1,8 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsIn, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsIn,
+  IsBoolean,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
-const SORTABLE_FIELDS = ['selectedAt', 'candidateName', 'organizationName'] as const;
+const SORTABLE_FIELDS = [
+  'selectedAt',
+  'candidateName',
+  'organizationName',
+] as const;
 type SortableField = (typeof SORTABLE_FIELDS)[number];
 
 export class ClientSelectedCandidatesQueryDto {
@@ -18,12 +28,18 @@ export class ClientSelectedCandidatesQueryDto {
   @Type(() => Number)
   perPage?: number = 10;
 
-  @ApiProperty({ description: 'Start date (createdAt/updatedAt lower bound)', required: false })
+  @ApiProperty({
+    description: 'Start date (createdAt/updatedAt lower bound)',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   dateFrom?: string;
 
-  @ApiProperty({ description: 'End date (createdAt/updatedAt upper bound)', required: false })
+  @ApiProperty({
+    description: 'End date (createdAt/updatedAt upper bound)',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   dateTo?: string;
@@ -51,7 +67,8 @@ export class ClientSelectedCandidatesQueryDto {
   sortOrder?: 'asc' | 'desc' = 'desc';
 
   @ApiProperty({
-    description: 'When true, ignore page/perPage and return the full filtered result set',
+    description:
+      'When true, ignore page/perPage and return the full filtered result set',
     required: false,
     default: false,
   })

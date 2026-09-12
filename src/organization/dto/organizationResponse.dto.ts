@@ -48,7 +48,11 @@ export class InvoiceConfigurationResponseDto {
   @ApiProperty({ description: 'Payment terms in days' })
   payment_terms_days: number;
 
-  @ApiProperty({ description: 'Cycle anchor day', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Cycle anchor day',
+    required: false,
+    nullable: true,
+  })
   cycle_anchor_day?: number | null;
 
   @ApiProperty({ description: 'Auto-submit invoices' })
@@ -60,7 +64,11 @@ export class InvoiceConfigurationResponseDto {
   @ApiProperty({ description: 'Auto-sync to Stripe' })
   auto_sync_to_stripe: boolean;
 
-  @ApiProperty({ description: 'Stripe customer ID', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Stripe customer ID',
+    required: false,
+    nullable: true,
+  })
   stripe_customer_id?: string | null;
 
   @ApiProperty({ description: 'Creation date' })
@@ -74,7 +82,11 @@ export class OrganizationResponseDto {
   @ApiProperty({ description: 'Organization ID' })
   id: string;
 
-  @ApiProperty({ description: 'ID from hubspot', required: false, nullable: true })
+  @ApiProperty({
+    description: 'ID from hubspot',
+    required: false,
+    nullable: true,
+  })
   hubspot_id?: string | null;
 
   @ApiProperty({ description: 'Organization name' })
@@ -137,37 +149,81 @@ export class OrganizationResponseDto {
   @ApiProperty({ description: 'Admin ID', required: false, nullable: true })
   admin_id?: string | null;
 
-  @ApiProperty({ description: 'Organization address', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization address',
+    required: false,
+    nullable: true,
+  })
   address?: string | null;
 
-  @ApiProperty({ description: 'Organization city', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization city',
+    required: false,
+    nullable: true,
+  })
   city?: string | null;
 
-  @ApiProperty({ description: 'Organization state', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization state',
+    required: false,
+    nullable: true,
+  })
   state?: string | null;
 
-  @ApiProperty({ description: 'Organization postal code', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization postal code',
+    required: false,
+    nullable: true,
+  })
   postal_code?: string | null;
 
-  @ApiProperty({ description: 'Organization source', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization source',
+    required: false,
+    nullable: true,
+  })
   source?: string | null;
 
-  @ApiProperty({ description: 'Organization type', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Organization type',
+    required: false,
+    nullable: true,
+  })
   type?: string | null;
 
-  @ApiProperty({ description: 'Contact first name', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Contact first name',
+    required: false,
+    nullable: true,
+  })
   contact_first_name?: string | null;
 
-  @ApiProperty({ description: 'Contact last name', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Contact last name',
+    required: false,
+    nullable: true,
+  })
   contact_last_name?: string | null;
 
-  @ApiProperty({ description: 'Referred by affiliate ID', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Referred by affiliate ID',
+    required: false,
+    nullable: true,
+  })
   referred_by_affiliate_id?: string | null;
 
-  @ApiProperty({ description: 'Refer to user ID', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Refer to user ID',
+    required: false,
+    nullable: true,
+  })
   refer_to_user_id?: string | null;
 
-  @ApiProperty({ description: 'Deletion date', required: false, nullable: true })
+  @ApiProperty({
+    description: 'Deletion date',
+    required: false,
+    nullable: true,
+  })
   deletedAt?: Date | null;
 
   @ApiProperty({ description: 'Organization creation date' })
@@ -202,7 +258,11 @@ export class OrganizationResponseDto {
   @ApiProperty({ description: 'Number of active staff in organization' })
   staffCount: number;
 
-  @ApiProperty({ description: 'Invoice configuration', type: InvoiceConfigurationResponseDto, required: false })
+  @ApiProperty({
+    description: 'Invoice configuration',
+    type: InvoiceConfigurationResponseDto,
+    required: false,
+  })
   invoiceConfiguration?: InvoiceConfigurationResponseDto;
 }
 

@@ -39,7 +39,9 @@ describe('HandlerObjectDeletion', () => {
 
     jest.clearAllMocks();
 
-    prismaMock.$transaction.mockImplementation((callback) => callback(prismaMock));
+    prismaMock.$transaction.mockImplementation((callback) =>
+      callback(prismaMock),
+    );
   });
 
   it('should no-op when the candidate no longer exists locally', async () => {

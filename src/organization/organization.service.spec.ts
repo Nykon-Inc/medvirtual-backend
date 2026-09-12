@@ -15,8 +15,7 @@ import { ContactService } from '../contacts/contacts.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
 
-
-const userfake = { 
+const userfake = {
   id: '1',
   organization_id: 'org1',
   role: 'organization_admin',
@@ -48,7 +47,7 @@ const userfake = {
   billcom_device: null,
   deactivated_by_bu: null,
   onboarding_tour_dismissed: false,
-}
+};
 
 describe('OrganizationService', () => {
   let service: OrganizationService;
@@ -75,7 +74,7 @@ describe('OrganizationService', () => {
     },
     hireRequest: {
       updateMany: jest.fn(),
-    }
+    },
   };
 
   const mockHubspotService = {
@@ -90,11 +89,11 @@ describe('OrganizationService', () => {
 
   const handlerObjectCreationMock = {
     execute: jest.fn(),
-  }
+  };
 
   const handlerDealCreationMock = {
     execute: jest.fn(),
-  }
+  };
 
   const mockNotificationsService = {
     notifyHireRequestSelectWinner: jest.fn(),
@@ -102,11 +101,11 @@ describe('OrganizationService', () => {
 
   const mockSqsService = {
     sendMessage: jest.fn(),
-  }
+  };
 
   const mockContactService = {
     createForOrganization: jest.fn(),
-  }
+  };
 
   const mockBusinessUnitContext = {
     getVisibleHubspotValues: jest.fn().mockResolvedValue([]),
@@ -116,13 +115,13 @@ describe('OrganizationService', () => {
     displayToSlug: jest.fn(),
     normalizeBusinessUnit: jest.fn(),
     bustCache: jest.fn(),
-  }
+  };
 
   const mockCandidateAuditService = {
     log: jest.fn(),
     logOrThrow: jest.fn(),
     logMany: jest.fn(),
-  }
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -134,8 +133,11 @@ describe('OrganizationService', () => {
         },
         { provide: AuthService, useValue: mockAuthService },
         { provide: HubspotService, useValue: mockHubspotService },
-        { provide: HandlerOrganizationCreation , useValue: handlerObjectCreationMock },
-        { provide: HandlerDealCreation , useValue: handlerDealCreationMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: handlerObjectCreationMock,
+        },
+        { provide: HandlerDealCreation, useValue: handlerDealCreationMock },
         { provide: NotificationsService, useValue: mockNotificationsService },
         { provide: SqsService, useValue: mockSqsService },
         { provide: ContactService, useValue: mockContactService },
@@ -157,7 +159,6 @@ describe('OrganizationService', () => {
       }
       return true;
     });
-    
   });
 
   afterEach(() => {
@@ -168,21 +169,21 @@ describe('OrganizationService', () => {
   describe('getAll', () => {
     it('should return an array of organizations', async () => {
       const organizations = [
-        { 
-          id: '1', 
-          name: 'Org 1', 
-          phone: '123', 
+        {
+          id: '1',
+          name: 'Org 1',
+          phone: '123',
           email: 'org1@example.com',
           status: OrganizationStatus.active,
-          organization_role: OrganizationRole.prospect
+          organization_role: OrganizationRole.prospect,
         },
-        { 
-          id: '2', 
-          name: 'Org 2', 
-          phone: '567', 
+        {
+          id: '2',
+          name: 'Org 2',
+          phone: '567',
           email: 'org2@example.com',
           status: OrganizationStatus.active,
-          organization_role: OrganizationRole.client
+          organization_role: OrganizationRole.client,
         },
       ];
 
@@ -196,19 +197,21 @@ describe('OrganizationService', () => {
     it('should throw NotFoundException if an error occurs', async () => {
       mockPrismaService.organization.findMany.mockRejectedValue(new Error());
 
-      await expect(service.getAll(userfake, 'active')).rejects.toThrow(NotFoundException);
+      await expect(service.getAll(userfake, 'active')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('getById', () => {
     it('should return an organization by id', async () => {
-      const org = { 
-        id: '1', 
-        name: 'Org 1', 
-        phone: '123', 
+      const org = {
+        id: '1',
+        name: 'Org 1',
+        phone: '123',
         email: 'org1@example.com',
         status: OrganizationStatus.active,
-        organization_role: OrganizationRole.prospect
+        organization_role: OrganizationRole.prospect,
       };
 
       mockPrismaService.organization.findUnique.mockResolvedValue(org);
@@ -220,7 +223,9 @@ describe('OrganizationService', () => {
     it('should throw NotFoundException if organization not found', async () => {
       mockPrismaService.organization.findUnique.mockResolvedValue(null);
 
-      await expect(service.getById('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.getById('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw NotFoundException if error occurs', async () => {
@@ -250,26 +255,35 @@ describe('OrganizationService', () => {
       mockPrismaService.organization.findUnique.mockResolvedValue(null);
       mockPrismaService.organization.create.mockRejectedValue(new Error());
 
-      await expect(service.create({ 
-        name: 'Org 1', 
-        phone: '123', 
-        email: 'org1@example.com', 
-        owner_email: 'admin@admin.com',
-        contact_email: 'contato@org1.com'
-      }, userfake)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create(
+          {
+            name: 'Org 1',
+            phone: '123',
+            email: 'org1@example.com',
+            owner_email: 'admin@admin.com',
+            contact_email: 'contato@org1.com',
+          },
+          userfake,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('update', () => {
     it('should update and return the organization', async () => {
-      const dto = { name: 'Updated Org', phone: '999', email: 'updated@example.com' };
-      const updated = { 
-        id: '1', 
-        name: dto.name, 
-        phone: dto.phone, 
+      const dto = {
+        name: 'Updated Org',
+        phone: '999',
+        email: 'updated@example.com',
+      };
+      const updated = {
+        id: '1',
+        name: dto.name,
+        phone: dto.phone,
         email: dto.email,
         status: OrganizationStatus.active,
-        organization_role: OrganizationRole.prospect
+        organization_role: OrganizationRole.prospect,
       };
 
       mockPrismaService.organization.update.mockResolvedValue(updated);
@@ -279,9 +293,13 @@ describe('OrganizationService', () => {
     });
 
     it('should throw BadRequestException if update fails', async () => {
-      mockPrismaService.organization.update.mockRejectedValue(new Error('fail'));
+      mockPrismaService.organization.update.mockRejectedValue(
+        new Error('fail'),
+      );
 
-      await expect(service.update('1', { name: '', phone: '', email: '' })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.update('1', { name: '', phone: '', email: '' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should save status_before_deactivation and set users to inactive when status is inactive', async () => {
@@ -295,12 +313,15 @@ describe('OrganizationService', () => {
       mockPrismaService.organization.update.mockResolvedValue(updated);
       mockPrismaService.$executeRaw.mockResolvedValue(undefined);
 
-      mockPrismaService.$transaction.mockImplementation(async (cb) => cb(mockPrismaService));
+      mockPrismaService.$transaction.mockImplementation(async (cb) =>
+        cb(mockPrismaService),
+      );
 
       await service.update('1', { status: 'inactive' });
 
       expect(mockPrismaService.$executeRaw).toHaveBeenCalledTimes(1);
-      const rawStrings: ReadonlyArray<string> = mockPrismaService.$executeRaw.mock.calls[0][0];
+      const rawStrings: ReadonlyArray<string> =
+        mockPrismaService.$executeRaw.mock.calls[0][0];
       const rawSql = Array.from(rawStrings).join('');
       expect(rawSql).toContain('status_before_deactivation');
       expect(rawSql).toContain('inactive');
@@ -318,19 +339,21 @@ describe('OrganizationService', () => {
       mockPrismaService.organization.update.mockResolvedValue(updated);
       mockPrismaService.$executeRaw.mockResolvedValue(undefined);
 
-      mockPrismaService.$transaction.mockImplementation(async (cb) => cb(mockPrismaService));
+      mockPrismaService.$transaction.mockImplementation(async (cb) =>
+        cb(mockPrismaService),
+      );
 
       await service.update('1', { status: 'active' });
 
       expect(mockPrismaService.$executeRaw).toHaveBeenCalledTimes(1);
-      const rawStrings: ReadonlyArray<string> = mockPrismaService.$executeRaw.mock.calls[0][0];
+      const rawStrings: ReadonlyArray<string> =
+        mockPrismaService.$executeRaw.mock.calls[0][0];
       const rawSql = Array.from(rawStrings).join('');
       expect(rawSql).not.toContain('COALESCE');
       expect(rawSql).toContain('status_before_deactivation');
       expect(rawSql).toContain("= 'active'");
     });
   });
-
 
   describe('convertToClient', () => {
     it('should convert prospect to client successfully', async () => {
@@ -340,7 +363,7 @@ describe('OrganizationService', () => {
         organization_role: OrganizationRole.prospect,
         status: OrganizationStatus.active,
       };
-  
+
       const clientOrg = {
         ...prospectOrg,
         organization_role: OrganizationRole.client,
@@ -351,30 +374,34 @@ describe('OrganizationService', () => {
         admin: {},
         users: [],
       };
-  
+
       mockPrismaService.organization.findUnique
-      .mockResolvedValueOnce(prospectOrg)
-      .mockResolvedValueOnce(clientOrg);
+        .mockResolvedValueOnce(prospectOrg)
+        .mockResolvedValueOnce(clientOrg);
 
-      mockPrismaService.organization.update = jest.fn().mockResolvedValue(clientOrg);
+      mockPrismaService.organization.update = jest
+        .fn()
+        .mockResolvedValue(clientOrg);
 
-      mockPrismaService.hireRequest.updateMany = jest.fn().mockResolvedValue({ count: 1 });
-  
+      mockPrismaService.hireRequest.updateMany = jest
+        .fn()
+        .mockResolvedValue({ count: 1 });
+
       mockPrismaService.$transaction.mockImplementation(async (cb) => {
         return cb(mockPrismaService);
       });
-  
+
       const convertDto = {
         signed_document_url: 'https://example.com/doc.pdf',
         signed_document_date: new Date().toISOString(),
       };
-  
+
       const result = await service.convertToClient('1', convertDto);
-  
+
       expect(result.organization_role).toBe(OrganizationRole.client);
       expect(result.signed_document_url).toBe(convertDto.signed_document_url);
     });
-  
+
     it('should throw BadRequestException if organization is already a client', async () => {
       const clientOrg = {
         id: '1',
@@ -382,50 +409,48 @@ describe('OrganizationService', () => {
         organization_role: OrganizationRole.client,
         status: OrganizationStatus.active,
       };
-  
+
       mockPrismaService.organization.findUnique.mockResolvedValue(clientOrg);
-  
+
       const convertDto = {
         signed_document_url: 'https://example.com/doc.pdf',
       };
-  
+
       await expect(service.convertToClient('1', convertDto)).rejects.toThrow(
         BadRequestException,
       );
     });
-  
+
     it('should throw NotFoundException if organization does not exist', async () => {
       mockPrismaService.organization.findUnique.mockResolvedValue(null);
-  
+
       const convertDto = {
         signed_document_url: 'https://example.com/doc.pdf',
       };
-  
+
       await expect(service.convertToClient('99', convertDto)).rejects.toThrow(
         NotFoundException,
       );
     });
   });
-  
-  
 
   describe('assignAdmin', () => {
     it('should assign admin successfully', async () => {
       const admin = {
         id: 'admin1',
         role: 'system_admin',
-        status: 'active'
+        status: 'active',
       };
 
       const org = {
         id: '1',
         name: 'Test Org',
-        admin_id: null
+        admin_id: null,
       };
 
       const updatedOrg = {
         ...org,
-        admin_id: 'admin1'
+        admin_id: 'admin1',
       };
 
       mockPrismaService.uSER.findUnique.mockResolvedValue(admin);
@@ -439,29 +464,33 @@ describe('OrganizationService', () => {
       const user = {
         id: 'user1',
         role: 'organization_admin',
-        status: 'active'
+        status: 'active',
       };
 
       mockPrismaService.uSER.findUnique.mockResolvedValue(user);
 
-      await expect(service.assignAdmin('1', 'user1')).rejects.toThrow(BadRequestException);
+      await expect(service.assignAdmin('1', 'user1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('delete', () => {
     it('should soft delete organization and users, returning true', async () => {
       mockPrismaService.$transaction.mockResolvedValue(true);
-  
+
       const result = await service.delete('1');
-  
+
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
       expect(result).toBe(true);
     });
-  
+
     it('should throw NotFoundException if transaction fails', async () => {
       mockPrismaService.$transaction.mockRejectedValue(new Error());
 
-      await expect(service.delete('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(service.delete('invalid-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -517,11 +546,14 @@ describe('OrganizationService', () => {
     it('should apply admin_id filter for system_admin when admin param is provided', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        admin: CONCIERGE_ID,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          admin: CONCIERGE_ID,
+        } as any,
+      );
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -538,11 +570,14 @@ describe('OrganizationService', () => {
     it('should apply admin_id filter for system_super_admin when admin param is provided', async () => {
       const user = { ...userfake, role: 'system_super_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        admin: CONCIERGE_ID,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          admin: CONCIERGE_ID,
+        } as any,
+      );
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -559,11 +594,14 @@ describe('OrganizationService', () => {
     it('should NOT let organization_admin override scope via admin param', async () => {
       const user = { ...userfake, role: 'organization_admin', id: 'user-1' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        admin: CONCIERGE_ID,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          admin: CONCIERGE_ID,
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -581,11 +619,14 @@ describe('OrganizationService', () => {
         id: 'user-2',
       };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        admin: CONCIERGE_ID,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          admin: CONCIERGE_ID,
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -599,10 +640,13 @@ describe('OrganizationService', () => {
     it('should not scope system_admin when no admin param is provided', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -614,10 +658,13 @@ describe('OrganizationService', () => {
     it('should not scope system_super_admin when no admin param is provided', async () => {
       const user = { ...userfake, role: 'system_super_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -629,11 +676,14 @@ describe('OrganizationService', () => {
     it('should call count with the same where shape used for findMany', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        admin: CONCIERGE_ID,
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          admin: CONCIERGE_ID,
+        } as any,
+      );
 
       const findManyWhere =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -662,11 +712,14 @@ describe('OrganizationService', () => {
     it('should match organization name and member user names for a single token', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: 'acme',
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: 'acme',
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -677,11 +730,14 @@ describe('OrganizationService', () => {
     it('should AND each token so a full name spanning first_name and last_name matches', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: 'Paulo Isaque',
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: 'Paulo Isaque',
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -695,11 +751,14 @@ describe('OrganizationService', () => {
     it('should intersect scope with search instead of widening it for organization_admin', async () => {
       const user = { ...userfake, role: 'organization_admin', id: 'user-1' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: 'acme',
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: 'acme',
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -717,11 +776,14 @@ describe('OrganizationService', () => {
     it('should not emit a search branch for a whitespace-only search term', async () => {
       const user = { ...userfake, role: 'system_admin' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: '   ',
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: '   ',
+        } as any,
+      );
 
       const whereArg =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -732,11 +794,14 @@ describe('OrganizationService', () => {
     it('should call count with the same where shape used for findMany when searching as organization_admin', async () => {
       const user = { ...userfake, role: 'organization_admin', id: 'user-1' };
 
-      await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: 'acme',
-      } as any);
+      await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: 'acme',
+        } as any,
+      );
 
       const findManyWhere =
         mockPrismaService.organization.findMany.mock.calls[0][0].where;
@@ -758,14 +823,16 @@ describe('OrganizationService', () => {
         }),
       ]);
 
-      const result = await service.getAllPaginated(user as any, {
-        page: 1,
-        limit: 10,
-        search: 'Paulo',
-      } as any);
+      const result = await service.getAllPaginated(
+        user as any,
+        {
+          page: 1,
+          limit: 10,
+          search: 'Paulo',
+        } as any,
+      );
 
       expect(result.data[0].userCount).toBe(2);
     });
   });
-
 });

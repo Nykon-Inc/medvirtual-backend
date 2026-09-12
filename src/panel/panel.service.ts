@@ -539,9 +539,8 @@ export class PanelService {
     const positionConfigs =
       await this.positionRateConfigService.findAllUnpaginated();
     const configByPosition = buildConfigMap(positionConfigs);
-    const candidatePoolMap = await this.buildCandidatePoolMap(
-      failedResumeParsing,
-    );
+    const candidatePoolMap =
+      await this.buildCandidatePoolMap(failedResumeParsing);
 
     const failedResume = failedResumeParsing.map((candidate) => {
       const rates = computeCandidateRates(
