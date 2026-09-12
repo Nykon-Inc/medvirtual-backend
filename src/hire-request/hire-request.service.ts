@@ -47,6 +47,11 @@ import {
 import axios from 'axios';
 import { HRTicketStatus } from '../common/dictionaries/HRTicket-dicionary';
 import { getApprovedPositionLabel } from '../common/dictionaries/approved-positions-pairing-dictionary';
+import {
+  isClientOriginatedRole,
+  violatesMinLeadTime,
+  INTERVIEW_MIN_LEAD_ERROR,
+} from '../common/utils/interview-schedule-window';
 import { dateToTimestamp, timestampToUSDate } from '../common/utils/formatDate';
 import {
   CANDIDATE_AUDIT_EVENTS,
@@ -740,6 +745,7 @@ export class HireRequestService {
               id: true,
               first_name: true,
               last_name: true,
+              role: true,
             },
           },
           assigned_sourcing: {
@@ -1083,6 +1089,7 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
         assigned_sourcing: {
@@ -1402,6 +1409,7 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
         assigned_sourcing: {
@@ -1497,9 +1505,20 @@ export class HireRequestService {
                 },
               },
             },
+            // Scoped to the active (`status: 'scheduled'`) interview only,
+            // earliest first, so the client can evaluate the 48h
+            // panel-candidate lead-time rule
+            // (`common/utils/panel-candidate-lead-time.ts`) before
+            // submitting. `id`/`status` are additive alongside the
+            // pre-existing `scheduled_date`/`link` fields — no consumer of
+            // this payload breaks. No new PII enters the payload.
             interviews: {
+              where: { status: 'scheduled' },
+              orderBy: { scheduled_date: 'asc' },
               select: {
+                id: true,
                 scheduled_date: true,
+                status: true,
                 link: true,
               },
             },
@@ -3913,9 +3932,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
@@ -4054,9 +4081,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
