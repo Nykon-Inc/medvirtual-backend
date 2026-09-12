@@ -79,7 +79,7 @@ export class HubstaffService implements OnModuleInit {
     });
   }
 
-  async onModuleInit() {
+  onModuleInit() {
     console.log('🚀 HubstaffService initialized');
   }
 
@@ -105,7 +105,7 @@ export class HubstaffService implements OnModuleInit {
     }
   }
 
-  private async _getConfig(): Promise<string> {
+  private _getConfig(): string {
     return 'https://account.hubstaff.com/access_tokens';
   }
 
@@ -218,7 +218,7 @@ export class HubstaffService implements OnModuleInit {
       // Determine which rotation token to use based on simple round-robin
       let rotation = (await this.redisGet(rotationKey)) || '1';
 
-      const tokenEndpoint = await this._getConfig();
+      const tokenEndpoint = this._getConfig();
       let accessToken: string | null = null;
       let rotationAttempts = 0;
 

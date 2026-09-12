@@ -16,6 +16,7 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
+    "useUnknownInCatchVariables": false,
     "noFallthroughCasesInSwitch": false,
     "types": ["node", "jest"],
     "moduleResolution": "node",
