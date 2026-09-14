@@ -24,7 +24,9 @@ describe('buildHireRequestTitle', () => {
       availability: 'full-time',
       organization: { name: 'Acme Health' },
     });
-    expect(title).toBe('TEST HR - Acme Health - 2 - Medical Scribe - Full-Time');
+    expect(title).toBe(
+      'TEST HR - Acme Health - 2 - Medical Scribe - Full-Time',
+    );
   });
 
   it('adds UPS prefix for Upsell Agent request type', () => {

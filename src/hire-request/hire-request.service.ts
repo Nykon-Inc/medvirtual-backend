@@ -47,6 +47,11 @@ import {
 import axios from 'axios';
 import { HRTicketStatus } from '../common/dictionaries/HRTicket-dicionary';
 import { getApprovedPositionLabel } from '../common/dictionaries/approved-positions-pairing-dictionary';
+import {
+  isClientOriginatedRole,
+  violatesMinLeadTime,
+  INTERVIEW_MIN_LEAD_ERROR,
+} from '../common/utils/interview-schedule-window';
 import { dateToTimestamp, timestampToUSDate } from '../common/utils/formatDate';
 import {
   CANDIDATE_AUDIT_EVENTS,
@@ -740,6 +745,7 @@ export class HireRequestService {
               id: true,
               first_name: true,
               last_name: true,
+              role: true,
             },
           },
           assigned_sourcing: {
@@ -959,10 +965,7 @@ export class HireRequestService {
               return false;
             }
             const panelMap = crossPanelMap.get(pc.candidate.id);
-            if (
-              panelMap &&
-              !(panelMap.size === 1 && panelMap.has(panel.id))
-            ) {
+            if (panelMap && !(panelMap.size === 1 && panelMap.has(panel.id))) {
               return false;
             }
             return true;
@@ -1083,6 +1086,7 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
         assigned_sourcing: {
@@ -1402,6 +1406,7 @@ export class HireRequestService {
             id: true,
             first_name: true,
             last_name: true,
+            role: true,
           },
         },
         assigned_sourcing: {
@@ -1497,9 +1502,20 @@ export class HireRequestService {
                 },
               },
             },
+            // Scoped to the active (`status: 'scheduled'`) interview only,
+            // earliest first, so the client can evaluate the 48h
+            // panel-candidate lead-time rule
+            // (`common/utils/panel-candidate-lead-time.ts`) before
+            // submitting. `id`/`status` are additive alongside the
+            // pre-existing `scheduled_date`/`link` fields — no consumer of
+            // this payload breaks. No new PII enters the payload.
             interviews: {
+              where: { status: 'scheduled' },
+              orderBy: { scheduled_date: 'asc' },
               select: {
+                id: true,
                 scheduled_date: true,
+                status: true,
                 link: true,
               },
             },
@@ -3152,7 +3168,8 @@ export class HireRequestService {
         pipeline_status: true,
       },
     });
-    if (!candidatesBeforeEndorse) throw new NotFoundException(`Candidates not found`);
+    if (!candidatesBeforeEndorse)
+      throw new NotFoundException(`Candidates not found`);
 
     //update candidates with pipelinestatus = 'Endorsed via Platform'
     const candidatesUpdated = await this.prisma.candidate.updateMany({
@@ -3446,7 +3463,8 @@ export class HireRequestService {
       },
     });
     candidates.forEach(async (c) => {
-      const revertedPipelineStatus = c.pipeline_status_origin || c.pipeline_status;
+      const revertedPipelineStatus =
+        c.pipeline_status_origin || c.pipeline_status;
       await this.prisma.candidate.update({
         where: { id: c.id },
         data: {
@@ -3677,7 +3695,9 @@ export class HireRequestService {
     const _pCfgs_E = await this.positionRateConfigService.findAllUnpaginated();
     const _cfgMap_E = buildConfigMap(_pCfgs_E);
     const _poolMap_E = await this.buildCandidatePoolMap(
-      panels.flatMap((panel) => panel.panelCandidates.map((pc) => pc.candidate)),
+      panels.flatMap((panel) =>
+        panel.panelCandidates.map((pc) => pc.candidate),
+      ),
     );
 
     const candidateSelectedInPanels = await this.buildCrossPanelSelectedMap();
@@ -3913,9 +3933,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
@@ -4054,9 +4082,17 @@ export class HireRequestService {
       select: {
         id: true,
         hubspot_ticket_id: true,
+        createdBy: { select: { role: true } },
       },
     });
     if (!hireRequest) throw new NotFoundException(`Hire request not found`);
+
+    if (
+      isClientOriginatedRole(hireRequest.createdBy?.role) &&
+      violatesMinLeadTime(data.date_time)
+    ) {
+      throw new BadRequestException(INTERVIEW_MIN_LEAD_ERROR);
+    }
 
     const panel = await this.prisma.candidatePanel.findFirst({
       where: {
@@ -4673,7 +4709,9 @@ export class HireRequestService {
     const _pCfgs_F = await this.positionRateConfigService.findAllUnpaginated();
     const _cfgMap_F = buildConfigMap(_pCfgs_F);
     const _poolMap_F = await this.buildCandidatePoolMap(
-      panels.flatMap((panel) => panel.panelCandidates.map((pc) => pc.candidate)),
+      panels.flatMap((panel) =>
+        panel.panelCandidates.map((pc) => pc.candidate),
+      ),
     );
 
     const result = panels.map((panel) => ({
@@ -4960,11 +4998,9 @@ export class HireRequestService {
       unavailableCandidates: mappedUnavailableCandidates,
     };
 
-    await this.redisSet(
-      availableCandidatesCacheKey,
-      JSON.stringify(result),
-      { EX: 300 },
-    );
+    await this.redisSet(availableCandidatesCacheKey, JSON.stringify(result), {
+      EX: 300,
+    });
 
     return result;
   }

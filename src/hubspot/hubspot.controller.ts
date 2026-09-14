@@ -32,7 +32,7 @@ export class HubspotController {
   constructor(
     private readonly hubspotService: HubspotService,
     private readonly hubspotAuditService: HubspotAuditService,
-  ) {}
+  ) { }
 
   @Get('admin/audit-logs')
   @UseGuards(AuthGuard, RolesGuard)
@@ -83,7 +83,7 @@ export class HubspotController {
   })
   @ApiResponse({ status: 200, description: 'Webhook processed successfully' })
   async webhook(@Body() data: any) {
-    //console.log('Webhook received:', data);
+    console.log('Webhook received:', data);
     return this.hubspotService.changeDataFromHubspot(data);
   }
 

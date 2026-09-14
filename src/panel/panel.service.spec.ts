@@ -47,7 +47,11 @@ describe('PanelService', () => {
     };
 
     const positionRateConfigMock = {
-      findAll: jest.fn().mockResolvedValue({ status: 200, data: [], meta: { total: 0, page: 1, perPage: 10, totalPages: 0 } }),
+      findAll: jest.fn().mockResolvedValue({
+        status: 200,
+        data: [],
+        meta: { total: 0, page: 1, perPage: 10, totalPages: 0 },
+      }),
       findAllUnpaginated: jest.fn().mockResolvedValue([]),
     };
 
@@ -76,7 +80,7 @@ describe('PanelService', () => {
     service = module.get(PanelService);
     prisma = module.get(PrismaService);
   });
-  
+
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -100,14 +104,17 @@ describe('PanelService', () => {
     // 3. completedHireRequests (hireRequest.findMany for Average Ticket Aging)
     const mockHireRequest1 = {
       createdAt: new Date('2023-01-01'),
-      panels: [{ decided_date: new Date('2023-01-10') }] // 9 days diff -> ceil(9) = 9
+      panels: [{ decided_date: new Date('2023-01-10') }], // 9 days diff -> ceil(9) = 9
     };
     const mockHireRequest2 = {
       createdAt: new Date('2023-02-01'),
-      panels: [{ decided_date: new Date('2023-02-05') }] // 4 days diff -> ceil(4) = 4
+      panels: [{ decided_date: new Date('2023-02-05') }], // 4 days diff -> ceil(4) = 4
     };
     // Average = (9 + 4) / 2 = 6.5
-    (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([mockHireRequest1, mockHireRequest2]);
+    (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([
+      mockHireRequest1,
+      mockHireRequest2,
+    ]);
 
     // 4. hrSubmittedByClient (hireRequest.count)
     (prisma.hireRequest.count as jest.Mock).mockResolvedValueOnce(12);
@@ -153,12 +160,20 @@ describe('PanelService', () => {
       experiences: [],
       panelCandidates: [],
     };
-    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([mockCandidateFailed]);
+    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
+      mockCandidateFailed,
+    ]);
 
     // 13. withoutHeadshot (candidate.findMany)
-    const mockCandidateNoHeadshot = { ...mockCandidateFailed, id: 2, avatar_url: null };
-    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([mockCandidateNoHeadshot]);
-    
+    const mockCandidateNoHeadshot = {
+      ...mockCandidateFailed,
+      id: 2,
+      avatar_url: null,
+    };
+    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
+      mockCandidateNoHeadshot,
+    ]);
+
     // Prefetch for the admin/client deployment split (once for the whole range, before the loop):
     // panelCandidate.findMany (deployed candidates), candidateAuditLog.findMany (correlated audit rows)
     (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([]);
@@ -173,27 +188,31 @@ describe('PanelService', () => {
     // organization.count (12 times) -> new clients
     // session.count (12 times) -> access users
 
-    for(let i=0; i<12; i++) {
-        (prisma.candidate.count as jest.Mock).mockResolvedValueOnce(i + 1); // candidatesCreated
-        (prisma.hireRequest.count as jest.Mock).mockResolvedValueOnce(i + 2); // hireRequestsCreated
-        (prisma.hireRequest.count as jest.Mock).mockResolvedValueOnce(i); // hireRequestsEndorsed
-        (prisma.interview.count as jest.Mock).mockResolvedValueOnce(i + 3); // interviewsScheduled
-        (prisma.panelCandidate.count as jest.Mock).mockResolvedValueOnce(i + 6); // talentsSelectedAsWinner
-        (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
-          Array.from({ length: i + 1 }, (_, j) => ({ candidate_id: `c-${i}-${j}` })),
-        ); // talentsRemoved
-        (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
-          Array.from({ length: i + 2 }, (_, j) => ({ candidate_id: `e-${i}-${j}` })),
-        ); // talentsEndorsed
-    }
-    
-    for(let i=0; i<12; i++) {
-         (prisma.organization.count as jest.Mock).mockResolvedValueOnce(i + 4); // newClients
+    for (let i = 0; i < 12; i++) {
+      (prisma.candidate.count as jest.Mock).mockResolvedValueOnce(i + 1); // candidatesCreated
+      (prisma.hireRequest.count as jest.Mock).mockResolvedValueOnce(i + 2); // hireRequestsCreated
+      (prisma.hireRequest.count as jest.Mock).mockResolvedValueOnce(i); // hireRequestsEndorsed
+      (prisma.interview.count as jest.Mock).mockResolvedValueOnce(i + 3); // interviewsScheduled
+      (prisma.panelCandidate.count as jest.Mock).mockResolvedValueOnce(i + 6); // talentsSelectedAsWinner
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        Array.from({ length: i + 1 }, (_, j) => ({
+          candidate_id: `c-${i}-${j}`,
+        })),
+      ); // talentsRemoved
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        Array.from({ length: i + 2 }, (_, j) => ({
+          candidate_id: `e-${i}-${j}`,
+        })),
+      ); // talentsEndorsed
     }
 
-    for(let i=0; i<12; i++) {
-        (prisma.session.count as jest.Mock).mockResolvedValueOnce(i + 5); // accessUsers
-   }
+    for (let i = 0; i < 12; i++) {
+      (prisma.organization.count as jest.Mock).mockResolvedValueOnce(i + 4); // newClients
+    }
+
+    for (let i = 0; i < 12; i++) {
+      (prisma.session.count as jest.Mock).mockResolvedValueOnce(i + 5); // accessUsers
+    }
 
     // Client engagement / admin usage loop (12 months):
     // session.count (client logins), sessionActivity.findMany (talent pool pings),
@@ -203,21 +222,23 @@ describe('PanelService', () => {
 
     // 14. candidatesWithInterviews (candidate.findMany)
     const mockCandidateWithInterviews = {
-        ...mockCandidateFailed,
-        id: 3,
-        panelCandidates: [
-            {
-                panel: {
-                    hireRequest: {
-                        title: 'Job C',
-                        organization: { name: 'Org C' }
-                    },
-                    interviews: [{}, {}, {}, {}, {}, {}] // 6 interviews
-                }
-            }
-        ]
+      ...mockCandidateFailed,
+      id: 3,
+      panelCandidates: [
+        {
+          panel: {
+            hireRequest: {
+              title: 'Job C',
+              organization: { name: 'Org C' },
+            },
+            interviews: [{}, {}, {}, {}, {}, {}], // 6 interviews
+          },
+        },
+      ],
     };
-    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([mockCandidateWithInterviews]);
+    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
+      mockCandidateWithInterviews,
+    ]);
 
     // Execute
     const result = await service.getPanelData();
@@ -288,7 +309,7 @@ describe('PanelService', () => {
     const dateToEnd = new Date(`${dateTo}T23:59:59.999Z`);
 
     // Setup mocks to return empty/zero values to avoid execution errors
-    (prisma.uSER.count as jest.Mock).mockResolvedValue(0); 
+    (prisma.uSER.count as jest.Mock).mockResolvedValue(0);
     (prisma.hireRequest.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.hireRequest.count as jest.Mock).mockResolvedValue(0);
     (prisma.organization.count as jest.Mock).mockResolvedValue(0);
@@ -305,52 +326,62 @@ describe('PanelService', () => {
     await service.getPanelData(dateFrom, dateTo);
 
     // Verify activeClientUsers date filter
-    expect(prisma.uSER.count).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.uSER.count).toHaveBeenCalledWith(
+      expect.objectContaining({
         where: expect.objectContaining({
-             createdAt: { gte: new Date(dateFrom), lte: dateToEnd }
-        })
-    }));
+          createdAt: { gte: new Date(dateFrom), lte: dateToEnd },
+        }),
+      }),
+    );
 
     // Verify aging date filter
-    expect(prisma.hireRequest.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.hireRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
         where: expect.objectContaining({
-            panels: {
-                some: expect.objectContaining({
-                    decided_date: {
-                        gte: new Date(dateFrom),
-                        lte: new Date(dateTo)
-                    }
-                })
-            }
-        })
-    }));
+          panels: {
+            some: expect.objectContaining({
+              decided_date: {
+                gte: new Date(dateFrom),
+                lte: new Date(dateTo),
+              },
+            }),
+          },
+        }),
+      }),
+    );
 
     // Verify hrSubmittedByClient date filter
-    expect(prisma.hireRequest.count).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.hireRequest.count).toHaveBeenCalledWith(
+      expect.objectContaining({
         where: expect.objectContaining({
-             createdAt: {
-                gte: new Date(dateFrom),
-                lte: dateToEnd
-             }
-        })
-    }));
+          createdAt: {
+            gte: new Date(dateFrom),
+            lte: dateToEnd,
+          },
+        }),
+      }),
+    );
 
     // Verify candidatesEndorsed filters by the audit event's own createdAt
     // (when the candidate was actually moved to "Endorsed via platform"),
     // not by an unrelated entity's creation date.
-    expect(prisma.candidateAuditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.candidateAuditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
         where: expect.objectContaining({
-            createdAt: { gte: new Date(dateFrom), lte: dateToEnd }
-        })
-    }));
+          createdAt: { gte: new Date(dateFrom), lte: dateToEnd },
+        }),
+      }),
+    );
 
     // Verify candidatesHired filters by PanelCandidate.updatedAt (when the
     // candidate was actually selected as winner), not by HireRequest.createdAt.
-    expect(prisma.panelCandidate.count).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prisma.panelCandidate.count).toHaveBeenCalledWith(
+      expect.objectContaining({
         where: expect.objectContaining({
-            updatedAt: { gte: new Date(dateFrom), lte: dateToEnd }
-        })
-    }));
+          updatedAt: { gte: new Date(dateFrom), lte: dateToEnd },
+        }),
+      }),
+    );
   });
 
   describe('talents deployed by admin vs. client (getPanelData)', () => {
@@ -469,13 +500,23 @@ describe('PanelService', () => {
                   candidate_id: 'cand-4',
                   createdAt: firstDeployAt,
                   actor_label: null,
-                  actorUser: { id: 'u-admin', role: 'system_admin', first_name: 'A', last_name: 'B' },
+                  actorUser: {
+                    id: 'u-admin',
+                    role: 'system_admin',
+                    first_name: 'A',
+                    last_name: 'B',
+                  },
                 },
                 {
                   candidate_id: 'cand-4',
                   createdAt: secondDeployAt,
                   actor_label: null,
-                  actorUser: { id: 'u-client', role: 'organization_admin', first_name: 'C', last_name: 'D' },
+                  actorUser: {
+                    id: 'u-client',
+                    role: 'organization_admin',
+                    first_name: 'C',
+                    last_name: 'D',
+                  },
                 },
               ])
             : Promise.resolve([]),
@@ -489,9 +530,9 @@ describe('PanelService', () => {
       // one deployment correlates to the admin row, the other to the client row
       expect(month.talentsDeployedByAdmin).toBe(1);
       expect(month.talentsDeployedByClient).toBe(1);
-      expect(
-        month.talentsDeployedByAdmin + month.talentsDeployedByClient,
-      ).toBe(2);
+      expect(month.talentsDeployedByAdmin + month.talentsDeployedByClient).toBe(
+        2,
+      );
     });
 
     it('does not match an audit row outside the correlation window (falls through to admin default)', async () => {
@@ -595,14 +636,21 @@ describe('PanelService', () => {
 
     it('populates clientEngagement.platformDurationMinutes from the platform-scoped, client-role duration', async () => {
       setupCommonMocks();
-      (prisma.sessionActivity.findMany as jest.Mock).mockImplementation((args) =>
-        args?.where?.scope === 'platform' &&
-        args?.where?.user?.role?.in?.includes('organization_admin')
-          ? Promise.resolve([
-              { userId: 'client-1', pingedAt: new Date('2026-01-05T10:00:00Z') },
-              { userId: 'client-1', pingedAt: new Date('2026-01-05T10:01:00Z') },
-            ])
-          : Promise.resolve([]),
+      (prisma.sessionActivity.findMany as jest.Mock).mockImplementation(
+        (args) =>
+          args?.where?.scope === 'platform' &&
+          args?.where?.user?.role?.in?.includes('organization_admin')
+            ? Promise.resolve([
+                {
+                  userId: 'client-1',
+                  pingedAt: new Date('2026-01-05T10:00:00Z'),
+                },
+                {
+                  userId: 'client-1',
+                  pingedAt: new Date('2026-01-05T10:01:00Z'),
+                },
+              ])
+            : Promise.resolve([]),
       );
 
       const result = await service.getPanelData('2026-01-01', '2026-01-31');
@@ -657,7 +705,9 @@ describe('PanelService', () => {
 
     it('returns only client-attributed rows, with pagination meta', async () => {
       const row = buildPanelCandidateRow();
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([row]);
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        row,
+      ]);
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
         mockClientAuditRow('cand-1', row.updatedAt),
       ]);
@@ -677,13 +727,25 @@ describe('PanelService', () => {
         organizationName: 'Acme Inc',
         selectedByRole: 'organization_admin',
       });
-      expect(result.meta).toEqual({ total: 1, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 1,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('excludes admin-deployed rows (no correlated audit row)', async () => {
-      const row = buildPanelCandidateRow({ id: 'pc-admin', candidate_id: 'cand-admin' });
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([row]);
-      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([]);
+      const row = buildPanelCandidateRow({
+        id: 'pc-admin',
+        candidate_id: 'cand-admin',
+      });
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        row,
+      ]);
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        [],
+      );
 
       const result = await service.getClientSelectedCandidates({
         page: 1,
@@ -725,7 +787,10 @@ describe('PanelService', () => {
         candidate_id: 'cand-a',
         candidateName: 'Amy',
       });
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([rowB, rowA]);
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        rowB,
+        rowA,
+      ]);
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
         mockClientAuditRow('cand-b', rowB.updatedAt),
         mockClientAuditRow('cand-a', rowA.updatedAt),
@@ -784,7 +849,9 @@ describe('PanelService', () => {
 
     it('returns only admin-attributed rows, with pagination meta', async () => {
       const row = buildPanelCandidateRow();
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([row]);
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        row,
+      ]);
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
         mockAdminAuditRow('cand-1', row.updatedAt),
       ]);
@@ -804,13 +871,25 @@ describe('PanelService', () => {
         organizationName: 'Acme Inc',
         selectedByRole: 'system_admin',
       });
-      expect(result.meta).toEqual({ total: 1, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 1,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('includes rows with no correlated audit row (default classification is admin)', async () => {
-      const row = buildPanelCandidateRow({ id: 'pc-noaudit', candidate_id: 'cand-noaudit' });
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([row]);
-      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([]);
+      const row = buildPanelCandidateRow({
+        id: 'pc-noaudit',
+        candidate_id: 'cand-noaudit',
+      });
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        row,
+      ]);
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        [],
+      );
 
       const result = await service.getAdminSelectedCandidates({
         page: 1,
@@ -823,8 +902,13 @@ describe('PanelService', () => {
     });
 
     it('excludes client-attributed rows', async () => {
-      const row = buildPanelCandidateRow({ id: 'pc-client', candidate_id: 'cand-client' });
-      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([row]);
+      const row = buildPanelCandidateRow({
+        id: 'pc-client',
+        candidate_id: 'cand-client',
+      });
+      (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([
+        row,
+      ]);
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
         {
           candidate_id: 'cand-client',
@@ -866,9 +950,21 @@ describe('PanelService', () => {
 
     it('counts every endorsement row per candidate without deduping repeats', async () => {
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
-        mockAuditRow('cand-1', new Date('2026-01-05T10:00:00Z'), 'organization_admin'),
-        mockAuditRow('cand-1', new Date('2026-01-20T10:00:00Z'), 'organization_admin'),
-        mockAuditRow('cand-2', new Date('2026-01-10T10:00:00Z'), 'system_admin'),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-01-05T10:00:00Z'),
+          'organization_admin',
+        ),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-01-20T10:00:00Z'),
+          'organization_admin',
+        ),
+        mockAuditRow(
+          'cand-2',
+          new Date('2026-01-10T10:00:00Z'),
+          'system_admin',
+        ),
       ]);
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
         { id: 'cand-1', first_name: 'Jane', last_name: 'Doe', name: null },
@@ -889,20 +985,36 @@ describe('PanelService', () => {
         candidateName: 'Jane Doe',
         endorsementCount: 2,
       });
-      expect(result.meta).toEqual({ total: 2, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 2,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('splits endorsement counts between client- and admin-attributed actors', async () => {
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
-        mockAuditRow('cand-1', new Date('2026-01-05T10:00:00Z'), 'organization_admin'),
-        mockAuditRow('cand-1', new Date('2026-01-06T10:00:00Z'), 'system_admin'),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-01-05T10:00:00Z'),
+          'organization_admin',
+        ),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-01-06T10:00:00Z'),
+          'system_admin',
+        ),
         mockAuditRow('cand-1', new Date('2026-01-07T10:00:00Z'), null),
       ]);
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
         { id: 'cand-1', first_name: 'Jane', last_name: 'Doe', name: null },
       ]);
 
-      const result = await service.getCandidateEndorsements({ page: 1, perPage: 10 });
+      const result = await service.getCandidateEndorsements({
+        page: 1,
+        perPage: 10,
+      });
 
       expect(result.data[0]).toMatchObject({
         endorsementCount: 3,
@@ -914,25 +1026,47 @@ describe('PanelService', () => {
 
     it('tracks the most recent endorsement date per candidate', async () => {
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
-        mockAuditRow('cand-1', new Date('2026-01-05T10:00:00Z'), 'system_admin'),
-        mockAuditRow('cand-1', new Date('2026-02-15T10:00:00Z'), 'system_admin'),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-01-05T10:00:00Z'),
+          'system_admin',
+        ),
+        mockAuditRow(
+          'cand-1',
+          new Date('2026-02-15T10:00:00Z'),
+          'system_admin',
+        ),
       ]);
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
         { id: 'cand-1', first_name: 'Jane', last_name: 'Doe', name: null },
       ]);
 
-      const result = await service.getCandidateEndorsements({ page: 1, perPage: 10 });
+      const result = await service.getCandidateEndorsements({
+        page: 1,
+        perPage: 10,
+      });
 
       expect(result.data[0].lastEndorsedAt).toBe('2026-02-15T10:00:00.000Z');
     });
 
     it('export=true bypasses pagination and returns the full filtered set without meta', async () => {
       const rows = Array.from({ length: 15 }, (_, i) =>
-        mockAuditRow(`cand-${i}`, new Date('2026-01-05T10:00:00Z'), 'system_admin'),
+        mockAuditRow(
+          `cand-${i}`,
+          new Date('2026-01-05T10:00:00Z'),
+          'system_admin',
+        ),
       );
-      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(rows);
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        rows,
+      );
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce(
-        rows.map((r) => ({ id: r.candidate_id, first_name: 'C', last_name: r.candidate_id, name: null })),
+        rows.map((r) => ({
+          id: r.candidate_id,
+          first_name: 'C',
+          last_name: r.candidate_id,
+          name: null,
+        })),
       );
 
       const result = await service.getCandidateEndorsements({
@@ -947,8 +1081,16 @@ describe('PanelService', () => {
 
     it('sorts by candidateName when requested', async () => {
       (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([
-        mockAuditRow('cand-b', new Date('2026-01-05T10:00:00Z'), 'system_admin'),
-        mockAuditRow('cand-a', new Date('2026-01-06T10:00:00Z'), 'system_admin'),
+        mockAuditRow(
+          'cand-b',
+          new Date('2026-01-05T10:00:00Z'),
+          'system_admin',
+        ),
+        mockAuditRow(
+          'cand-a',
+          new Date('2026-01-06T10:00:00Z'),
+          'system_admin',
+        ),
       ]);
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
         { id: 'cand-b', first_name: 'Bob', last_name: null, name: null },
@@ -966,9 +1108,14 @@ describe('PanelService', () => {
     });
 
     it('returns an empty result set when there are no endorsement rows in the period', async () => {
-      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce([]);
+      (prisma.candidateAuditLog.findMany as jest.Mock).mockResolvedValueOnce(
+        [],
+      );
 
-      const result = await service.getCandidateEndorsements({ page: 1, perPage: 10 });
+      const result = await service.getCandidateEndorsements({
+        page: 1,
+        perPage: 10,
+      });
 
       expect(result.data).toHaveLength(0);
       expect(result.meta?.total).toBe(0);
@@ -980,7 +1127,11 @@ describe('PanelService', () => {
     const mockSession = (
       id: string,
       createdAt: Date,
-      user: { first_name: string; last_name: string; organization_name: string },
+      user: {
+        first_name: string;
+        last_name: string;
+        organization_name: string;
+      },
     ) => ({ id, createdAt, user });
 
     it('maps sessions to rows with user name, organization and ISO timestamp', async () => {
@@ -1003,7 +1154,12 @@ describe('PanelService', () => {
           loggedInAt: '2026-01-05T10:00:00.000Z',
         },
       ]);
-      expect(result.meta).toEqual({ total: 1, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 1,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('filters sessions to CLIENT_ROLES users within the requested date range', async () => {
@@ -1019,9 +1175,18 @@ describe('PanelService', () => {
 
       expect(prisma.session.count).toHaveBeenCalledWith({
         where: {
-          createdAt: { gte: new Date('2026-01-01'), lte: new Date('2026-01-31') },
+          createdAt: {
+            gte: new Date('2026-01-01'),
+            lte: new Date('2026-01-31'),
+          },
           user: {
-            role: { in: ['organization_super_admin', 'organization_admin', 'affiliate'] },
+            role: {
+              in: [
+                'organization_super_admin',
+                'organization_admin',
+                'affiliate',
+              ],
+            },
           },
         },
       });
@@ -1048,7 +1213,11 @@ describe('PanelService', () => {
       );
       (prisma.session.findMany as jest.Mock).mockResolvedValueOnce(sessions);
 
-      const result = await service.getClientLogins({ page: 1, perPage: 10, export: true });
+      const result = await service.getClientLogins({
+        page: 1,
+        perPage: 10,
+        export: true,
+      });
 
       expect(result.data).toHaveLength(15);
       expect(result.meta).toBeUndefined();
@@ -1109,7 +1278,12 @@ describe('PanelService', () => {
           loggedInAt: '2026-01-05T10:00:00.000Z',
         },
       ]);
-      expect(result.meta).toEqual({ total: 1, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 1,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
     });
 
     it('maps system_super_admin to the "System Owner" label', async () => {
@@ -1140,7 +1314,10 @@ describe('PanelService', () => {
 
       expect(prisma.session.count).toHaveBeenCalledWith({
         where: {
-          createdAt: { gte: new Date('2026-01-01'), lte: new Date('2026-01-31') },
+          createdAt: {
+            gte: new Date('2026-01-01'),
+            lte: new Date('2026-01-31'),
+          },
           user: { role: { in: ['system_admin', 'system_super_admin'] } },
         },
       });
@@ -1167,7 +1344,11 @@ describe('PanelService', () => {
       );
       (prisma.session.findMany as jest.Mock).mockResolvedValueOnce(sessions);
 
-      const result = await service.getAdminLogins({ page: 1, perPage: 10, export: true });
+      const result = await service.getAdminLogins({
+        page: 1,
+        perPage: 10,
+        export: true,
+      });
 
       expect(result.data).toHaveLength(15);
       expect(result.meta).toBeUndefined();
@@ -1245,7 +1426,12 @@ describe('PanelService', () => {
         organizationId: 'org-1',
         organizationName: 'Acme Inc',
       });
-      expect(result.meta).toEqual({ total: 1, totalPages: 1, page: 1, perPage: 10 });
+      expect(result.meta).toEqual({
+        total: 1,
+        totalPages: 1,
+        page: 1,
+        perPage: 10,
+      });
 
       const call = (prisma.hireRequest.findMany as jest.Mock).mock.calls[0][0];
       expect(call.where.createdBy.role.in).toEqual([
@@ -1257,10 +1443,17 @@ describe('PanelService', () => {
 
     it('falls back to a placeholder when creator or organization is missing', async () => {
       (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([
-        mockHireRequest('hr-2', { createdBy: null, organization: null, createdByUserId: '' }),
+        mockHireRequest('hr-2', {
+          createdBy: null,
+          organization: null,
+          createdByUserId: '',
+        }),
       ]);
 
-      const result = await service.getHireRequestsByClients({ page: 1, perPage: 10 });
+      const result = await service.getHireRequestsByClients({
+        page: 1,
+        perPage: 10,
+      });
 
       expect(result.data[0]).toMatchObject({
         createdByName: '—',
@@ -1271,8 +1464,12 @@ describe('PanelService', () => {
 
     it('sorts by organization name', async () => {
       (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([
-        mockHireRequest('hr-1', { organization: { id: 'org-1', name: 'Zeta Corp' } }),
-        mockHireRequest('hr-2', { organization: { id: 'org-2', name: 'Acme Inc' } }),
+        mockHireRequest('hr-1', {
+          organization: { id: 'org-1', name: 'Zeta Corp' },
+        }),
+        mockHireRequest('hr-2', {
+          organization: { id: 'org-2', name: 'Acme Inc' },
+        }),
       ]);
 
       const result = await service.getHireRequestsByClients({
@@ -1282,7 +1479,10 @@ describe('PanelService', () => {
         sortOrder: 'asc',
       });
 
-      expect(result.data.map((r) => r.organizationName)).toEqual(['Acme Inc', 'Zeta Corp']);
+      expect(result.data.map((r) => r.organizationName)).toEqual([
+        'Acme Inc',
+        'Zeta Corp',
+      ]);
     });
 
     it('returns the full result set when export is true, ignoring pagination', async () => {
@@ -1304,7 +1504,10 @@ describe('PanelService', () => {
     it('returns an empty result set when there are no matching hire requests', async () => {
       (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([]);
 
-      const result = await service.getHireRequestsByClients({ page: 1, perPage: 10 });
+      const result = await service.getHireRequestsByClients({
+        page: 1,
+        perPage: 10,
+      });
 
       expect(result.data).toHaveLength(0);
       expect(result.meta?.total).toBe(0);
@@ -1314,9 +1517,18 @@ describe('PanelService', () => {
   describe('getTalentAvailabilityByRole', () => {
     it('aggregates counts by position, splitting full-time and part-time', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper'] },
-        { pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper'] },
-        { pipeline_status: '1087596819', approved_positions_pairing: ['Sr Bookkeeper'] },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+        },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+        },
+        {
+          pipeline_status: '1087596819',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+        },
       ]);
 
       const result = await service.getTalentAvailabilityByRole();
@@ -1332,7 +1544,10 @@ describe('PanelService', () => {
 
     it('counts a candidate once per position when approved for multiple roles', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper', 'Jr Medical Admin'] },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper', 'Jr Medical Admin'],
+        },
       ]);
 
       const result = await service.getTalentAvailabilityByRole();
@@ -1349,15 +1564,28 @@ describe('PanelService', () => {
       const result = await service.getTalentAvailabilityByRole();
 
       expect(result).toEqual([
-        expect.objectContaining({ position: '(Unspecified)', fullTime: 1, total: 1 }),
+        expect.objectContaining({
+          position: '(Unspecified)',
+          fullTime: 1,
+          total: 1,
+        }),
       ]);
     });
 
     it('sorts results by total descending', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { pipeline_status: '261075105', approved_positions_pairing: ['Jr Medical Admin'] },
-        { pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper'] },
-        { pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper'] },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Jr Medical Admin'],
+        },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+        },
+        {
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+        },
       ]);
 
       const result = await service.getTalentAvailabilityByRole();
@@ -1367,14 +1595,51 @@ describe('PanelService', () => {
   });
 
   describe('getTalentAgingReport', () => {
-    const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+    const daysAgo = (n: number) =>
+      new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
     it('buckets candidates into 0-30/31-60/61-90/90+ by days since createdAt', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { id: '1', hubspot_id: 'h1', first_name: 'Amy', last_name: 'A', name: null, pipeline_status: '261075105', approved_positions_pairing: ['Sr Bookkeeper'], createdAt: daysAgo(5) },
-        { id: '2', hubspot_id: 'h2', first_name: 'Bob', last_name: 'B', name: null, pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(45) },
-        { id: '3', hubspot_id: 'h3', first_name: 'Cid', last_name: 'C', name: null, pipeline_status: '1087596819', approved_positions_pairing: [], createdAt: daysAgo(75) },
-        { id: '4', hubspot_id: 'h4', first_name: 'Dan', last_name: 'D', name: null, pipeline_status: '1087596819', approved_positions_pairing: [], createdAt: daysAgo(120) },
+        {
+          id: '1',
+          hubspot_id: 'h1',
+          first_name: 'Amy',
+          last_name: 'A',
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: ['Sr Bookkeeper'],
+          createdAt: daysAgo(5),
+        },
+        {
+          id: '2',
+          hubspot_id: 'h2',
+          first_name: 'Bob',
+          last_name: 'B',
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(45),
+        },
+        {
+          id: '3',
+          hubspot_id: 'h3',
+          first_name: 'Cid',
+          last_name: 'C',
+          name: null,
+          pipeline_status: '1087596819',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(75),
+        },
+        {
+          id: '4',
+          hubspot_id: 'h4',
+          first_name: 'Dan',
+          last_name: 'D',
+          name: null,
+          pipeline_status: '1087596819',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(120),
+        },
       ]);
 
       const result = await service.getTalentAgingReport();
@@ -1393,7 +1658,10 @@ describe('PanelService', () => {
       await service.getTalentAgingReport();
       expect(prisma.candidate.findMany).toHaveBeenCalledWith({
         where: { pipeline_status: { in: ['261075105', '1087596819'] } },
-        select: expect.objectContaining({ createdAt: true, pipeline_status: true }),
+        select: expect.objectContaining({
+          createdAt: true,
+          pipeline_status: true,
+        }),
       });
     });
 
@@ -1406,8 +1674,26 @@ describe('PanelService', () => {
 
     it('sorts candidates by daysInPool descending', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { id: '1', hubspot_id: 'h1', first_name: 'Amy', last_name: null, name: null, pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(5) },
-        { id: '2', hubspot_id: 'h2', first_name: 'Bob', last_name: null, name: null, pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(95) },
+        {
+          id: '1',
+          hubspot_id: 'h1',
+          first_name: 'Amy',
+          last_name: null,
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(5),
+        },
+        {
+          id: '2',
+          hubspot_id: 'h2',
+          first_name: 'Bob',
+          last_name: null,
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(95),
+        },
       ]);
       const result = await service.getTalentAgingReport();
       expect(result.candidates.map((c) => c.id)).toEqual(['2', '1']);
@@ -1415,7 +1701,16 @@ describe('PanelService', () => {
 
     it('falls back to "(Unspecified)" position when approved_positions_pairing is empty', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { id: '1', hubspot_id: 'h1', first_name: null, last_name: null, name: 'Fallback Name', pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(1) },
+        {
+          id: '1',
+          hubspot_id: 'h1',
+          first_name: null,
+          last_name: null,
+          name: 'Fallback Name',
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(1),
+        },
       ]);
       const result = await service.getTalentAgingReport();
       expect(result.candidates[0].position).toBe('(Unspecified)');
@@ -1424,8 +1719,26 @@ describe('PanelService', () => {
 
     it('treats exactly 30 days as 0-30 and 31 days as 31-60 (inclusive upper boundary)', async () => {
       (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
-        { id: '1', hubspot_id: 'h1', first_name: 'A', last_name: null, name: null, pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(30) },
-        { id: '2', hubspot_id: 'h2', first_name: 'B', last_name: null, name: null, pipeline_status: '261075105', approved_positions_pairing: [], createdAt: daysAgo(31) },
+        {
+          id: '1',
+          hubspot_id: 'h1',
+          first_name: 'A',
+          last_name: null,
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(30),
+        },
+        {
+          id: '2',
+          hubspot_id: 'h2',
+          first_name: 'B',
+          last_name: null,
+          name: null,
+          pipeline_status: '261075105',
+          approved_positions_pairing: [],
+          createdAt: daysAgo(31),
+        },
       ]);
       const result = await service.getTalentAgingReport();
       expect(result.candidates.find((c) => c.id === '1')?.bucket).toBe('0-30');

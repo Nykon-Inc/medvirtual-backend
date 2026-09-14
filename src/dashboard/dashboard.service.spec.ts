@@ -91,7 +91,9 @@ describe('DashboardService', () => {
   it('should set exception when the userrole is invalid', async () => {
     const user = { role: 'invalid_role' } as any;
 
-    await expect(service.getDashboardData(user)).rejects.toThrow(BadRequestException);
+    await expect(service.getDashboardData(user)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   describe('closeAlert', () => {
@@ -102,7 +104,9 @@ describe('DashboardService', () => {
 
     it('should throw BadRequestException if interview update returns null', async () => {
       prismaMock.interview.update.mockResolvedValueOnce(null);
-      await expect(service.closeAlert('interview-1')).rejects.toThrow(BadRequestException);
+      await expect(service.closeAlert('interview-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should close alert and return updated interview', async () => {

@@ -118,9 +118,7 @@ export async function buildCandidatePoolMap(
 ): Promise<Map<string, CandidatePool>> {
   const distinctBUs = Array.from(
     new Set(
-      candidates
-        .map((c) => c.business_unit)
-        .filter((bu): bu is string => !!bu),
+      candidates.map((c) => c.business_unit).filter((bu): bu is string => !!bu),
     ),
   );
   const entries = await Promise.all(

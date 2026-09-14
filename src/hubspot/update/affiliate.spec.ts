@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { AffiliateUpdateService } from './affiliate';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -88,7 +92,10 @@ describe('AffiliateUpdateService', () => {
     });
 
     it('logs success=false on failure', async () => {
-      mockedAxios.patch.mockRejectedValueOnce({ message: 'Network error', code: 'ECONNRESET' });
+      mockedAxios.patch.mockRejectedValueOnce({
+        message: 'Network error',
+        code: 'ECONNRESET',
+      });
       await service.reactivate('hs-gp-001');
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -103,7 +110,12 @@ describe('AffiliateUpdateService', () => {
     it('logs UPDATE with alliance_commission in payload on success', async () => {
       mockedAxios.patch.mockResolvedValueOnce({ data: {} });
 
-      await service.updateCommission('hs-gp-001', 12, 'user-abc', 'aff-db-uuid');
+      await service.updateCommission(
+        'hs-gp-001',
+        12,
+        'user-abc',
+        'aff-db-uuid',
+      );
 
       expect(auditMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -133,7 +145,13 @@ describe('AffiliateUpdateService', () => {
     it('logs UPDATE with banking fields in payload on success', async () => {
       mockedAxios.patch.mockResolvedValueOnce({ data: {} });
 
-      await service.updateBankingData('hs-gp-001', 'John Doe', '****1234', 'user-abc', 'aff-db-uuid');
+      await service.updateBankingData(
+        'hs-gp-001',
+        'John Doe',
+        '****1234',
+        'user-abc',
+        'aff-db-uuid',
+      );
 
       expect(auditMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -144,7 +162,10 @@ describe('AffiliateUpdateService', () => {
     });
 
     it('logs success=false on failure', async () => {
-      mockedAxios.patch.mockRejectedValueOnce({ message: 'error', code: 'ERR_NETWORK' });
+      mockedAxios.patch.mockRejectedValueOnce({
+        message: 'error',
+        code: 'ERR_NETWORK',
+      });
       await service.updateBankingData('hs-gp-001', 'Name', '9999');
 
       expect(auditMock.log).toHaveBeenCalledWith(
@@ -164,13 +185,19 @@ describe('AffiliateUpdateService', () => {
       expect(auditMock.log).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-          payload: { fields: ['account_name', 'account_number'], cleared: true },
+          payload: {
+            fields: ['account_name', 'account_number'],
+            cleared: true,
+          },
         }),
       );
     });
 
     it('logs success=false on failure', async () => {
-      mockedAxios.patch.mockRejectedValueOnce({ message: 'timeout', code: 'ETIMEDOUT' });
+      mockedAxios.patch.mockRejectedValueOnce({
+        message: 'timeout',
+        code: 'ETIMEDOUT',
+      });
       await service.clearBankingData('hs-gp-001');
 
       expect(auditMock.log).toHaveBeenCalledWith(

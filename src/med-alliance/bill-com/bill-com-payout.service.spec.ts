@@ -48,7 +48,10 @@ describe('BillComPayoutService', () => {
         BillComPayoutService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: BillComService, useValue: mockBillComService },
-        { provide: AllianceNotificationsService, useValue: mockAllianceNotifications },
+        {
+          provide: AllianceNotificationsService,
+          useValue: mockAllianceNotifications,
+        },
       ],
     }).compile();
 
@@ -75,7 +78,11 @@ describe('BillComPayoutService', () => {
         today: '2026-06-01',
       };
 
-      await service.createBillAndPaymentForMarkPaid(payload, mockAdminUser, 'payout-1');
+      await service.createBillAndPaymentForMarkPaid(
+        payload,
+        mockAdminUser,
+        'payout-1',
+      );
 
       expect(mockBillComService.createBillAndPayment).toHaveBeenCalledWith(
         'admin-1',

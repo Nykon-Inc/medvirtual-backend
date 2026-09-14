@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import {
+  SecretsManagerClient,
+  GetSecretValueCommand,
+} from '@aws-sdk/client-secrets-manager';
 
 @Injectable()
 export class SecretsService {
@@ -45,7 +48,7 @@ export class SecretsService {
       hubstaff02,
       hubstaff03,
       hubstaff04,
-      hubstaff05
+      hubstaff05,
     ] = await Promise.all([
       this.getSecret('prod/stripe/key01'),
       this.getSecret('prod/hubstaff/key01'),
@@ -63,7 +66,7 @@ export class SecretsService {
         key03: hubstaff03?.api_key || null,
         key04: hubstaff04?.api_key || null,
         key05: hubstaff05?.api_key || null,
-      }
+      },
     };
   }
 }

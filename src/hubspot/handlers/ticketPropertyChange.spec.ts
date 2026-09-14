@@ -50,7 +50,9 @@ describe('HandlerTicketPropertyChange', () => {
       ],
     }).compile();
 
-    handler = module.get<HandlerTicketPropertyChange>(HandlerTicketPropertyChange);
+    handler = module.get<HandlerTicketPropertyChange>(
+      HandlerTicketPropertyChange,
+    );
     jest.clearAllMocks();
   });
 
@@ -64,7 +66,11 @@ describe('HandlerTicketPropertyChange', () => {
     it('should return undefined when HR does not exist in DB', async () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(null);
 
-      const result = await handler.execute({ objectId: 'ticket-999', propertyName: 'subject', propertyValue: 'test' });
+      const result = await handler.execute({
+        objectId: 'ticket-999',
+        propertyName: 'subject',
+        propertyValue: 'test',
+      });
 
       expect(result).toBeUndefined();
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
@@ -75,7 +81,11 @@ describe('HandlerTicketPropertyChange', () => {
     it('should return undefined for a property not in the dictionary', async () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'unknown_property', propertyValue: 'x' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'unknown_property',
+        propertyValue: 'x',
+      });
 
       expect(result).toBeUndefined();
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
@@ -86,7 +96,11 @@ describe('HandlerTicketPropertyChange', () => {
     it('should skip update and return false for pipeline stage changes', async () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'hs_pipeline_stage', propertyValue: '2' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'hs_pipeline_stage',
+        propertyValue: '2',
+      });
 
       expect(result).toBe(false);
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
@@ -100,7 +114,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
       prismaMock.hireRequest.update.mockResolvedValue({});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'va_pay_rate_range', propertyValue: '120 - 150' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'va_pay_rate_range',
+        propertyValue: '120 - 150',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledWith({
         where: { id: BASE_HR.id },
@@ -118,7 +136,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.uSER.findUnique.mockResolvedValue({ id: 'user-abc' });
       prismaMock.hireRequest.update.mockResolvedValue({});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'pairing_specialist', propertyValue: 'hs-owner-1' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_specialist',
+        propertyValue: 'hs-owner-1',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledWith({
         where: { id: BASE_HR.id },
@@ -131,7 +153,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
       prismaMock.uSER.findUnique.mockResolvedValue(null);
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'pairing_specialist', propertyValue: 'hs-unknown' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_specialist',
+        propertyValue: 'hs-unknown',
+      });
 
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
       expect(result).toBe(true);
@@ -146,7 +172,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.uSER.findUnique.mockResolvedValue({ id: 'user-xyz' });
       prismaMock.hireRequest.update.mockResolvedValue({});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'hubspot_owner_id', propertyValue: 'hs-owner-2' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'hubspot_owner_id',
+        propertyValue: 'hs-owner-2',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledWith({
         where: { id: BASE_HR.id },
@@ -159,7 +189,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
       prismaMock.uSER.findUnique.mockResolvedValue(null);
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'hubspot_owner_id', propertyValue: 'hs-unknown' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'hubspot_owner_id',
+        propertyValue: 'hs-unknown',
+      });
 
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
       expect(result).toBe(true);
@@ -174,7 +208,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.uSER.findUnique.mockResolvedValue({ id: 'user-staff' });
       prismaMock.hireRequest.update.mockResolvedValue({});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'staffing_coordinator', propertyValue: 'hs-owner-3' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'staffing_coordinator',
+        propertyValue: 'hs-owner-3',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledWith({
         where: { id: BASE_HR.id },
@@ -187,7 +225,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
       prismaMock.uSER.findUnique.mockResolvedValue(null);
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'staffing_coordinator', propertyValue: 'hs-unknown' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'staffing_coordinator',
+        propertyValue: 'hs-unknown',
+      });
 
       expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
       expect(result).toBe(true);
@@ -201,7 +243,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
       prismaMock.hireRequest.update.mockResolvedValue({});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'language', propertyValue: 'Spanish' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'language',
+        propertyValue: 'Spanish',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(1);
       expect(prismaMock.hireRequest.update).toHaveBeenCalledWith({
@@ -219,7 +265,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.update.mockResolvedValue({});
       (axios.patch as jest.Mock).mockResolvedValue({ status: 200 });
 
-      await handler.execute({ objectId: 'ticket-123', propertyName: 'number_of_vas', propertyValue: '3' });
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'number_of_vas',
+        propertyValue: '3',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenNthCalledWith(1, {
         where: { id: BASE_HR.id },
@@ -242,7 +292,11 @@ describe('HandlerTicketPropertyChange', () => {
     });
 
     it('should sync title after va_deployment_type change', async () => {
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'va_deployment_type', propertyValue: 'Part-Time' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'va_deployment_type',
+        propertyValue: 'Part-Time',
+      });
 
       // First update: the field itself
       expect(prismaMock.hireRequest.update).toHaveBeenNthCalledWith(1, {
@@ -257,20 +311,32 @@ describe('HandlerTicketPropertyChange', () => {
       expect(axios.patch).toHaveBeenCalledWith(
         `https://api.hubapi.com/crm/v3/objects/tickets/ticket-123`,
         { properties: { subject: expect.any(String) } },
-        expect.objectContaining({ headers: expect.objectContaining({ Authorization: expect.stringContaining('Bearer') }) }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: expect.stringContaining('Bearer'),
+          }),
+        }),
       );
       expect(result).toBe(true);
     });
 
     it('should sync title after number_of_vas change', async () => {
-      await handler.execute({ objectId: 'ticket-123', propertyName: 'number_of_vas', propertyValue: '2' });
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'number_of_vas',
+        propertyValue: '2',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(2);
       expect(axios.patch).toHaveBeenCalledTimes(1);
     });
 
     it('should sync title after pairing_request_type change', async () => {
-      await handler.execute({ objectId: 'ticket-123', propertyName: 'pairing_request_type', propertyValue: 'Upsell Agent' });
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_request_type',
+        propertyValue: 'Upsell Agent',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(2);
       expect(axios.patch).toHaveBeenCalledTimes(1);
@@ -281,7 +347,11 @@ describe('HandlerTicketPropertyChange', () => {
       prismaMock.hireRequest.findUnique.mockReset();
       prismaMock.hireRequest.findUnique.mockResolvedValue(BASE_HR);
 
-      await handler.execute({ objectId: 'ticket-123', propertyName: 'language', propertyValue: 'English' });
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'language',
+        propertyValue: 'English',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(1);
       expect(axios.patch).not.toHaveBeenCalled();
@@ -306,20 +376,26 @@ describe('HandlerTicketPropertyChange', () => {
       }
     });
 
-    const triggerSyncTitle = async (hrData: Partial<{
-      hubspot_pairing_request_type: string | null;
-      hubspot_numberVA: number | null;
-      hubspot_role_type: string | null;
-      availability: string | null;
-      organization: { name: string };
-    }>) => {
+    const triggerSyncTitle = async (
+      hrData: Partial<{
+        hubspot_pairing_request_type: string | null;
+        hubspot_numberVA: number | null;
+        hubspot_role_type: string | null;
+        availability: string | null;
+        organization: { name: string };
+      }>,
+    ) => {
       prismaMock.hireRequest.findUnique
         .mockResolvedValueOnce(BASE_HR)
         .mockResolvedValueOnce({ ...BASE_HR_WITH_ORG, ...hrData });
       prismaMock.hireRequest.update.mockResolvedValue({});
       (axios.patch as jest.Mock).mockResolvedValue({ status: 200 });
 
-      await handler.execute({ objectId: 'ticket-123', propertyName: 'number_of_vas', propertyValue: '2' });
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'number_of_vas',
+        propertyValue: '2',
+      });
 
       const titleUpdate = prismaMock.hireRequest.update.mock.calls[1][0];
       return titleUpdate.data.title as string;
@@ -328,16 +404,22 @@ describe('HandlerTicketPropertyChange', () => {
     it('should build full title: TEST HR - OrgName - NVAs - Role - Availability', async () => {
       const title = await triggerSyncTitle({});
       // NODE_ENV in jest is 'test', so prefix is 'TEST HR'
-      expect(title).toBe('TEST HR - Acme Health - 2 - Medical Scribe - Full-Time');
+      expect(title).toBe(
+        'TEST HR - Acme Health - 2 - Medical Scribe - Full-Time',
+      );
     });
 
     it('should add UPS prefix for Upsell Agent request type', async () => {
-      const title = await triggerSyncTitle({ hubspot_pairing_request_type: 'Upsell Agent' });
+      const title = await triggerSyncTitle({
+        hubspot_pairing_request_type: 'Upsell Agent',
+      });
       expect(title).toMatch(/^UPS TEST HR/);
     });
 
     it('should add REP prefix for Agent Replacement request type', async () => {
-      const title = await triggerSyncTitle({ hubspot_pairing_request_type: 'Agent Replacement' });
+      const title = await triggerSyncTitle({
+        hubspot_pairing_request_type: 'Agent Replacement',
+      });
       expect(title).toMatch(/^REP TEST HR/);
     });
 
@@ -395,11 +477,19 @@ describe('HandlerTicketPropertyChange', () => {
         .mockResolvedValueOnce(BASE_HR)
         .mockResolvedValueOnce(BASE_HR_WITH_ORG);
       prismaMock.hireRequest.update.mockResolvedValue({});
-      (axios.patch as jest.Mock).mockRejectedValue({ response: { data: 'HubSpot error' } });
+      (axios.patch as jest.Mock).mockRejectedValue({
+        response: { data: 'HubSpot error' },
+      });
 
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
-      const result = await handler.execute({ objectId: 'ticket-123', propertyName: 'number_of_vas', propertyValue: '2' });
+      const result = await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'number_of_vas',
+        propertyValue: '2',
+      });
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(2);
       expect(consoleSpy).toHaveBeenCalledWith(

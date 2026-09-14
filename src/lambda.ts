@@ -34,7 +34,7 @@ async function bootstrapServer(): Promise<any> {
       'https://med-alliance.d2odvfjc5yqdaj.amplifyapp.com',
       'https://med-alliance-improved.d2odvfjc5yqdaj.amplifyapp.com',
       'https://audit-logs.d2odvfjc5yqdaj.amplifyapp.com',
-      'https://mv.staging.nykon.cloud'
+      'https://mv.staging.nykon.cloud',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,

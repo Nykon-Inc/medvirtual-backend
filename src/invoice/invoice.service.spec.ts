@@ -16,7 +16,10 @@ describe('InvoiceService', () => {
     prismaMock = {
       invoiceJob: {
         findMany: jest.fn().mockResolvedValue([]),
-        create: jest.fn().mockResolvedValue({ id: 'job_123', status: InvoiceJobStatus.queued }),
+        create: jest.fn().mockResolvedValue({
+          id: 'job_123',
+          status: InvoiceJobStatus.queued,
+        }),
       },
     };
 
@@ -38,7 +41,10 @@ describe('InvoiceService', () => {
         { provide: StripeService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: getQueueToken('invoice'), useValue: invoiceQueueMock },
-        { provide: getQueueToken('invoice-prebill-reconciliation'), useValue: {} },
+        {
+          provide: getQueueToken('invoice-prebill-reconciliation'),
+          useValue: {},
+        },
       ],
     }).compile();
 
@@ -62,11 +68,14 @@ describe('InvoiceService', () => {
       };
       prismaMock.invoiceJob.findMany.mockResolvedValueOnce([recentJob]);
 
-      const res = await service.createInvoice({
-        billing_start_date: '2026-06-01',
-        billing_end_date: '2026-06-30',
-        organization_id: 'org_123',
-      }, 'user_1');
+      const res = await service.createInvoice(
+        {
+          billing_start_date: '2026-06-01',
+          billing_end_date: '2026-06-30',
+          organization_id: 'org_123',
+        },
+        'user_1',
+      );
 
       expect(res.status).toBe('skipped');
       expect(res.job_id).toBe('job_existing');
@@ -74,11 +83,14 @@ describe('InvoiceService', () => {
     });
 
     it('should create a job and enqueue tasks successfully', async () => {
-      const res = await service.createInvoice({
-        billing_start_date: '2026-06-01',
-        billing_end_date: '2026-06-30',
-        organization_id: 'org_123',
-      }, 'user_1');
+      const res = await service.createInvoice(
+        {
+          billing_start_date: '2026-06-01',
+          billing_end_date: '2026-06-30',
+          organization_id: 'org_123',
+        },
+        'user_1',
+      );
 
       expect(res.status).toBe('queued');
       expect(res.job_id).toBe('job_123');

@@ -4,7 +4,11 @@ import { OrganizationCreationService } from './Organization';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
 import { BusinessUnitContext } from '../../business-units/business-unit-context.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -24,7 +28,11 @@ const auditMock = { log: jest.fn() };
  */
 const BU_ROWS = [
   { hubspot_value: 'MedVirtual', name: 'Med Virtual', slug: 'medvirtual' },
-  { hubspot_value: 'Berry Virtual', name: 'Berry Virtual', slug: 'berryvirtual' },
+  {
+    hubspot_value: 'Berry Virtual',
+    name: 'Berry Virtual',
+    slug: 'berryvirtual',
+  },
   { hubspot_value: 'MMVA', name: 'My Medical VA', slug: 'mmva' },
 ];
 const normalize = (v?: string | null) =>
@@ -76,14 +84,18 @@ describe('OrganizationCreationService', () => {
       ],
     }).compile();
 
-    service = module.get<OrganizationCreationService>(OrganizationCreationService);
+    service = module.get<OrganizationCreationService>(
+      OrganizationCreationService,
+    );
   });
 
   // ── Success path ─────────────────────────────────────────────────────────────
 
   describe('execute() — success', () => {
     beforeEach(() => {
-      mockedAxios.post.mockResolvedValueOnce({ data: { id: 'hs-company-999' } });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'hs-company-999' },
+      });
       prismaMock.organization.update.mockResolvedValueOnce({});
     });
 
@@ -213,7 +225,9 @@ describe('OrganizationCreationService', () => {
 
   describe('outbound business_unit normalization', () => {
     beforeEach(() => {
-      mockedAxios.post.mockResolvedValueOnce({ data: { id: 'hs-company-999' } });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'hs-company-999' },
+      });
       prismaMock.organization.update.mockResolvedValueOnce({});
     });
 

@@ -253,7 +253,11 @@ describe('StaffService', () => {
         .mockResolvedValueOnce(mockFindOneResult);
       mockPrisma.uSER.findUnique.mockResolvedValue({ id: 'user-1' });
       mockPrisma.bonus.create.mockResolvedValue({ id: 'bonus-1' });
-      mockPrisma.ticket.create.mockResolvedValue({ id: 'ticket-1', status: 'new', type: 'bonus' });
+      mockPrisma.ticket.create.mockResolvedValue({
+        id: 'ticket-1',
+        status: 'new',
+        type: 'bonus',
+      });
       mockPrisma.$transaction.mockImplementation((arr: any[]) =>
         Promise.all(arr),
       );
@@ -420,7 +424,11 @@ describe('StaffService', () => {
         id: 'staff-1',
         status: 'termination-requested',
       });
-      mockPrisma.ticket.create.mockResolvedValue({ id: 'ticket-1', status: 'new', type: 'termination' });
+      mockPrisma.ticket.create.mockResolvedValue({
+        id: 'ticket-1',
+        status: 'new',
+        type: 'termination',
+      });
       mockPrisma.$transaction.mockImplementation((arr: any[]) =>
         Promise.all(arr),
       );
@@ -790,7 +798,7 @@ describe('StaffService', () => {
       );
 
       expect(result.status).toBe(200);
-      expect(result.data).toEqual(mockStaffData);
+      expect(result.data).toEqual([{ ...mockStaffData[0], candidate: null }]);
       expect(result.meta.total).toBe(mockTotal);
     });
 
@@ -910,7 +918,7 @@ describe('StaffService', () => {
 
       expect(result.status).toBe(200);
       expect(result.message).toBe('Staff updated successfully');
-      expect(result.data).toEqual(mockUpdatedResult);
+      expect(result.data).toEqual({ ...mockUpdatedResult, candidate: null });
     });
 
     it('should translate status via staffStatusDictionary', async () => {
@@ -1327,7 +1335,7 @@ describe('StaffService', () => {
     let axiosMock: jest.Mocked<any>;
 
     beforeEach(() => {
-      axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      axiosMock = jest.requireMock('axios');
       jest.clearAllMocks();
     });
 

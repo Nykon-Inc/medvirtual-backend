@@ -11,7 +11,9 @@ describe('MailService', () => {
   beforeEach(async () => {
     mockEmailsSend = jest.fn();
     const { Resend } = require('resend');
-    (Resend as jest.Mock).mockImplementation(() => ({ emails: { send: mockEmailsSend } }));
+    (Resend as jest.Mock).mockImplementation(() => ({
+      emails: { send: mockEmailsSend },
+    }));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [MailService],
@@ -46,27 +48,46 @@ describe('MailService', () => {
     });
 
     it('should throw BadRequestException if options are missing required fields', async () => {
-      const invalidOptions = { to: 'user@test.com', subject: 'Test', html: '<p>hi</p>' } as any;
-      await expect(service.sendMail(invalidOptions)).rejects.toThrow('Invalid email options provided');
+      const invalidOptions = {
+        to: 'user@test.com',
+        subject: 'Test',
+        html: '<p>hi</p>',
+      } as any;
+      await expect(service.sendMail(invalidOptions)).rejects.toThrow(
+        'Invalid email options provided',
+      );
     });
 
     it('should throw BadRequestException if Resend returns no data', async () => {
-      mockEmailsSend.mockResolvedValueOnce({ data: null, error: { message: 'Resend API error' } });
-      await expect(service.sendMail(validOptions)).rejects.toThrow('Failed to send email');
+      mockEmailsSend.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Resend API error' },
+      });
+      await expect(service.sendMail(validOptions)).rejects.toThrow(
+        'Failed to send email',
+      );
     });
 
     it('should throw BadRequestException if Resend throws an error', async () => {
       mockEmailsSend.mockRejectedValueOnce(new Error('Network error'));
-      await expect(service.sendMail(validOptions)).rejects.toThrow(BadRequestException);
+      await expect(service.sendMail(validOptions)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should return true when email is sent successfully', async () => {
       process.env.ENVIRONMENT = 'PROD';
-      mockEmailsSend.mockResolvedValueOnce({ data: { id: 'email-123' }, error: null });
+      mockEmailsSend.mockResolvedValueOnce({
+        data: { id: 'email-123' },
+        error: null,
+      });
       const result = await service.sendMail(validOptions);
       expect(result).toBe(true);
       expect(mockEmailsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ from: validOptions.from, to: validOptions.to }),
+        expect.objectContaining({
+          from: validOptions.from,
+          to: validOptions.to,
+        }),
       );
     });
 
@@ -140,7 +161,9 @@ describe('MailService', () => {
         });
 
         expect(mockEmailsSend).toHaveBeenCalledWith(
-          expect.objectContaining({ from: 'Berry Virtual <noreply@medvirtual.ai>' }),
+          expect.objectContaining({
+            from: 'Berry Virtual <noreply@medvirtual.ai>',
+          }),
         );
       });
     });

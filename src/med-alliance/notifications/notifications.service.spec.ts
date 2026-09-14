@@ -6,7 +6,9 @@ import { EmailTemplatesService } from '../../email-templates/email-templates.ser
 
 const mockMail = { sendMail: jest.fn() };
 const mockPrisma = {};
-const mockEmailTemplates = { getTemplateContent: jest.fn().mockResolvedValue(null) };
+const mockEmailTemplates = {
+  getTemplateContent: jest.fn().mockResolvedValue(null),
+};
 
 const affiliate = { email: 'partner@test.com', first_name: 'Jane' };
 
@@ -51,10 +53,10 @@ describe('AllianceNotificationsService', () => {
       );
       expect(call.html).toContain('Great news!');
       expect(call.html).toContain(
-        'This means you can request a transfer to your account whenever you\'re ready.',
+        "This means you can request a transfer to your account whenever you're ready.",
       );
       expect(call.html).toContain(
-        "Head to your earnings dashboard to request your payout",
+        'Head to your earnings dashboard to request your payout',
       );
     });
 
@@ -106,7 +108,7 @@ describe('AllianceNotificationsService', () => {
 
       const call = mockMail.sendMail.mock.calls[0][0];
       expect(call.subject).toBe(
-        "Your payout of $500.00 has been sent — money is on its way!",
+        'Your payout of $500.00 has been sent — money is on its way!',
       );
       expect(call.html).toContain('Your payout has been sent!');
       expect(call.html).toContain('Sent on');
@@ -134,9 +136,7 @@ describe('AllianceNotificationsService', () => {
       });
 
       const call = mockMail.sendMail.mock.calls[0][0];
-      expect(call.subject).toBe(
-        'Update on your payout request of $250.00',
-      );
+      expect(call.subject).toBe('Update on your payout request of $250.00');
       expect(call.html).toContain(
         'We wanted to let you know that your recent payout request has been cancelled',
       );
@@ -250,7 +250,9 @@ describe('AllianceNotificationsService', () => {
       expect(call.html).toContain(
         'An admin has reverted a commission back to pending review.',
       );
-      expect(call.html).toContain('Please check the details below and take action.');
+      expect(call.html).toContain(
+        'Please check the details below and take action.',
+      );
     });
   });
 

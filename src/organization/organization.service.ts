@@ -582,7 +582,7 @@ export class OrganizationService {
             hubspot_id: true,
           },
         },
-        invoiceConfiguration: true
+        invoiceConfiguration: true,
       },
     });
 
@@ -766,6 +766,7 @@ export class OrganizationService {
       where: { organization_id: orgId },
       select: {
         id: true,
+        user_id: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -1196,10 +1197,7 @@ export class OrganizationService {
     }
   }
 
-  async convertToClient(
-    id: string,
-    data: ConvertToClientDto,
-  ): Promise<any> {
+  async convertToClient(id: string, data: ConvertToClientDto): Promise<any> {
     try {
       const organization = await this.prisma.organization.findUnique({
         where: { id },
@@ -1428,6 +1426,7 @@ export class OrganizationService {
             about_me: true,
             gender: true,
             avatar_url: true,
+            hubspot_vaid: true,
             languages: {
               select: {
                 name: true,
@@ -1488,6 +1487,7 @@ export class OrganizationService {
         candidate: s.candidate
           ? {
               ...s.candidate,
+              vaid: s.candidate.hubspot_vaid,
               avatar: s.candidate.avatar_url
                 ? `${process.env.AVATAR_URL}${s.candidate.avatar_url}`
                 : null,

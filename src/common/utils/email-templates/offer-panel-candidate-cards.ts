@@ -69,7 +69,13 @@ export interface OfferPanelEmailCandidate {
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const h = (hex || '').trim().replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const full =
+    h.length === 3
+      ? h
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : h;
   if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
   const n = parseInt(full, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
@@ -238,7 +244,12 @@ function stripNewlines(html: string): string {
 
 // ─── Fragments ───────────────────────────────────────────────────────────────
 
-function pill(label: string, bg: string, color: string, border: string): string {
+function pill(
+  label: string,
+  bg: string,
+  color: string,
+  border: string,
+): string {
   return `<span style="display:inline-block;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:500;background:${bg};color:${color};border:1px solid ${border};line-height:16px;mso-line-height-rule:exactly;white-space:nowrap;">${esc(label)}</span>`;
 }
 
@@ -338,7 +349,9 @@ function promoBanner(t: CardTheme): string {
   const features = PROMO_FEATURES.map(
     (f) =>
       `<span style="font-size:12px;color:#0f172a;font-weight:600;">&#10003; ${esc(f)}</span>`,
-  ).join('<span style="color:#cbd5e1;">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>');
+  ).join(
+    '<span style="color:#cbd5e1;">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>',
+  );
 
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;background-color:${t.panelBg};border-radius:10px;margin:0 0 14px;"><tr><td style="padding:18px 20px;text-align:center;"><div style="display:inline-block;padding:6px 16px;border-radius:999px;background-color:${t.fill};color:${t.onPrimary};font-weight:700;font-size:11px;letter-spacing:.4px;text-transform:uppercase;">Limited Time Offer</div><div style="font-size:17px;font-weight:800;color:#0f172a;line-height:1.3;padding:10px 0 8px;">Select candidates starting at just ${OFFER_PANEL_PROMO_PRICE_LABEL}/month Full-time</div><div>${features}</div><div style="font-size:10px;color:#888780;padding-top:8px;">*Terms &amp; Conditions Apply*</div></td></tr></table>`;
 }

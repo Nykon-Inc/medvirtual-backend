@@ -51,9 +51,9 @@ describe('renderOfferPanelCandidateCardsShowcase', () => {
   });
 
   it('returns an empty string when there are no candidates', () => {
-    expect(
-      renderOfferPanelCandidateCardsShowcase([], makeTheme(), false),
-    ).toBe('');
+    expect(renderOfferPanelCandidateCardsShowcase([], makeTheme(), false)).toBe(
+      '',
+    );
     expect(
       renderOfferPanelCandidateCardsShowcase(null, makeTheme(), false),
     ).toBe('');
@@ -123,7 +123,13 @@ describe('renderOfferPanelCandidateCardsShowcase', () => {
 
     it('shows a single initial when only a first name is known', () => {
       const html = renderOfferPanelCandidateCardsShowcase(
-        [makeCandidate({ avatar_url: null, first_name: 'Ana', last_name: null })],
+        [
+          makeCandidate({
+            avatar_url: null,
+            first_name: 'Ana',
+            last_name: null,
+          }),
+        ],
         makeTheme(),
         false,
       );
@@ -428,7 +434,11 @@ describe('renderOfferPanelCandidateCardsShowcase', () => {
       const html = renderOfferPanelCandidateCardsShowcase(
         [
           makeCandidate({
-            approved_positions_pairing: ['Medical Assistant', 'Scribe', 'Biller'],
+            approved_positions_pairing: [
+              'Medical Assistant',
+              'Scribe',
+              'Biller',
+            ],
           }),
         ],
         makeTheme(),

@@ -79,9 +79,9 @@ describe('BusinessUnitContext.isAllowedHubspotValue', () => {
   it('returns false for null/empty input', async () => {
     const { ctx } = makeContext();
     await expect(ctx.isAllowedHubspotValue('')).resolves.toBe(false);
-    await expect(ctx.isAllowedHubspotValue(null as unknown as string)).resolves.toBe(
-      false,
-    );
+    await expect(
+      ctx.isAllowedHubspotValue(null as unknown as string),
+    ).resolves.toBe(false);
   });
 });
 
@@ -167,7 +167,12 @@ describe('BusinessUnitContext.brandingFor', () => {
 
   it('nulls out missing branding fields rather than returning undefined', async () => {
     const { ctx } = makeContext([
-      { id: 'x', slug: 'medvirtual', name: 'MedVirtual', hubspot_value: 'MedVirtual' },
+      {
+        id: 'x',
+        slug: 'medvirtual',
+        name: 'MedVirtual',
+        hubspot_value: 'MedVirtual',
+      },
     ]);
     const branding = await ctx.brandingFor('MedVirtual');
     expect(branding).toEqual({
@@ -220,13 +225,20 @@ describe('BusinessUnitContext.displayToSlug', () => {
 describe('BusinessUnitContext — fallback when hubspot_value/is_visible/candidate_pool are absent', () => {
   const LEGACY_ROWS = [
     { id: 'bu-1', slug: 'medvirtual', name: 'MedVirtual', is_active: true },
-    { id: 'bu-2', slug: 'berry-virtual', name: 'Berry Virtual', is_active: true },
+    {
+      id: 'bu-2',
+      slug: 'berry-virtual',
+      name: 'Berry Virtual',
+      is_active: true,
+    },
   ];
 
   it('treats MedVirtual & Berry Virtual as visible by name/slug fallback', async () => {
     const { ctx } = makeContext(LEGACY_ROWS);
     await expect(ctx.isAllowedHubspotValue('MedVirtual')).resolves.toBe(true);
-    await expect(ctx.isAllowedHubspotValue('Berry Virtual')).resolves.toBe(true);
+    await expect(ctx.isAllowedHubspotValue('Berry Virtual')).resolves.toBe(
+      true,
+    );
     await expect(ctx.isAllowedHubspotValue('BerryVirtual')).resolves.toBe(true);
   });
 

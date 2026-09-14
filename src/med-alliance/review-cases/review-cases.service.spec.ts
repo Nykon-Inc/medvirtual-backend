@@ -37,7 +37,15 @@ const makeCase = (overrides: Partial<any> = {}) => ({
   resolution: null,
   createdAt: new Date('2026-03-01'),
   updatedAt: new Date('2026-03-01'),
-  organization: { id: 'org-1', name: 'Acme Corp', email: null, hubspot_id: null, med_alliance_referral_status: 'eligible', hubspot_sync_status: null, referredByAffiliate: null },
+  organization: {
+    id: 'org-1',
+    name: 'Acme Corp',
+    email: null,
+    hubspot_id: null,
+    med_alliance_referral_status: 'eligible',
+    hubspot_sync_status: null,
+    referredByAffiliate: null,
+  },
   resolvedBy: null,
   ...overrides,
 });
@@ -65,7 +73,10 @@ describe('ReviewCasesService', () => {
     it('should create a review case and return { opened: true }', async () => {
       mockPrisma.medAllianceAdminReviewCase.create.mockResolvedValue({});
 
-      const result = await service.openOrSkip('org-1', AdminReviewReasonCode.multiple_hubspot_matches);
+      const result = await service.openOrSkip(
+        'org-1',
+        AdminReviewReasonCode.multiple_hubspot_matches,
+      );
 
       expect(result).toEqual({ opened: true });
       expect(mockPrisma.medAllianceAdminReviewCase.create).toHaveBeenCalledWith(
@@ -80,28 +91,44 @@ describe('ReviewCasesService', () => {
     });
 
     it('should return { opened: false } on P2002 (duplicate open case)', async () => {
-      const uniqueError = Object.assign(new Error('Unique constraint'), { code: 'P2002' });
-      mockPrisma.medAllianceAdminReviewCase.create.mockRejectedValue(uniqueError);
+      const uniqueError = Object.assign(new Error('Unique constraint'), {
+        code: 'P2002',
+      });
+      mockPrisma.medAllianceAdminReviewCase.create.mockRejectedValue(
+        uniqueError,
+      );
 
-      const result = await service.openOrSkip('org-1', AdminReviewReasonCode.multiple_hubspot_matches);
+      const result = await service.openOrSkip(
+        'org-1',
+        AdminReviewReasonCode.multiple_hubspot_matches,
+      );
 
       expect(result).toEqual({ opened: false });
     });
 
     it('should rethrow non-P2002 errors', async () => {
-      mockPrisma.medAllianceAdminReviewCase.create.mockRejectedValue(new Error('DB failure'));
+      mockPrisma.medAllianceAdminReviewCase.create.mockRejectedValue(
+        new Error('DB failure'),
+      );
 
       await expect(
-        service.openOrSkip('org-1', AdminReviewReasonCode.multiple_hubspot_matches),
+        service.openOrSkip(
+          'org-1',
+          AdminReviewReasonCode.multiple_hubspot_matches,
+        ),
       ).rejects.toThrow('DB failure');
     });
 
     it('should store metadata when provided', async () => {
       mockPrisma.medAllianceAdminReviewCase.create.mockResolvedValue({});
 
-      await service.openOrSkip('org-1', AdminReviewReasonCode.soft_duplicate_referral, {
-        matched_organization_id: 'org-2',
-      });
+      await service.openOrSkip(
+        'org-1',
+        AdminReviewReasonCode.soft_duplicate_referral,
+        {
+          matched_organization_id: 'org-2',
+        },
+      );
 
       expect(mockPrisma.medAllianceAdminReviewCase.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -138,7 +165,9 @@ describe('ReviewCasesService', () => {
     it('should filter by reason_code', async () => {
       mockPrisma.$transaction.mockResolvedValue([[makeCase()], 1]);
 
-      const result = await service.findAll({ reason_code: 'multiple_hubspot_matches' });
+      const result = await service.findAll({
+        reason_code: 'multiple_hubspot_matches',
+      });
 
       expect(result.data).toHaveLength(1);
     });
@@ -157,7 +186,9 @@ describe('ReviewCasesService', () => {
     });
 
     it('should return the case when found', async () => {
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(makeCase());
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        makeCase(),
+      );
 
       const result = await service.findOne('case-1');
 
@@ -176,14 +207,22 @@ describe('ReviewCasesService', () => {
 
       await expect(
         service.resolve('case-1', 'admin-1', { resolution: 'Done' }),
-      ).rejects.toThrow(new BadRequestException('Review case is already resolved'));
+      ).rejects.toThrow(
+        new BadRequestException('Review case is already resolved'),
+      );
     });
 
     it('should close the case with resolved status and resolution note', async () => {
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(makeCase());
-      mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue(makeCase({ status: AdminReviewStatus.resolved }));
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        makeCase(),
+      );
+      mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue(
+        makeCase({ status: AdminReviewStatus.resolved }),
+      );
 
-      await service.resolve('case-1', 'admin-1', { resolution: 'Handled manually' });
+      await service.resolve('case-1', 'admin-1', {
+        resolution: 'Handled manually',
+      });
 
       expect(mockPrisma.medAllianceAdminReviewCase.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -197,7 +236,9 @@ describe('ReviewCasesService', () => {
     });
 
     it('should set org.hubspot_id when resolving multiple_hubspot_matches with hubspot_company_id', async () => {
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(makeCase());
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        makeCase(),
+      );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
 
@@ -218,10 +259,14 @@ describe('ReviewCasesService', () => {
     });
 
     it('should not update org when resolving multiple_hubspot_matches without hubspot_company_id', async () => {
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(makeCase());
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        makeCase(),
+      );
       mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
 
-      await service.resolve('case-1', 'admin-1', { resolution: 'Will handle later' });
+      await service.resolve('case-1', 'admin-1', {
+        resolution: 'Will handle later',
+      });
 
       expect(mockPrisma.organization.update).not.toHaveBeenCalled();
     });
@@ -336,7 +381,9 @@ describe('ReviewCasesService', () => {
         reason_code: AdminReviewReasonCode.reconciliation_invoice_changed,
         metadata: { commission_id: 'comm-1', snapshot_id: 'snap-1' },
       });
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(reconCase);
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        reconCase,
+      );
       mockPrisma.affiliateCommission.update.mockResolvedValue({});
       mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
@@ -366,7 +413,9 @@ describe('ReviewCasesService', () => {
         reason_code: AdminReviewReasonCode.reconciliation_invoice_changed,
         metadata: { commission_id: 'comm-1', snapshot_id: 'snap-1' },
       });
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(reconCase);
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        reconCase,
+      );
       mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
 
       await service.resolve('case-1', 'admin-1', {
@@ -383,7 +432,9 @@ describe('ReviewCasesService', () => {
         reason_code: AdminReviewReasonCode.reconciliation_invoice_changed,
         metadata: { commission_id: 'comm-1', snapshot_id: 'snap-1' },
       });
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(reconCase);
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        reconCase,
+      );
       mockPrisma.affiliateCommission.update.mockResolvedValue({});
       mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
@@ -412,12 +463,17 @@ describe('ReviewCasesService', () => {
         reason_code: AdminReviewReasonCode.reconciliation_invoice_changed,
         metadata: null,
       });
-      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(reconCase);
+      mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+        reconCase,
+      );
       mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
 
       // Should not throw even with null metadata
       await expect(
-        service.resolve('case-1', 'admin-1', { resolution: 'Handled', action: 'void_and_recreate' }),
+        service.resolve('case-1', 'admin-1', {
+          resolution: 'Handled',
+          action: 'void_and_recreate',
+        }),
       ).resolves.not.toThrow();
 
       expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();

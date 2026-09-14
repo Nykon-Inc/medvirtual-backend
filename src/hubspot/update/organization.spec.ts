@@ -4,7 +4,11 @@ import { OrganizationUpdateService } from './organization';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
 import { OwnerCreationService } from '../create/Owner';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -141,9 +145,15 @@ describe('OrganizationUpdateService', () => {
     const affiliateUserId = 'aff-user-001';
 
     beforeEach(() => {
-      prismaMock.organization.findUnique.mockResolvedValue({ hubspot_id: 'hs-company-123' });
-      prismaMock.affiliateProfile.findUnique.mockResolvedValue({ hubspot_id: 'hs-gp-001' });
-      prismaMock.uSER.findUnique.mockResolvedValue({ email: 'aff@example.com' });
+      prismaMock.organization.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-company-123',
+      });
+      prismaMock.affiliateProfile.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-gp-001',
+      });
+      prismaMock.uSER.findUnique.mockResolvedValue({
+        email: 'aff@example.com',
+      });
     });
 
     it('logs UPDATE with success=true on successful referral patch', async () => {
@@ -184,7 +194,9 @@ describe('OrganizationUpdateService', () => {
     });
 
     it('returns early without calling API when org has no hubspot_id', async () => {
-      prismaMock.organization.findUnique.mockResolvedValueOnce({ hubspot_id: null });
+      prismaMock.organization.findUnique.mockResolvedValueOnce({
+        hubspot_id: null,
+      });
 
       await service.setAffiliateReferral(orgId, affiliateUserId);
 

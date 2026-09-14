@@ -28,7 +28,7 @@ function panelCandidate(
 
 describe('isInClientOpenPanel', () => {
   describe('organization scoping', () => {
-    it("ignores panels belonging to another client", () => {
+    it('ignores panels belonging to another client', () => {
       // Regression: a candidate in someone else's panel must stay addable.
       const panels = [
         panelCandidate(HireRequestStatus.panel_ready, {

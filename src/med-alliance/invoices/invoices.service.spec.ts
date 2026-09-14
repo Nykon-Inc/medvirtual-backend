@@ -67,32 +67,57 @@ describe('InvoicesService', () => {
     const cases = [
       {
         label: 'true when invoice_status=paid, amount>0, payment_status=null',
-        snapshot: makeSnapshot({ invoice_status: 'paid', invoice_amount: '1500.00', payment_status: null }),
+        snapshot: makeSnapshot({
+          invoice_status: 'paid',
+          invoice_amount: '1500.00',
+          payment_status: null,
+        }),
         expected: true,
       },
       {
-        label: 'true when invoice_status=paid, amount>0, payment_status=succeeded',
-        snapshot: makeSnapshot({ invoice_status: 'paid', invoice_amount: '1500.00', payment_status: 'succeeded' }),
+        label:
+          'true when invoice_status=paid, amount>0, payment_status=succeeded',
+        snapshot: makeSnapshot({
+          invoice_status: 'paid',
+          invoice_amount: '1500.00',
+          payment_status: 'succeeded',
+        }),
         expected: true,
       },
       {
         label: 'false when invoice_status is not paid',
-        snapshot: makeSnapshot({ invoice_status: 'outstanding', invoice_amount: '1500.00', payment_status: null }),
+        snapshot: makeSnapshot({
+          invoice_status: 'outstanding',
+          invoice_amount: '1500.00',
+          payment_status: null,
+        }),
         expected: false,
       },
       {
         label: 'false when invoice_amount is 0',
-        snapshot: makeSnapshot({ invoice_status: 'paid', invoice_amount: '0.00', payment_status: null }),
+        snapshot: makeSnapshot({
+          invoice_status: 'paid',
+          invoice_amount: '0.00',
+          payment_status: null,
+        }),
         expected: false,
       },
       {
         label: 'false when invoice_amount is negative',
-        snapshot: makeSnapshot({ invoice_status: 'paid', invoice_amount: '-100.00', payment_status: null }),
+        snapshot: makeSnapshot({
+          invoice_status: 'paid',
+          invoice_amount: '-100.00',
+          payment_status: null,
+        }),
         expected: false,
       },
       {
         label: 'false when payment_status is present and not succeeded',
-        snapshot: makeSnapshot({ invoice_status: 'paid', invoice_amount: '1000.00', payment_status: 'failed' }),
+        snapshot: makeSnapshot({
+          invoice_status: 'paid',
+          invoice_amount: '1000.00',
+          payment_status: 'failed',
+        }),
         expected: false,
       },
     ];
@@ -105,7 +130,11 @@ describe('InvoicesService', () => {
         });
         mockPrisma.$transaction.mockResolvedValue([[snapshot], 1]);
 
-        const result = await service.getForAffiliate('org-1', mockCurrentUser, {});
+        const result = await service.getForAffiliate(
+          'org-1',
+          mockCurrentUser,
+          {},
+        );
 
         expect(result.data[0].is_candidate_input).toBe(expected);
       });
@@ -143,7 +172,11 @@ describe('InvoicesService', () => {
       });
       mockPrisma.$transaction.mockResolvedValue([[snapshot], 1]);
 
-      const result = await service.getForAffiliate('org-1', mockCurrentUser, {});
+      const result = await service.getForAffiliate(
+        'org-1',
+        mockCurrentUser,
+        {},
+      );
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).toHaveProperty('is_candidate_input');
@@ -152,13 +185,26 @@ describe('InvoicesService', () => {
     });
 
     it('should filter by candidates_only — only return is_candidate_input=true records', async () => {
-      const eligible = makeSnapshot({ invoice_status: 'paid', invoice_amount: '500.00', payment_status: null });
-      const ineligible = makeSnapshot({ invoice_status: 'outstanding', invoice_amount: '200.00', payment_status: null, id: 'snap-2' });
+      const eligible = makeSnapshot({
+        invoice_status: 'paid',
+        invoice_amount: '500.00',
+        payment_status: null,
+      });
+      const ineligible = makeSnapshot({
+        invoice_status: 'outstanding',
+        invoice_amount: '200.00',
+        payment_status: null,
+        id: 'snap-2',
+      });
 
-      mockPrisma.organization.findUnique.mockResolvedValue({ referred_by_affiliate_id: 'user-1' });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        referred_by_affiliate_id: 'user-1',
+      });
       mockPrisma.$transaction.mockResolvedValue([[eligible, ineligible], 2]);
 
-      const result = await service.getForAffiliate('org-1', mockCurrentUser, { candidates_only: true });
+      const result = await service.getForAffiliate('org-1', mockCurrentUser, {
+        candidates_only: true,
+      });
 
       expect(result.data.every((s) => s.is_candidate_input)).toBe(true);
       expect(result.data).toHaveLength(1);
@@ -166,7 +212,9 @@ describe('InvoicesService', () => {
 
     it('should apply paid_at_from and paid_at_to date filters', async () => {
       const snapshot = makeSnapshot();
-      mockPrisma.organization.findUnique.mockResolvedValue({ referred_by_affiliate_id: 'user-1' });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        referred_by_affiliate_id: 'user-1',
+      });
       mockPrisma.$transaction.mockResolvedValue([[snapshot], 1]);
 
       const result = await service.getForAffiliate('org-1', mockCurrentUser, {
@@ -178,7 +226,9 @@ describe('InvoicesService', () => {
     });
 
     it('should respect custom pagination', async () => {
-      mockPrisma.organization.findUnique.mockResolvedValue({ referred_by_affiliate_id: 'user-1' });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        referred_by_affiliate_id: 'user-1',
+      });
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
       const result = await service.getForAffiliate('org-1', mockCurrentUser, {
@@ -217,7 +267,9 @@ describe('InvoicesService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.getForAdmin('org-1', { invoice_status: 'outstanding' });
+      const result = await service.getForAdmin('org-1', {
+        invoice_status: 'outstanding',
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -242,7 +294,10 @@ describe('InvoicesService', () => {
     });
 
     it('should filter by candidates_only across all organizations', async () => {
-      const eligible = { ...makeSnapshot(), organization: { id: 'org-1', name: 'Acme' } };
+      const eligible = {
+        ...makeSnapshot(),
+        organization: { id: 'org-1', name: 'Acme' },
+      };
       const ineligible = {
         ...makeSnapshot({ invoice_status: 'outstanding', id: 'snap-2' }),
         organization: { id: 'org-2', name: 'Beta' },

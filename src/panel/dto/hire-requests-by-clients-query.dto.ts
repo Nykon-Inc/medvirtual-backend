@@ -8,7 +8,11 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-const SORTABLE_FIELDS = ['createdAt', 'clientName', 'organizationName'] as const;
+const SORTABLE_FIELDS = [
+  'createdAt',
+  'clientName',
+  'organizationName',
+] as const;
 type SortableField = (typeof SORTABLE_FIELDS)[number];
 
 export class HireRequestsByClientsQueryDto {

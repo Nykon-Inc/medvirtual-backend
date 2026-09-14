@@ -45,6 +45,8 @@ interface CandidateRow {
   id: string;
   hubspot_id: string;
   hubstaff_id: string | null;
+  /** Local copy of the VA ID. Read to decide whether the backfill has anything to do. */
+  hubspot_vaid: string | null;
   /** Not used for matching — carried only so HUBSTAFF_SYNC_TRACE can find a row by email. */
   email: string;
 }
@@ -114,12 +116,12 @@ export class HubstaffWorker extends WorkerHost {
 
   /**
    * Walks a traced candidate backwards through the pipeline and reports the
-   * first stage that breaks: does the row exist, does it have Staff records,
-   * did the candidate-set filter keep it, did the vaid search return its
-   * hubspot_id, and does any Hubstaff member actually carry that VA ID.
+   * first stage that breaks: does the row exist, did the loaded candidate set
+   * keep it, did the vaid search return its hubspot_id, and does any Hubstaff
+   * member actually carry that VA ID.
    *
    * Queried directly rather than read off the loaded rows, so a candidate the
-   * filter excluded still gets reported — being excluded is itself the answer.
+   * load missed still gets reported — being absent is itself the answer.
    */
   private async traceCandidates(
     hsRecords: HubspotIdentityRecord[],
@@ -141,7 +143,7 @@ export class HubstaffWorker extends WorkerHost {
         email: true,
         hubspot_id: true,
         hubstaff_id: true,
-        staff: { select: { id: true, hubspot_id: true } },
+        hubspot_vaid: true,
       },
     });
 
@@ -156,14 +158,8 @@ export class HubstaffWorker extends WorkerHost {
 
     for (const row of traced) {
       this.trace(
-        `Candidate ${row.id} email=<${row.email}> hubspot_id=${row.hubspot_id} hubstaff_id=${row.hubstaff_id ?? 'null'}`,
-      );
-      this.trace(
-        `  ↳ staff records: ${
-          row.staff.length === 0
-            ? 'NONE — excluded by the staff filter, so the sync cannot reach it'
-            : JSON.stringify(row.staff)
-        }`,
+        `Candidate ${row.id} email=<${row.email}> hubspot_id=${row.hubspot_id} ` +
+          `hubstaff_id=${row.hubstaff_id ?? 'null'} vaid=${row.hubspot_vaid ?? 'null'}`,
       );
       this.trace(
         `  ↳ survived the candidate-set filter? ${loadedIds.has(row.id) ? 'YES' : 'NO'}`,
@@ -274,7 +270,11 @@ export class HubstaffWorker extends WorkerHost {
         this.logger.log(
           '🏁 Sync completed. No members with VA ID profiles found.',
         );
-        return { updateCount: 0, skipCount: members.length };
+        return {
+          updateCount: 0,
+          vaIdBackfillCount: 0,
+          skipCount: members.length,
+        };
       }
 
       this.logger.log('📡 Fetching matched candidates from HubSpot...');
@@ -324,9 +324,12 @@ export class HubstaffWorker extends WorkerHost {
       // The set is narrowed to two groups, and both are required:
       //
       //  1. Match targets — candidates whose hubspot_id came back from the vaid
-      //     search AND that have at least one Staff record. The loop can only
-      //     ever reach a candidate via byHubspotId.get(hubspotId), so anything
-      //     outside this set is dead weight.
+      //     search. The loop can only ever reach a candidate via
+      //     byHubspotId.get(hubspotId), so anything outside this set is dead
+      //     weight. Deliberately NOT narrowed to candidates with a Staff record:
+      //     a VA tracking time in Hubstaff is the same person whether or not a
+      //     deal has landed yet, and the staff filter left those rows with a
+      //     null hubstaff_id until one did.
       //  2. Current holders — whoever already owns one of the hubstaff_ids we
       //     might assign. hubstaff_id is uniquely indexed, so a holder outside
       //     group 1 still has to be found and released; omitting them would turn
@@ -340,7 +343,7 @@ export class HubstaffWorker extends WorkerHost {
         await this.prisma.candidate.findMany({
           where: {
             OR: [
-              { hubspot_id: { in: hsIds }, staff: { some: {} } },
+              { hubspot_id: { in: hsIds } },
               { hubstaff_id: { in: memberUserIds } },
             ],
           },
@@ -348,6 +351,7 @@ export class HubstaffWorker extends WorkerHost {
             id: true,
             hubspot_id: true,
             hubstaff_id: true,
+            hubspot_vaid: true,
             email: true,
           },
         });
@@ -366,27 +370,21 @@ export class HubstaffWorker extends WorkerHost {
         `🔎 Indexed ${candidateRows.length} candidate(s) — ${byHubstaffId.size} already carry a hubstaff_id`,
       );
 
-      // Separate the two reasons a match target can be missing, which the
-      // no_local_candidate counter alone conflates: the candidate genuinely does
-      // not exist, versus it exists but has no Staff record and was filtered
-      // out. Without this split a low match rate looks like a matching problem
-      // when it may just be that few candidates are staffed.
+      // How much of the HubSpot side we can actually act on. A low number here
+      // means the gap is upstream — HubSpot returned VA records we hold no
+      // Candidate row for — rather than a matching bug in the loop below.
       const hsIdSet = new Set(hsIds);
-      const staffedTargets = candidateRows.filter((r) =>
+      const matchTargets = candidateRows.filter((r) =>
         hsIdSet.has(r.hubspot_id),
       ).length;
-      const targetsIgnoringStaffFilter = await this.prisma.candidate.count({
-        where: { hubspot_id: { in: hsIds } },
-      });
       this.logger.log(
-        `📊 ${targetsIgnoringStaffFilter} candidate(s) carry one of the ${hsIds.length} returned hubspot_id(s); ` +
-          `${staffedTargets} of those have a Staff record ` +
-          `(${targetsIgnoringStaffFilter - staffedTargets} excluded by the staff filter)`,
+        `📊 ${matchTargets} of the ${hsIds.length} returned hubspot_id(s) resolve to a local Candidate row`,
       );
 
       await this.traceCandidates(hsRecords, memberVaIdMap, candidateRows);
 
       let updateCount = 0;
+      let vaIdBackfillCount = 0;
       let skipCount = 0;
       // Breakdown of the single skipCount above, so a run that updates nothing
       // says which stage dropped everything.
@@ -447,7 +445,7 @@ export class HubstaffWorker extends WorkerHost {
           skipReasons.no_local_candidate++;
           if (traced) {
             this.trace(
-              `member ${hubstaffUserId} SKIP no_local_candidate — no staffed Candidate row has hubspot_id=${String(hubspotId)} (vaId <${vaId}>)`,
+              `member ${hubstaffUserId} SKIP no_local_candidate — no Candidate row has hubspot_id=${String(hubspotId)} (vaId <${vaId}>)`,
             );
           }
           continue;
@@ -455,11 +453,21 @@ export class HubstaffWorker extends WorkerHost {
 
         if (traced) {
           this.trace(
-            `member ${hubstaffUserId} resolved vaId <${vaId}> → hubspot_id ${String(hubspotId)} → candidate ${candidate.id} (current hubstaff_id=${candidate.hubstaff_id ?? 'null'})`,
+            `member ${hubstaffUserId} resolved vaId <${vaId}> → hubspot_id ${String(hubspotId)} → candidate ${candidate.id} ` +
+              `(current hubstaff_id=${candidate.hubstaff_id ?? 'null'}, current vaid=${candidate.hubspot_vaid ?? 'null'})`,
           );
         }
 
-        if (candidate.hubstaff_id === hubstaffUserId) {
+        const needsHubstaffId = candidate.hubstaff_id !== hubstaffUserId;
+        // The VA ID is the key this whole match ran on, so persisting it costs
+        // nothing extra and spares the next consumer a HubSpot round trip.
+        // Gap-fill only: the candidate dictionary's `vaid` → `hubspot_vaid`
+        // mapping is the primary writer and HubSpot the system of record, so a
+        // value already on the row is left alone rather than overwritten from a
+        // Hubstaff profile field ops edit by hand.
+        const needsVaId = !candidate.hubspot_vaid;
+
+        if (!needsHubstaffId && !needsVaId) {
           skipCount++;
           skipReasons.already_synced++;
           continue;
@@ -468,7 +476,11 @@ export class HubstaffWorker extends WorkerHost {
         // hubstaff_id is uniquely indexed, so any current holder has to release
         // it first. Both writes go in one transaction: as two independent
         // updates, a failure between them left the id attached to neither row.
-        const currentHolder = byHubstaffId.get(hubstaffUserId);
+        // Only relevant when the id is actually moving — a vaid-only backfill
+        // must not strip the id off whoever legitimately holds it.
+        const currentHolder = needsHubstaffId
+          ? byHubstaffId.get(hubstaffUserId)
+          : undefined;
 
         await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           if (currentHolder && currentHolder.id !== candidate.id) {
@@ -483,34 +495,48 @@ export class HubstaffWorker extends WorkerHost {
 
           await tx.candidate.update({
             where: { id: candidate.id },
-            data: { hubstaff_id: hubstaffUserId },
+            data: {
+              ...(needsHubstaffId ? { hubstaff_id: hubstaffUserId } : {}),
+              ...(needsVaId ? { hubspot_vaid: vaId } : {}),
+            },
           });
         });
 
         // Mirror the writes into the in-memory index so a later member reading
         // the same rows sees post-write state rather than the initial snapshot.
-        if (currentHolder && currentHolder.id !== candidate.id) {
-          currentHolder.hubstaff_id = null;
-        }
-        if (candidate.hubstaff_id) {
-          byHubstaffId.delete(candidate.hubstaff_id);
-        }
-        candidate.hubstaff_id = hubstaffUserId;
-        byHubstaffId.set(hubstaffUserId, candidate);
+        if (needsHubstaffId) {
+          if (currentHolder && currentHolder.id !== candidate.id) {
+            currentHolder.hubstaff_id = null;
+          }
+          if (candidate.hubstaff_id) {
+            byHubstaffId.delete(candidate.hubstaff_id);
+          }
+          candidate.hubstaff_id = hubstaffUserId;
+          byHubstaffId.set(hubstaffUserId, candidate);
 
-        updateCount++;
-        this.logger.debug(
-          `✅ Updated candidate ${candidate.id} with Hubstaff ID ${hubstaffUserId}`,
-        );
+          updateCount++;
+          this.logger.debug(
+            `✅ Updated candidate ${candidate.id} with Hubstaff ID ${hubstaffUserId}`,
+          );
+        }
+
+        if (needsVaId) {
+          candidate.hubspot_vaid = vaId;
+          vaIdBackfillCount++;
+          this.logger.debug(
+            `✅ Backfilled candidate ${candidate.id} with VA ID ${vaId}`,
+          );
+        }
       }
 
       this.logger.log(
-        `🏁 Sync completed. Updated: ${updateCount}, Skipped/Not found: ${skipCount} ` +
+        `🏁 Sync completed. Updated: ${updateCount}, VA IDs backfilled: ${vaIdBackfillCount}, ` +
+          `Skipped/Not found: ${skipCount} ` +
           `(no VA ID: ${skipReasons.no_va_id}, no HubSpot match: ${skipReasons.no_hubspot_match}, ` +
           `no HubSpot id: ${skipReasons.no_hubspot_id}, no local candidate: ${skipReasons.no_local_candidate}, ` +
           `already synced: ${skipReasons.already_synced})`,
       );
-      return { updateCount, skipCount, skipReasons };
+      return { updateCount, vaIdBackfillCount, skipCount, skipReasons };
     } catch (error) {
       this.logger.error(
         '❌ Hubstaff members sync failed:',

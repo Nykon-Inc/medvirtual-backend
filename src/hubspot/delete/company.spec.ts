@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { CompanyDeleteService } from './company';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -26,7 +30,11 @@ describe('CompanyDeleteService', () => {
   describe('execute() — success', () => {
     it('returns true on successful deletion', async () => {
       mockedAxios.delete.mockResolvedValueOnce({ status: 204 });
-      const result = await service.execute('hs-company-111', 'user-abc', 'org-db-uuid');
+      const result = await service.execute(
+        'hs-company-111',
+        'user-abc',
+        'org-db-uuid',
+      );
       expect(result).toBe(true);
     });
 
@@ -74,7 +82,11 @@ describe('CompanyDeleteService', () => {
         message: 'Server Error',
       });
 
-      const result = await service.execute('hs-company-111', 'user-abc', 'org-db-uuid');
+      const result = await service.execute(
+        'hs-company-111',
+        'user-abc',
+        'org-db-uuid',
+      );
       expect(result).toBe(false);
     });
 
@@ -97,7 +109,10 @@ describe('CompanyDeleteService', () => {
     });
 
     it('logs DELETE audit with success=false on network error', async () => {
-      mockedAxios.delete.mockRejectedValueOnce({ code: 'ETIMEDOUT', message: 'Connection timed out' });
+      mockedAxios.delete.mockRejectedValueOnce({
+        code: 'ETIMEDOUT',
+        message: 'Connection timed out',
+      });
 
       await service.execute('hs-company-111');
 

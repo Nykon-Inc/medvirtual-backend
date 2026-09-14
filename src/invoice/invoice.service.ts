@@ -1,10 +1,23 @@
-import { Injectable, Logger, BadRequestException, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
-import { CreateInvoiceDto, BulkCreateInvoiceDto } from './dto/create-invoice.dto';
-import { InvoiceJobStatus, InvoiceStatus, Prisma, TicketStatus } from '@prisma/client';
+import {
+  CreateInvoiceDto,
+  BulkCreateInvoiceDto,
+} from './dto/create-invoice.dto';
+import {
+  InvoiceJobStatus,
+  InvoiceStatus,
+  Prisma,
+  TicketStatus,
+} from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { queuesEnabled } from '../common/app-config';
 import { ListInvoicesDto } from './dto/list-invoices.dto';
@@ -18,7 +31,13 @@ import { chromium, Browser as PlaywrightBrowser } from 'playwright';
 import { PDFDocument } from 'pdf-lib';
 const pdf = require('pdf-parse');
 import * as jwt from 'jsonwebtoken';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+} from 'fs';
 import * as path from 'path';
 
 /**
@@ -46,12 +65,16 @@ export class InvoiceService {
     private readonly prisma: PrismaService,
     // Optional: these queues aren't wired up in local/test environments (see
     // sendToQueue's queuesEnabled check), so they may be null there.
-    @Optional() @InjectQueue('invoice') private readonly invoiceQueue: Queue | null,
-    @Optional() @InjectQueue('invoice-prebill-reconciliation') private readonly prebillReconQueue: Queue | null,
+    @Optional()
+    @InjectQueue('invoice')
+    private readonly invoiceQueue: Queue | null,
+    @Optional()
+    @InjectQueue('invoice-prebill-reconciliation')
+    private readonly prebillReconQueue: Queue | null,
     private readonly configService: ConfigService,
     private readonly stripeService: StripeService,
     private readonly mailService: MailService,
-  ) { }
+  ) {}
 
   /**
    * Kicks off invoice generation for a single organization/cycle. This doesn't create
@@ -76,14 +99,16 @@ export class InvoiceService {
         payload.billing_start_date === dto.billing_start_date &&
         payload.billing_end_date === dto.billing_end_date &&
         (payload.organization_id === dto.organization_id ||
-          (payload.organization_ids && payload.organization_ids.includes(dto.organization_id)))
+          (payload.organization_ids &&
+            payload.organization_ids.includes(dto.organization_id)))
       );
     });
 
     if (existingJob) {
       return {
         status: 'skipped',
-        message: 'A similar generation job was recently started. Please wait a moment before trying again.',
+        message:
+          'A similar generation job was recently started. Please wait a moment before trying again.',
         job_id: existingJob.id,
       };
     }
@@ -105,7 +130,8 @@ export class InvoiceService {
       billing_end_date: dto.billing_end_date,
       issue_date: dto.issue_date || new Date().toISOString(),
       due_date: dto.due_date || new Date().toISOString(),
-      public_due_date: dto.public_due_date || dto.due_date || new Date().toISOString(),
+      public_due_date:
+        dto.public_due_date || dto.due_date || new Date().toISOString(),
       is_prebill: dto.is_prebill || false,
       isCustom: dto.isCustom || dto.is_custom || false,
       allowFees: dto.allowFees || dto.allow_fees || false,
@@ -147,17 +173,22 @@ export class InvoiceService {
       ) {
         if (payload.organization_id) activeOrgIds.add(payload.organization_id);
         if (payload.organization_ids) {
-          payload.organization_ids.forEach((id: string) => activeOrgIds.add(id));
+          payload.organization_ids.forEach((id: string) =>
+            activeOrgIds.add(id),
+          );
         }
       }
     });
 
-    const filteredOrgIds = organization_ids.filter((id) => !activeOrgIds.has(id));
+    const filteredOrgIds = organization_ids.filter(
+      (id) => !activeOrgIds.has(id),
+    );
 
     if (filteredOrgIds.length === 0) {
       return {
         status: 'skipped',
-        message: 'Recent generation jobs exist for all selected organizations. Please wait a moment.',
+        message:
+          'Recent generation jobs exist for all selected organizations. Please wait a moment.',
       };
     }
 
@@ -179,7 +210,8 @@ export class InvoiceService {
         billing_end_date: dates.billing_end_date,
         issue_date: dates.issue_date || new Date().toISOString(),
         due_date: dates.due_date || new Date().toISOString(),
-        public_due_date: dates.public_due_date || dates.due_date || new Date().toISOString(),
+        public_due_date:
+          dates.public_due_date || dates.due_date || new Date().toISOString(),
         is_prebill: dates.is_prebill || false,
         isCustom: dates.isCustom || dates.is_custom || false,
         allowFees: dates.allowFees || dates.allow_fees || false,
@@ -202,12 +234,13 @@ export class InvoiceService {
 
   /** Filtered/searchable invoice list for the admin invoicing dashboard. */
   async findAll(query: ListInvoicesDto) {
-    const { status, search, organizationIds, billingMode, startDate, endDate } = query;
+    const { status, search, organizationIds, billingMode, startDate, endDate } =
+      query;
     const where: Prisma.InvoiceWhereInput = {};
 
     if (status) {
       where.status = {
-        in: status.split(",") as unknown as InvoiceStatus[]
+        in: status.split(',') as unknown as InvoiceStatus[],
       };
     }
 
@@ -315,11 +348,14 @@ export class InvoiceService {
     }, new Decimal(0));
 
     // Format counts into a nice object
-    const statusCounts = Object.values(InvoiceStatus).reduce((acc, status) => {
-      const match = counts.find((c) => c.status === status);
-      acc[status] = match ? match._count.id : 0;
-      return acc;
-    }, {} as Record<InvoiceStatus, number>);
+    const statusCounts = Object.values(InvoiceStatus).reduce(
+      (acc, status) => {
+        const match = counts.find((c) => c.status === status);
+        acc[status] = match ? match._count.id : 0;
+        return acc;
+      },
+      {} as Record<InvoiceStatus, number>,
+    );
 
     return {
       statusCounts,
@@ -359,7 +395,10 @@ export class InvoiceService {
       // invoice number exists, swap the placeholder suffix for it so the reference and
       // invoice number stay visually consistent.
       if (invoice.reference && invoice.reference.length > 5) {
-        const baseRef = invoice.reference.substring(0, invoice.reference.length - 5);
+        const baseRef = invoice.reference.substring(
+          0,
+          invoice.reference.length - 5,
+        );
         dataToUpdate.reference = `${baseRef}${invoiceNumber}`;
       }
     }
@@ -390,7 +429,6 @@ export class InvoiceService {
       }
     }
 
-
     // On publish, walk the invoice through Stripe's own multi-step invoice lifecycle
     // synchronously (create -> attach line items -> finalize -> verify) before allowing
     // our own status to move to `published`. Each step is guarded by re-reading
@@ -409,7 +447,9 @@ export class InvoiceService {
         const stripeCustId = config.stripe_customer_id;
 
         if (!stripeCustId) {
-          throw new BadRequestException('Stripe customer ID is not configured for this organization');
+          throw new BadRequestException(
+            'Stripe customer ID is not configured for this organization',
+          );
         }
 
         // Step 1: create the (empty) Stripe invoice shell if one doesn't exist yet.
@@ -419,8 +459,10 @@ export class InvoiceService {
             reference: fullInvoice.reference || '',
             dueDate: fullInvoice.currentVersion?.due_date || new Date(),
             isPrebill: fullInvoice.currentVersion?.is_prebill || false,
-            periodStart: fullInvoice.currentVersion?.billing_start_date?.toISOString(),
-            periodEnd: fullInvoice.currentVersion?.billing_end_date?.toISOString(),
+            periodStart:
+              fullInvoice.currentVersion?.billing_start_date?.toISOString(),
+            periodEnd:
+              fullInvoice.currentVersion?.billing_end_date?.toISOString(),
             invoice: fullInvoice,
           });
           stripeInvId = createRes.invoice.id;
@@ -429,15 +471,22 @@ export class InvoiceService {
         // Get fresh state of the invoice
         let freshInvoice = await this.findOne(id);
         if (!freshInvoice) {
-          throw new BadRequestException('Invoice not found after creation on Stripe');
+          throw new BadRequestException(
+            'Invoice not found after creation on Stripe',
+          );
         }
 
         // Step 2: push our line items onto the Stripe invoice.
         if (freshInvoice.stripe_status === 'invoice_created') {
-          await this.stripeService.attachStripeInvoiceItems(freshInvoice, stripeCustId);
+          await this.stripeService.attachStripeInvoiceItems(
+            freshInvoice,
+            stripeCustId,
+          );
           freshInvoice = await this.findOne(id);
           if (!freshInvoice) {
-            throw new BadRequestException('Invoice not found after attaching line items on Stripe');
+            throw new BadRequestException(
+              'Invoice not found after attaching line items on Stripe',
+            );
           }
         }
 
@@ -446,7 +495,9 @@ export class InvoiceService {
           await this.stripeService.finalizeStripeInvoice(freshInvoice);
           freshInvoice = await this.findOne(id);
           if (!freshInvoice) {
-            throw new BadRequestException('Invoice not found after finalizing on Stripe');
+            throw new BadRequestException(
+              'Invoice not found after finalizing on Stripe',
+            );
           }
         }
 
@@ -475,7 +526,10 @@ export class InvoiceService {
     // Approving an invoice implicitly resolves the support tickets that generated its
     // ticket-linked line items (e.g. a billable one-off task) — closes the loop so
     // nobody has to manually close the ticket after billing for it.
-    if (status === InvoiceStatus.approved && updatedInvoice.current_version_id) {
+    if (
+      status === InvoiceStatus.approved &&
+      updatedInvoice.current_version_id
+    ) {
       const lineItems = await this.prisma.invoiceLineItem.findMany({
         where: {
           invoice_version_id: updatedInvoice.current_version_id,
@@ -506,7 +560,10 @@ export class InvoiceService {
       try {
         await this.sendInvoiceToSuperadmin(id);
       } catch (err) {
-        this.logger.error(`Failed to send approved invoice email to superadmin: ${err.message}`, err.stack);
+        this.logger.error(
+          `Failed to send approved invoice email to superadmin: ${err.message}`,
+          err.stack,
+        );
       }
     }
 
@@ -586,7 +643,11 @@ export class InvoiceService {
    * exist in the DB yet; this method creates the real rows in two passes and remaps
    * those client-side IDs to real database IDs as it goes.
    */
-  async createVersion(id: string, dto: UpdateInvoiceVersionDto, userId: string) {
+  async createVersion(
+    id: string,
+    dto: UpdateInvoiceVersionDto,
+    userId: string,
+  ) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: {
@@ -626,8 +687,14 @@ export class InvoiceService {
         billing_end_date: invoice.currentVersion?.billing_end_date,
         is_prebill: invoice.currentVersion?.is_prebill || false,
         allow_fees: invoice.currentVersion?.allow_fees || false,
-        discountType: dto.discountType !== undefined ? dto.discountType : ((invoice.currentVersion as any)?.discountType || 'dollar'),
-        discountValue: dto.discountValue !== undefined ? dto.discountValue : ((invoice.currentVersion as any)?.discountValue || 0),
+        discountType:
+          dto.discountType !== undefined
+            ? dto.discountType
+            : (invoice.currentVersion as any)?.discountType || 'dollar',
+        discountValue:
+          dto.discountValue !== undefined
+            ? dto.discountValue
+            : (invoice.currentVersion as any)?.discountValue || 0,
       },
     });
 
@@ -643,7 +710,12 @@ export class InvoiceService {
     // parent_line_item_id foreign key can only be satisfied once the parent row exists.
     for (const itemDto of dto.line_items) {
       if (!itemDto.parent_line_item_id) {
-        const { id: clientSideId, parent_line_item_id, adjustment_sign, ...itemData } = itemDto;
+        const {
+          id: clientSideId,
+          parent_line_item_id,
+          adjustment_sign,
+          ...itemData
+        } = itemDto;
 
         const createdItem = await this.prisma.invoiceLineItem.create({
           data: {
@@ -669,12 +741,19 @@ export class InvoiceService {
     // the raw value passed through unresolved, in case it's already a real DB id.
     for (const itemDto of dto.line_items) {
       if (itemDto.parent_line_item_id) {
-        const { id: clientSideId, parent_line_item_id, adjustment_sign, ...itemData } = itemDto;
+        const {
+          id: clientSideId,
+          parent_line_item_id,
+          adjustment_sign,
+          ...itemData
+        } = itemDto;
 
         const resolvedParentId =
           idMapping.get(parent_line_item_id) ||
           workerMapping.get(parent_line_item_id) ||
-          (itemDto.worker_id ? workerMapping.get(itemDto.worker_id) : undefined) ||
+          (itemDto.worker_id
+            ? workerMapping.get(itemDto.worker_id)
+            : undefined) ||
           parent_line_item_id;
 
         const createdItem = await this.prisma.invoiceLineItem.create({
@@ -806,7 +885,9 @@ export class InvoiceService {
         removeOnComplete: true,
         removeOnFail: false,
       });
-      this.logger.log(`Sent invoice task to BullMQ for job ${message.job_id} / org ${message.organization_id}`);
+      this.logger.log(
+        `Sent invoice task to BullMQ for job ${message.job_id} / org ${message.organization_id}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to send message to BullMQ: ${error.message}`);
       throw error;
@@ -837,7 +918,7 @@ export class InvoiceService {
       // user would hit. Find-or-create it lazily on first use.
       let user = await this.prisma.uSER.findFirst({
         where: {
-          email: "pdf.generator@legalsoft.com",
+          email: 'pdf.generator@legalsoft.com',
         },
       });
       if (!user) {
@@ -846,32 +927,33 @@ export class InvoiceService {
         // system_super_admin.
         let baseUser = await this.prisma.uSER.findFirst({
           where: {
-            email: "admin@medvirtual.ai",
+            email: 'admin@medvirtual.ai',
           },
         });
         if (!baseUser) {
           baseUser = await this.prisma.uSER.findFirst({
             where: {
-              role: "system_super_admin",
+              role: 'system_super_admin',
             },
           });
         }
         if (baseUser) {
           user = await this.prisma.uSER.create({
             data: {
-              email: "pdf.generator@legalsoft.com",
-              first_name: "PDF",
-              last_name: "Generator",
+              email: 'pdf.generator@legalsoft.com',
+              first_name: 'PDF',
+              last_name: 'Generator',
               role: baseUser.role,
-              status: "active",
+              status: 'active',
               verified: true,
               password: baseUser.password,
-              phone: baseUser.phone || "",
-              avatar: baseUser.avatar || "",
-              job_title: "PDF Generator Service",
-              organization_name: baseUser.organization_name || "",
-              workos_id: baseUser.workos_id || "",
-              authentication_method: baseUser.authentication_method || "OwnSign",
+              phone: baseUser.phone || '',
+              avatar: baseUser.avatar || '',
+              job_title: 'PDF Generator Service',
+              organization_name: baseUser.organization_name || '',
+              workos_id: baseUser.workos_id || '',
+              authentication_method:
+                baseUser.authentication_method || 'OwnSign',
             },
           });
         }
@@ -883,9 +965,13 @@ export class InvoiceService {
       // reusing a single rotating session avoids piling up stale Session rows.
       let token: string | null = null;
       if (user) {
-        const jwtToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret', {
-          expiresIn: '8h',
-        });
+        const jwtToken = jwt.sign(
+          { id: user.id },
+          process.env.JWT_SECRET || 'secret',
+          {
+            expiresIn: '8h',
+          },
+        );
         token = jwtToken;
         await this.prisma.session.updateMany({
           where: { userId: user.id },
@@ -901,15 +987,18 @@ export class InvoiceService {
       }
 
       const invoice = await this.findOne(invoiceId);
-      if (!invoice) throw new BadRequestException("Invoice not found");
+      if (!invoice) throw new BadRequestException('Invoice not found');
 
       browser = await chromium.launch({
         headless: true,
-        args: ["--no-sandbox"],
+        args: ['--no-sandbox'],
       });
       const context = await browser.newContext();
 
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL') || process.env.FRONTEND_URL || 'https://staging.medvirtual.ai';
+      const frontendUrl =
+        this.configService.get<string>('FRONTEND_URL') ||
+        process.env.FRONTEND_URL ||
+        'https://staging.medvirtual.ai';
 
       // Seed the auth cookie the frontend expects, so navigating to the template URL
       // lands on an already-authenticated page rather than a login redirect.
@@ -919,7 +1008,7 @@ export class InvoiceService {
             name: 'auth-token',
             value: token,
             url: frontendUrl,
-          }
+          },
         ]);
       }
 
@@ -936,7 +1025,7 @@ export class InvoiceService {
         url += `&token=${token}`;
       }
 
-      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
 
       // domcontentloaded fires before the page's own data fetch completes, so wait for
       // the specific invoice API call the template page makes client-side before
@@ -961,7 +1050,7 @@ export class InvoiceService {
         )
         .catch(() => {});
 
-      const divSelector = ".invoice-template";
+      const divSelector = '.invoice-template';
 
       // Print-specific CSS injected at render time (not baked into the frontend's own
       // stylesheet) so this PDF path can control pagination independently of how the
@@ -1013,12 +1102,12 @@ export class InvoiceService {
         const filePath = path.join(localFilePath, `${ref}.pdf`);
         const payload: any = {
           path: filePath,
-          format: "A3",
+          format: 'A3',
           margin: {
-            top: "0",
-            right: "0",
-            bottom: "0",
-            left: "0",
+            top: '0',
+            right: '0',
+            bottom: '0',
+            left: '0',
           },
           scale: 1,
           landscape: true,
@@ -1035,16 +1124,19 @@ export class InvoiceService {
         // await this.checkEmptyFirstPage(filePath);
         return filePath;
       }
-      return "";
+      return '';
     } catch (error) {
-      this.logger.error(`Error generating invoice PDF: ${error.message}`, error.stack);
-      return "";
+      this.logger.error(
+        `Error generating invoice PDF: ${error.message}`,
+        error.stack,
+      );
+      return '';
     } finally {
       if (browser) {
         try {
           await browser.close();
         } catch (closeError) {
-          this.logger.error("Error closing browser:", closeError);
+          this.logger.error('Error closing browser:', closeError);
         }
       }
     }
@@ -1074,11 +1166,13 @@ export class InvoiceService {
           const singlePagePdfBytes = await newPdfDoc.save({
             useObjectStreams: false,
           });
-          const pdfContent = await (pdf as any)(Buffer.from(singlePagePdfBytes));
+          const pdfContent = await pdf(Buffer.from(singlePagePdfBytes));
           const pageText = pdfContent.text.trim();
 
           if (pageText.length === 0) {
-            this.logger.log(`Page ${i + 1} is likely blank. Marking for removal.`);
+            this.logger.log(
+              `Page ${i + 1} is likely blank. Marking for removal.`,
+            );
             pagesToRemove.push(i);
           } else {
             this.logger.log(`Page ${i + 1} contains content.`);
@@ -1097,7 +1191,9 @@ export class InvoiceService {
       writeFileSync(filePath, modifiedPdfBytes);
       this.logger.log(`PDF processed and saved to ${filePath}`);
     } catch (error) {
-      this.logger.error(`Failed to process first page check for ${filePath}: ${error.message}`);
+      this.logger.error(
+        `Failed to process first page check for ${filePath}: ${error.message}`,
+      );
     }
   }
 
@@ -1210,8 +1306,6 @@ export class InvoiceService {
     };
   }
 
-
-
   /**
    * Manually retrigger the prebill reconciliation job for a specific invoice.
    * Validates that the invoice exists, is a prebill, and has been paid,
@@ -1222,7 +1316,11 @@ export class InvoiceService {
       where: { id: invoiceId },
       include: {
         currentVersion: {
-          select: { is_prebill: true, billing_end_date: true, billing_start_date: true },
+          select: {
+            is_prebill: true,
+            billing_end_date: true,
+            billing_start_date: true,
+          },
         },
       },
     });
@@ -1236,11 +1334,15 @@ export class InvoiceService {
     }
 
     if (invoice.status !== 'paid') {
-      throw new BadRequestException(`Invoice must be paid before reconciliation can run (current status: ${invoice.status})`);
+      throw new BadRequestException(
+        `Invoice must be paid before reconciliation can run (current status: ${invoice.status})`,
+      );
     }
 
-    const billingStartDate = invoice.currentVersion.billing_start_date ?? invoice.billing_start_date;
-    const billingEndDate = invoice.currentVersion.billing_end_date ?? invoice.billing_end_date;
+    const billingStartDate =
+      invoice.currentVersion.billing_start_date ?? invoice.billing_start_date;
+    const billingEndDate =
+      invoice.currentVersion.billing_end_date ?? invoice.billing_end_date;
 
     if (!billingStartDate || !billingEndDate) {
       throw new BadRequestException('Invoice is missing billing period dates');
@@ -1251,7 +1353,11 @@ export class InvoiceService {
     // Remove any stale delayed job so the new one runs immediately
     const existing = await this.prebillReconQueue!.getJob(jobId);
     if (existing) {
-      try { await existing.remove(); } catch { /* already processed or gone */ }
+      try {
+        await existing.remove();
+      } catch {
+        /* already processed or gone */
+      }
     }
 
     await this.prebillReconQueue!.add(
@@ -1270,7 +1376,9 @@ export class InvoiceService {
       },
     );
 
-    this.logger.log(`Manually triggered prebill reconciliation for invoice ${invoiceId}`);
+    this.logger.log(
+      `Manually triggered prebill reconciliation for invoice ${invoiceId}`,
+    );
 
     return { status: 'queued', invoiceId };
   }
@@ -1290,16 +1398,21 @@ export class InvoiceService {
     const businessUnit = invoice.organization?.business_unit || 'MedVirtual';
     // Same placeholder-suffix-swap logic as updateStatus: once a real invoice_number
     // exists, show it in place of the original 5-char random placeholder suffix.
-    const invoiceReference = (invoice.invoice_number
-      ? invoice.reference?.replace(/[A-Z]{5}$/, invoice.invoice_number)
-      : invoice.reference || invoice.id) || invoice.id;
+    const invoiceReference =
+      (invoice.invoice_number
+        ? invoice.reference?.replace(/[A-Z]{5}$/, invoice.invoice_number)
+        : invoice.reference || invoice.id) || invoice.id;
 
     const version = invoice.currentVersion;
     const amount = `${version?.currency || 'USD'} ${Number(version?.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    
+
     // Format due date nicely
-    const dueDate = version?.due_date 
-      ? new Date(version.due_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const dueDate = version?.due_date
+      ? new Date(version.due_date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
       : 'N/A';
 
     // Generate invoice PDF
@@ -1343,14 +1456,18 @@ export class InvoiceService {
         ],
       });
 
-      this.logger.log(`Invoice email sent successfully to ${email} for invoice ${invoiceId}`);
+      this.logger.log(
+        `Invoice email sent successfully to ${email} for invoice ${invoiceId}`,
+      );
     } finally {
       // Clean up the generated PDF file
       if (filePath && existsSync(filePath)) {
         try {
           unlinkSync(filePath);
         } catch (err) {
-          this.logger.error(`Failed to delete temporary PDF file ${filePath}: ${err.message}`);
+          this.logger.error(
+            `Failed to delete temporary PDF file ${filePath}: ${err.message}`,
+          );
         }
       }
     }
@@ -1372,7 +1489,9 @@ export class InvoiceService {
 
     const orgId = invoice.organization_id;
     if (!orgId) {
-      throw new BadRequestException('Invoice is not linked to any organization');
+      throw new BadRequestException(
+        'Invoice is not linked to any organization',
+      );
     }
 
     // Find all active superadmins of the organization
@@ -1400,7 +1519,9 @@ export class InvoiceService {
       const ownerId = invoice.organization.owner_id;
       const adminId = invoice.organization.admin_id;
 
-      const fallbackUserIds = [ownerId, adminId].filter((id): id is string => !!id);
+      const fallbackUserIds = [ownerId, adminId].filter(
+        (id): id is string => !!id,
+      );
       if (fallbackUserIds.length > 0) {
         usersToNotify = await this.prisma.uSER.findMany({
           where: { id: { in: fallbackUserIds } },
@@ -1409,17 +1530,26 @@ export class InvoiceService {
     }
 
     if (usersToNotify.length === 0) {
-      this.logger.error(`No superadmin or admin found for organization ${orgId} to send invoice ${invoiceId}`);
-      throw new BadRequestException('No superadmin/admin found for the organization');
+      this.logger.error(
+        `No superadmin or admin found for organization ${orgId} to send invoice ${invoiceId}`,
+      );
+      throw new BadRequestException(
+        'No superadmin/admin found for the organization',
+      );
     }
 
     // Send emails sequentially to avoid file system collisions on PDF generation/deletion
     for (const user of usersToNotify) {
-      const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Valued Client';
+      const fullName =
+        `${user.first_name || ''} ${user.last_name || ''}`.trim() ||
+        'Valued Client';
       try {
         await this.sendInvoiceEmail(invoiceId, user.email, fullName);
       } catch (err) {
-        this.logger.error(`Failed to send invoice email to ${user.email}: ${err.message}`, err.stack);
+        this.logger.error(
+          `Failed to send invoice email to ${user.email}: ${err.message}`,
+          err.stack,
+        );
       }
     }
 
@@ -1445,7 +1575,20 @@ export class InvoiceService {
     const d = new Date(date);
     if (isNaN(d.getTime())) return '';
     const day = d.getDate();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day} ${month} ${year}`;
@@ -1479,7 +1622,11 @@ export class InvoiceService {
    * - 'verbose': one row per line item, invoice fields repeated on each row (for
    *   detailed reconciliation/accounting work where every line needs to be visible).
    */
-  async generateInvoicesCsv(type: 'summary' | 'verbose', startDate?: string, endDate?: string): Promise<string> {
+  async generateInvoicesCsv(
+    type: 'summary' | 'verbose',
+    startDate?: string,
+    endDate?: string,
+  ): Promise<string> {
     const where: Prisma.InvoiceWhereInput = {};
 
     if (startDate) {
@@ -1532,7 +1679,7 @@ export class InvoiceService {
 
       for (const inv of invoices) {
         const lineItems = inv.currentVersion?.line_items || [];
-        
+
         const baseData = [
           inv.id,
           this.formatInvoiceNumber(inv.invoice_number),
@@ -1552,9 +1699,13 @@ export class InvoiceService {
               this.formatStatus(item.type),
               this.formatStatus(item.category),
               item.worker_name_snapshot || item.description || '',
-              item.effective_worked_hours ? item.effective_worked_hours.toString() : '0',
+              item.effective_worked_hours
+                ? item.effective_worked_hours.toString()
+                : '0',
               item.hourly_rate ? item.hourly_rate.toString() : '0',
-              item.subtotal_before_adjustment ? item.subtotal_before_adjustment.toString() : '0',
+              item.subtotal_before_adjustment
+                ? item.subtotal_before_adjustment.toString()
+                : '0',
               '0',
               this.formatStatus(item.adjustment_type),
               item.adjustment_value ? item.adjustment_value.toString() : '0',
@@ -1566,7 +1717,9 @@ export class InvoiceService {
         }
       }
 
-      return rows.map((r) => r.map((cell) => this.escapeCsv(cell)).join(',')).join('\n');
+      return rows
+        .map((r) => r.map((cell) => this.escapeCsv(cell)).join(','))
+        .join('\n');
     } else {
       const headers = [
         'Invoice ID',
@@ -1604,18 +1757,25 @@ export class InvoiceService {
           this.formatDate(inv.billing_start_date),
           this.formatDate(inv.billing_end_date),
           this.formatDate(inv.currentVersion?.due_date),
-          inv.currentVersion?.subtotal ? inv.currentVersion.subtotal.toString() : '0',
-          inv.currentVersion?.tax_total ? inv.currentVersion.tax_total.toString() : '0',
+          inv.currentVersion?.subtotal
+            ? inv.currentVersion.subtotal.toString()
+            : '0',
+          inv.currentVersion?.tax_total
+            ? inv.currentVersion.tax_total.toString()
+            : '0',
           inv.currentVersion?.total ? inv.currentVersion.total.toString() : '0',
-          inv.currentVersion?.discountValue ? inv.currentVersion.discountValue.toString() : '0',
+          inv.currentVersion?.discountValue
+            ? inv.currentVersion.discountValue.toString()
+            : '0',
           this.formatStatus((inv.currentVersion as any)?.discountType),
           inv.currentVersion?.currency || 'USD',
           this.formatDate(inv.createdAt),
         ]);
       }
 
-      return rows.map((r) => r.map((cell) => this.escapeCsv(cell)).join(',')).join('\n');
+      return rows
+        .map((r) => r.map((cell) => this.escapeCsv(cell)).join(','))
+        .join('\n');
     }
   }
 }
-

@@ -27,7 +27,10 @@ describe('HandlerInvoiceAssociationChange', () => {
       providers: [
         HandlerInvoiceAssociationChange,
         { provide: PrismaService, useValue: prismaMock },
-        { provide: HandlerOrganizationCreation, useValue: organizationCreationMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: organizationCreationMock,
+        },
         { provide: HandlerInvoiceCreation, useValue: invoiceCreationMock },
         { provide: AllianceNotificationsService, useValue: notificationsMock },
       ],
@@ -69,8 +72,12 @@ describe('HandlerInvoiceAssociationChange', () => {
 
       await handler.execute(event);
 
-      expect(notificationsMock.notifyAdminInvoiceReassociated).toHaveBeenCalledTimes(1);
-      expect(notificationsMock.notifyAdminInvoiceReassociated).toHaveBeenCalledWith(
+      expect(
+        notificationsMock.notifyAdminInvoiceReassociated,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        notificationsMock.notifyAdminInvoiceReassociated,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           invoiceHubspotId: '200',
           invoiceNumber: 'INV-9',
@@ -101,7 +108,9 @@ describe('HandlerInvoiceAssociationChange', () => {
 
       await handler.execute(event);
 
-      expect(notificationsMock.notifyAdminInvoiceReassociated).not.toHaveBeenCalled();
+      expect(
+        notificationsMock.notifyAdminInvoiceReassociated,
+      ).not.toHaveBeenCalled();
       expect(prismaMock.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
         where: { hubspot_id: '200' },
         data: { organization_id: 'org-1' },
@@ -114,7 +123,9 @@ describe('HandlerInvoiceAssociationChange', () => {
 
       await handler.execute(event);
 
-      expect(notificationsMock.notifyAdminInvoiceReassociated).not.toHaveBeenCalled();
+      expect(
+        notificationsMock.notifyAdminInvoiceReassociated,
+      ).not.toHaveBeenCalled();
       expect(prismaMock.hubspotInvoiceSnapshot.update).not.toHaveBeenCalled();
     });
   });
@@ -136,7 +147,11 @@ describe('HandlerInvoiceAssociationChange', () => {
         id: 'snap-1',
         invoice_number: 'INV-1',
         organization_id: 'org-old',
-        organization: { id: 'org-old', name: 'Old Org', referredByAffiliate: null },
+        organization: {
+          id: 'org-old',
+          name: 'Old Org',
+          referredByAffiliate: null,
+        },
       });
 
       await handler.execute(event);
@@ -144,7 +159,9 @@ describe('HandlerInvoiceAssociationChange', () => {
       expect(prismaMock.organization.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { hubspot_id: '100' } }),
       );
-      expect(notificationsMock.notifyAdminInvoiceReassociated).toHaveBeenCalledTimes(1);
+      expect(
+        notificationsMock.notifyAdminInvoiceReassociated,
+      ).toHaveBeenCalledTimes(1);
       expect(prismaMock.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
         where: { hubspot_id: '200' },
         data: { organization_id: 'org-new' },
@@ -178,7 +195,9 @@ describe('HandlerInvoiceAssociationChange', () => {
     await handler.execute(event);
 
     expect(invoiceCreationMock.execute).toHaveBeenCalled();
-    expect(notificationsMock.notifyAdminInvoiceReassociated).not.toHaveBeenCalled();
+    expect(
+      notificationsMock.notifyAdminInvoiceReassociated,
+    ).not.toHaveBeenCalled();
     expect(prismaMock.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
       where: { hubspot_id: '200' },
       data: { organization_id: 'org-1' },

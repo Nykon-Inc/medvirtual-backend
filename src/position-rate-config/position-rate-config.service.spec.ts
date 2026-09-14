@@ -3,8 +3,16 @@ import { PositionRateConfigService } from './position-rate-config.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const mockData = [
-  { position: 'Admin VA', medical_floor_price_english: 15, medical_margin_per_hour: 9 },
-  { position: 'Billing VA', medical_floor_price_english: 18, medical_margin_per_hour: 9 },
+  {
+    position: 'Admin VA',
+    medical_floor_price_english: 15,
+    medical_margin_per_hour: 9,
+  },
+  {
+    position: 'Billing VA',
+    medical_floor_price_english: 18,
+    medical_margin_per_hour: 9,
+  },
 ];
 
 const mockPrisma = {
@@ -51,7 +59,12 @@ describe('PositionRateConfigService', () => {
 
       const result = await service.findAll();
 
-      expect(result.meta).toEqual({ total: 0, page: 1, perPage: 10, totalPages: 0 });
+      expect(result.meta).toEqual({
+        total: 0,
+        page: 1,
+        perPage: 10,
+        totalPages: 0,
+      });
     });
 
     it('calculates skip correctly for page 2', async () => {
@@ -85,7 +98,10 @@ describe('PositionRateConfigService', () => {
 
   describe('findByPosition', () => {
     it('returns config for a specific position', async () => {
-      const mockConfig = { position: 'Admin VA', medical_floor_price_english: 15 };
+      const mockConfig = {
+        position: 'Admin VA',
+        medical_floor_price_english: 15,
+      };
       mockPrisma.positionRateConfig.findUnique.mockResolvedValue(mockConfig);
 
       const result = await service.findByPosition('Admin VA');

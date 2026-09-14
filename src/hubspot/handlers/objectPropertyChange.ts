@@ -130,7 +130,10 @@ export class HandlerObjectPropertyChange {
           ? CandidateAuditFieldGroup.pipeline_status
           : CandidateAuditFieldGroup.hubspot_sync,
         before: Object.fromEntries(
-          fields.map((field) => [field, (candidate as Record<string, any>)[field]]),
+          fields.map((field) => [
+            field,
+            (candidate as Record<string, any>)[field],
+          ]),
         ),
         after: updateData,
         source: CandidateAuditSource.webhook,

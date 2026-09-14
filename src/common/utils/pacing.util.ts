@@ -27,7 +27,10 @@ export const randomDelay = (min: number, max: number): Promise<void> => {
  * @param delayMs base delay in milliseconds
  * @param jitter factor (0 to 1) for randomization
  */
-export const pace = async (delayMs: number = 500, jitter: number = 0.2): Promise<void> => {
+export const pace = async (
+  delayMs: number = 500,
+  jitter: number = 0.2,
+): Promise<void> => {
   const min = delayMs * (1 - jitter);
   const max = delayMs * (1 + jitter);
   await randomDelay(min, max);

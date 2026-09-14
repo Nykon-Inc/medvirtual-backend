@@ -1205,12 +1205,12 @@ export class CronService {
     if (organizationId) {
       orgIds = [organizationId];
     } else {
-      //Since this cron goals is to ingest invoice and create commissions, 
+      //Since this cron goals is to ingest invoice and create commissions,
       // we only retrieve active organizations which have referred_by_affiliate_id set (i.e. referred companies)
       const orgs = await this.prisma.organization.findMany({
-        where: { 
+        where: {
           status: 'active',
-          referred_by_affiliate_id: { not: null }   
+          referred_by_affiliate_id: { not: null },
         },
         select: { id: true },
         orderBy: { updatedAt: 'asc' },

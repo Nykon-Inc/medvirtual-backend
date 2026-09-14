@@ -85,3 +85,65 @@ jobs:
             fi
             pm2 save
           '
+
+      # Binds Candidate.hubstaff_id (and backfills Candidate.hubspot_vaid) by matching the
+      # VA ID on each Hubstaff profile against HubSpot's vaid. Hubstaff profiles and
+      # HubSpot records drift between deploys and nothing else reconciles them, so
+      # this runs every time rather than on a schedule.
+      #
+      # POST /hubstaff/sync only ENQUEUES onto the hubstaff-sync queue, so this step
+      # confirms the job was accepted — the per-candidate summary lands in the worker
+      # process's log (`pm2 logs medvirtual-backend-prod-worker`), not here.
+      #
+      # continue-on-error: a HubSpot/Hubstaff outage must not red-X a deploy whose
+      # code shipped fine. The reconcile is idempotent and runs again next deploy.
+      - name: Trigger Hubstaff ID reconcile
+        continue-on-error: true
+        run: |
+          ssh "${{ secrets.PROD_SERVER_USER }}@${{ secrets.PROD_SERVER_HOST }}" '
+            set -e
+            cd "${{ env.DEPLOY_PATH }}"
+
+            # The app binds to PORT from the persisted .env, defaulting to 3000 the
+            # same way main.ts does. Read rather than hardcoded so a port change in
+            # .env does not silently turn this step into a no-op.
+            PORT=$(sed -n -E "s/^PORT=[^0-9]*([0-9]+).*/\1/p" .env 2>/dev/null | tail -n1)
+            PORT=${PORT:-3000}
+            BASE="http://127.0.0.1:$PORT"
+
+            # pm2 reload returns before Nest finishes booting, so poll the health
+            # endpoint instead of sleeping a fixed guess.
+            echo "Waiting for the API to come up on port $PORT..."
+            READY=no
+            for i in $(seq 1 45); do
+              if curl -fsS -m 5 "$BASE/start" > /dev/null 2>&1; then
+                READY=yes
+                break
+              fi
+              sleep 2
+            done
+
+            # Checked after the loop rather than on the last iteration: an inline
+            # "$i -eq 45" guard silently stops firing the moment the bound above
+            # is edited, and the step then falls through to curl a dead port.
+            if [ "$READY" != yes ]; then
+              echo "API did not answer $BASE/start in time — skipping reconcile."
+              exit 1
+            fi
+            echo "API is live."
+
+            echo "Triggering Hubstaff reconcile..."
+            RESPONSE=$(curl -fsS -m 60 -X POST "$BASE/hubstaff/sync")
+            echo "Response: $RESPONSE"
+
+            # Queues are what actually run the job; if they are disabled the
+            # endpoint returns a no-op message and nothing gets reconciled.
+            case "$RESPONSE" in
+              *"Queue not available"*)
+                echo "Queues are disabled on this host — reconcile did NOT run."
+                exit 1
+                ;;
+            esac
+
+            echo "Reconcile queued. Summary: pm2 logs ${{ env.PM2_WORKER_NAME }} --lines 200"
+          '

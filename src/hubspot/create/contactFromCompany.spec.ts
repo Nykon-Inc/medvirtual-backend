@@ -3,7 +3,11 @@ import axios from 'axios';
 import { ContactFromCompanyCreationService } from './contactFromCompany';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -55,14 +59,18 @@ describe('ContactFromCompanyCreationService', () => {
       ],
     }).compile();
 
-    service = module.get<ContactFromCompanyCreationService>(ContactFromCompanyCreationService);
+    service = module.get<ContactFromCompanyCreationService>(
+      ContactFromCompanyCreationService,
+    );
   });
 
   // ── Success path ─────────────────────────────────────────────────────────────
 
   describe('execute() — success', () => {
     beforeEach(() => {
-      mockedAxios.post.mockResolvedValueOnce({ data: { id: 'hs-contact-777' } });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'hs-contact-777' },
+      });
     });
 
     it('returns the HubSpot contact id on success', async () => {

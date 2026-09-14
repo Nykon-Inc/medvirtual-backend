@@ -27,6 +27,7 @@ import {
   changeLabelAvailability,
   extractDriveFileId,
 } from '../common/utils/hubspot.util';
+import { parseQueryList } from '../common/utils/query.util';
 import { GoogledriveService } from '../googledrive/googledrive.service';
 import { S3Service } from '../s3/s3.service';
 import { OpenaiService } from '../openai/openai.service';
@@ -55,6 +56,11 @@ import {
   CandidateAuditService,
 } from './candidate-audit.service';
 import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import { isClientOriginatedRole } from '../common/utils/interview-schedule-window';
+import {
+  violatesPanelCandidateMinLead,
+  PANEL_CANDIDATE_MIN_LEAD_ERROR,
+} from '../common/utils/panel-candidate-lead-time';
 
 const NON_MEDICAL_POOL = 'non_medical';
 
@@ -290,6 +296,7 @@ const CORE_SKILLS_FILTER_ROLES = new Set([
  */
 const CANDIDATE_LIST_CARD_SELECT = {
   id: true,
+  hubspot_vaid: true,
   first_name: true,
   last_name: true,
   name: true,
@@ -397,22 +404,22 @@ export class CandidatesService {
     user: USER,
     country?: string,
     shift_block?: string,
-    availability?: string,
+    availability?: string | string[],
     monthly_compensation_from?: string,
     monthly_compensation_to?: string,
     years_of_experience?: string,
-    specializations?: string,
-    positions?: string,
-    skills?: string,
-    languages?: string,
+    specializations?: string | string[],
+    positions?: string | string[],
+    skills?: string | string[],
+    languages?: string | string[],
     page?: number,
     perPage?: number,
     search?: string,
     all?: string,
     scorecard_fields?: string,
-    tools?: string,
-    medical_tools?: string,
-    core_skills_fields?: string,
+    tools?: string | string[],
+    medical_tools?: string | string[],
+    core_skills_fields?: string | string[],
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -480,10 +487,7 @@ export class CandidatesService {
     const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
     const coreSkillsFilters: Record<string, any>[] =
       core_skills_fields && isCoreSkillsFilterAllowed
-        ? core_skills_fields
-            .split(',')
-            .map((pair) => pair.trim())
-            .filter(Boolean)
+        ? parseQueryList(core_skills_fields)
             .map((pair) => {
               const [field, value] = pair.split(':').map((p) => p.trim());
               return { field, value };
@@ -497,41 +501,16 @@ export class CandidatesService {
             }))
         : [];
 
-    const availabilityArray = availability
-      ? availability
-          .split(',')
-          .map((a) => a.trim())
-          .filter(Boolean)
-      : [];
+    const availabilityArray = parseQueryList(availability);
     const availabilityNumbers = availabilityArray
       .map((a) => stageToDbDictionary[a])
       .filter(Boolean)
       .map((av) => String(av));
 
-    const languagesArray = languages
-      ? languages
-          .split(',')
-          .map((l) => l.trim())
-          .filter(Boolean)
-      : [];
-    const skillsArray = skills
-      ? skills
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const specializationArray = specializations
-      ? specializations
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const positionsArray = positions
-      ? positions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    const languagesArray = parseQueryList(languages);
+    const skillsArray = parseQueryList(skills);
+    const specializationArray = parseQueryList(specializations);
+    const positionsArray = parseQueryList(positions);
 
     if (languagesArray.length) {
       combinedFilters.push(
@@ -568,12 +547,7 @@ export class CandidatesService {
       };
     }
 
-    const toolsArray = tools
-      ? tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const toolsArray = parseQueryList(tools);
     if (toolsArray.length) {
       combinedFilters.push({
         OR: toolsArray.map((tool) => ({
@@ -584,12 +558,7 @@ export class CandidatesService {
 
     // medical_tools is a semicolon-delimited text column, so it is matched with
     // `contains` (OR semantics), mirroring the `tools` filter above.
-    const medicalToolsArray = medical_tools
-      ? medical_tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const medicalToolsArray = parseQueryList(medical_tools);
     if (medicalToolsArray.length) {
       combinedFilters.push({
         OR: medicalToolsArray.map((tool) => ({
@@ -657,7 +626,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -691,7 +660,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -725,7 +694,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -759,7 +728,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1119,22 +1088,22 @@ export class CandidatesService {
     user: USER,
     country?: string,
     shift_block?: string,
-    availability?: string,
+    availability?: string | string[],
     monthly_compensation_from?: string,
     monthly_compensation_to?: string,
     years_of_experience?: string,
-    specializations?: string,
-    positions?: string,
-    skills?: string,
-    languages?: string,
+    specializations?: string | string[],
+    positions?: string | string[],
+    skills?: string | string[],
+    languages?: string | string[],
     page?: number,
     perPage?: number,
     search?: string,
     all?: string,
     scorecard_fields?: string,
-    tools?: string,
-    medical_tools?: string,
-    core_skills_fields?: string,
+    tools?: string | string[],
+    medical_tools?: string | string[],
+    core_skills_fields?: string | string[],
   ): Promise<any> {
     // Check if all parameter is set to true
     const getAllCandidates = all === 'true';
@@ -1182,10 +1151,7 @@ export class CandidatesService {
     const isCoreSkillsFilterAllowed = CORE_SKILLS_FILTER_ROLES.has(user.role);
     const coreSkillsFilters: Record<string, any>[] =
       core_skills_fields && isCoreSkillsFilterAllowed
-        ? core_skills_fields
-            .split(',')
-            .map((pair) => pair.trim())
-            .filter(Boolean)
+        ? parseQueryList(core_skills_fields)
             .map((pair) => {
               const [field, value] = pair.split(':').map((p) => p.trim());
               return { field, value };
@@ -1199,41 +1165,16 @@ export class CandidatesService {
             }))
         : [];
 
-    const availabilityArray = availability
-      ? availability
-          .split(',')
-          .map((a) => a.trim())
-          .filter(Boolean)
-      : [];
+    const availabilityArray = parseQueryList(availability);
     const availabilityNumbers = availabilityArray
       .map((a) => stageToDbDictionary[a])
       .filter(Boolean)
       .map((av) => String(av));
 
-    const languagesArray = languages
-      ? languages
-          .split(',')
-          .map((l) => l.trim())
-          .filter(Boolean)
-      : [];
-    const skillsArray = skills
-      ? skills
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const specializationArray = specializations
-      ? specializations
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const positionsArray = positions
-      ? positions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+    const languagesArray = parseQueryList(languages);
+    const skillsArray = parseQueryList(skills);
+    const specializationArray = parseQueryList(specializations);
+    const positionsArray = parseQueryList(positions);
 
     if (languagesArray.length) {
       combinedFilters.push(
@@ -1270,12 +1211,7 @@ export class CandidatesService {
       };
     }
 
-    const toolsArray = tools
-      ? tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const toolsArray = parseQueryList(tools);
     if (toolsArray.length) {
       combinedFilters.push({
         OR: toolsArray.map((tool) => ({
@@ -1286,12 +1222,7 @@ export class CandidatesService {
 
     // medical_tools is a semicolon-delimited text column, so it is matched with
     // `contains` (OR semantics), mirroring the `tools` filter above.
-    const medicalToolsArray = medical_tools
-      ? medical_tools
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    const medicalToolsArray = parseQueryList(medical_tools);
     if (medicalToolsArray.length) {
       combinedFilters.push({
         OR: medicalToolsArray.map((tool) => ({
@@ -1359,7 +1290,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1390,7 +1321,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1421,7 +1352,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1452,7 +1383,7 @@ export class CandidatesService {
               : { country }),
           ...(availabilityNumbers.length > 0
             ? { employment_type: { in: availabilityNumbers.map(String) } }
-            : availability
+            : typeof availability === 'string' && availability
               ? { employment_type: String(stageToDbDictionary[availability]) }
               : {}),
           ...(hourly_from !== undefined || hourly_to !== undefined
@@ -1479,6 +1410,7 @@ export class CandidatesService {
     };
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -1742,6 +1674,7 @@ export class CandidatesService {
         );
         return {
           ...candidate,
+          vaid: candidate.hubspot_vaid,
           approved_positions_pairing:
             (candidate.approved_positions_pairing &&
               candidate.approved_positions_pairing.map((position) =>
@@ -1808,6 +1741,7 @@ export class CandidatesService {
 
     const select = {
       id: true,
+      hubspot_vaid: true,
       first_name: true,
       last_name: true,
       name: true,
@@ -2013,6 +1947,7 @@ export class CandidatesService {
 
     const formattedCandidate = {
       ...candidate, // mantém os outros campos do candidato
+      vaid: candidate.hubspot_vaid,
       approved_positions_pairing:
         (candidate.approved_positions_pairing &&
           candidate.approved_positions_pairing.map((position) =>
@@ -2103,7 +2038,7 @@ export class CandidatesService {
       await this.removeFromOfferPanels(id);
     }
 
-    return updatedCandidate;
+    return { ...updatedCandidate, vaid: updatedCandidate.hubspot_vaid };
   }
 
   async removeFromOfferPanels(candidateId: string): Promise<void> {
@@ -2870,7 +2805,7 @@ export class CandidatesService {
       await this.removeFromOfferPanels(id);
     }
 
-    return updatedCandidate;
+    return { ...updatedCandidate, vaid: updatedCandidate.hubspot_vaid };
   }
 
   async showMatchHireRequests(
@@ -3024,6 +2959,7 @@ export class CandidatesService {
       where: { hire_request_id: data.hireRequestId },
       select: { id: true },
     });
+    const panelJustCreated = !panel;
     if (!panel) {
       panel = await this.prisma.candidatePanel.create({
         data: {
@@ -3032,6 +2968,37 @@ export class CandidatesService {
           readable: true,
         },
       });
+    }
+
+    // 48h panel-candidate minimum lead-time rule (organization users only —
+    // keys on the ACTING user's role, not the hire request's origin; see
+    // `common/utils/panel-candidate-lead-time.ts`). A freshly created panel
+    // can have no interview yet, so it is skipped without a query.
+    if (isClientOriginatedRole(user.role) && !panelJustCreated) {
+      const activeInterview = await this.prisma.interview.findFirst({
+        where: { panel_id: panel.id, status: 'scheduled' },
+        orderBy: { scheduled_date: 'asc' },
+        select: { scheduled_date: true },
+      });
+
+      if (
+        activeInterview &&
+        violatesPanelCandidateMinLead(activeInterview.scheduled_date)
+      ) {
+        try {
+          await this.notifications.notifyPanelCandidateBlocked(
+            data.hireRequestId,
+            user.id,
+            data.candidatesId,
+          );
+        } catch (err) {
+          console.error(
+            '[notifications] panel-candidate-blocked email failed',
+            err?.message || err,
+          );
+        }
+        throw new BadRequestException(PANEL_CANDIDATE_MIN_LEAD_ERROR);
+      }
     }
 
     const candidates = await this.prisma.candidate.findMany({
@@ -3412,6 +3379,7 @@ export class CandidatesService {
         select: {
           id: true,
           hubspot_id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           name: true,
@@ -3486,6 +3454,7 @@ export class CandidatesService {
       );
       return {
         ...candidate,
+        vaid: candidate.hubspot_vaid,
         avatar_url: candidate.avatar_url
           ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
           : null,
@@ -3518,6 +3487,7 @@ export class CandidatesService {
       where: { id: id.trim() },
       select: {
         id: true,
+        hubspot_vaid: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -3736,6 +3706,7 @@ export class CandidatesService {
 
     const candidateWithFullAvatarUrl = {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,
@@ -3832,6 +3803,7 @@ export class CandidatesService {
     // 3. And finally map the positions to their display labels.
     return {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,
@@ -3860,6 +3832,7 @@ export class CandidatesService {
       where: { id: id.trim() },
       select: {
         id: true,
+        hubspot_vaid: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -4082,6 +4055,7 @@ export class CandidatesService {
 
     const candidateWithFullAvatarUrl = {
       ...candidate,
+      vaid: candidate.hubspot_vaid,
       avatar_url: candidate.avatar_url
         ? `${AVATAR_BASE_URL}${candidate.avatar_url}`
         : null,

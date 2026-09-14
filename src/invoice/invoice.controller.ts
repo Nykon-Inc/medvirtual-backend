@@ -1,10 +1,25 @@
-import { Controller, Post, Body, UseGuards, HttpCode, Get, Param, Query, Patch, Res, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  HttpCode,
+  Get,
+  Param,
+  Query,
+  Patch,
+  Res,
+  BadRequestException,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { existsSync, unlinkSync } from 'fs';
 import * as path from 'path';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { InvoiceService } from './invoice.service';
-import { CreateInvoiceDto, BulkCreateInvoiceDto } from './dto/create-invoice.dto';
+import {
+  CreateInvoiceDto,
+  BulkCreateInvoiceDto,
+} from './dto/create-invoice.dto';
 import { ListInvoicesDto } from './dto/list-invoices.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { BulkUpdateInvoiceStatusDto } from './dto/bulk-update-invoice-status.dto';
@@ -41,13 +56,22 @@ export class InvoiceController {
   @Roles('system_admin', 'system_super_admin')
   @HttpCode(202)
   @ApiOperation({ summary: 'Create multiple invoices asynchronously' })
-  @ApiResponse({ status: 202, description: 'Bulk invoice creation tasks queued' })
-  async createBulk(@Body() dto: BulkCreateInvoiceDto, @CurrentUser() user: USER) {
+  @ApiResponse({
+    status: 202,
+    description: 'Bulk invoice creation tasks queued',
+  })
+  async createBulk(
+    @Body() dto: BulkCreateInvoiceDto,
+    @CurrentUser() user: USER,
+  ) {
     return await this.invoiceService.createBulkInvoices(dto, user.id);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Fetch all invoices with their current versions and optional filters' })
+  @ApiOperation({
+    summary:
+      'Fetch all invoices with their current versions and optional filters',
+  })
   async findAll(@Query() query: ListInvoicesDto) {
     return await this.invoiceService.findAll(query);
   }
@@ -92,10 +116,17 @@ export class InvoiceController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const csvContent = await this.invoiceService.generateInvoicesCsv(type, startDate, endDate);
-    
+    const csvContent = await this.invoiceService.generateInvoicesCsv(
+      type,
+      startDate,
+      endDate,
+    );
+
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="invoices_report_${type}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="invoices_report_${type}.csv"`,
+    );
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     return res.send(csvContent);
   }
@@ -136,10 +167,10 @@ export class InvoiceController {
     // (see invoice.service.ts) and ends in a 5-letter placeholder suffix; once a
     // real invoice_number exists, swap it in for the download filename so admins
     // never see the placeholder on a finalized invoice.
-    let ref = invoice.invoice_number
+    const ref = invoice.invoice_number
       ? invoice.reference?.replace(/[A-Z]{5}$/, invoice.invoice_number)
       : invoice.reference || invoice.id;
-    let name = `${ref}.pdf`;
+    const name = `${ref}.pdf`;
 
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
     // generateInvoicePdf writes to a temp file per-request; clean it up once the
@@ -182,7 +213,11 @@ export class InvoiceController {
     @Body() dto: BulkUpdateInvoiceStatusDto,
     @CurrentUser() user: USER,
   ) {
-    return await this.invoiceService.bulkUpdateStatus(dto.ids, dto.status, user.id);
+    return await this.invoiceService.bulkUpdateStatus(
+      dto.ids,
+      dto.status,
+      user.id,
+    );
   }
 
   @Post(':id/version')
@@ -199,19 +234,30 @@ export class InvoiceController {
   @Post(':id/prebill-reconciliation')
   @Roles('system_admin', 'system_super_admin')
   @HttpCode(202)
-  @ApiOperation({ summary: 'Manually retrigger prebill reconciliation for an invoice' })
-  @ApiResponse({ status: 202, description: 'Prebill reconciliation job queued for immediate execution' })
+  @ApiOperation({
+    summary: 'Manually retrigger prebill reconciliation for an invoice',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Prebill reconciliation job queued for immediate execution',
+  })
   async triggerPrebillReconciliation(@Param('id') id: string) {
     return await this.invoiceService.triggerPrebillReconciliation(id);
   }
 
   @Post(':id/send-email')
   @Roles('system_admin', 'system_super_admin')
-  @ApiOperation({ summary: 'Send invoice email to a specific user with PDF attachment' })
+  @ApiOperation({
+    summary: 'Send invoice email to a specific user with PDF attachment',
+  })
   async sendInvoiceEmail(
     @Param('id') id: string,
     @Body() dto: { email: string; fullName: string },
   ) {
-    return await this.invoiceService.sendInvoiceEmail(id, dto.email, dto.fullName);
+    return await this.invoiceService.sendInvoiceEmail(
+      id,
+      dto.email,
+      dto.fullName,
+    );
   }
 }

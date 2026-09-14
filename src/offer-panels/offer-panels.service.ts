@@ -410,11 +410,11 @@ export class OfferPanelsService {
   async searchContacts(q: string, businessUnit: string): Promise<any[]> {
     const term = q.trim();
     businessUnit =
-      businessUnit === 'BerryVirtual' 
-      ? 'Berry Virtual' 
-      : businessUnit === 'Med Virtual'
-        ? 'MedVirtual'
-        : businessUnit;
+      businessUnit === 'BerryVirtual'
+        ? 'Berry Virtual'
+        : businessUnit === 'Med Virtual'
+          ? 'MedVirtual'
+          : businessUnit;
     const tokens = term.split(/\s+/).filter(Boolean);
     const makeTokenFilter = (extra: string[] = []) =>
       tokens.map((t) => ({

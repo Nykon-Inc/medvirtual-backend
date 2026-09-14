@@ -54,12 +54,16 @@ const BRANDING = {
 // ── Mock factories ─────────────────────────────────────────────────────────────
 
 const makePrisma = (overrides: Record<string, unknown> = {}) => ({
-  $transaction: jest.fn((ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
+  $transaction: jest.fn((ops: unknown[]) =>
+    Promise.all(ops as Promise<unknown>[]),
+  ),
   emailTemplate: {
     findFirst: jest.fn().mockResolvedValue(TEMPLATE),
     findMany: jest.fn().mockResolvedValue([TEMPLATE]),
     count: jest.fn().mockResolvedValue(1),
-    update: jest.fn().mockResolvedValue({ ...TEMPLATE, subject: 'Updated subject' }),
+    update: jest
+      .fn()
+      .mockResolvedValue({ ...TEMPLATE, subject: 'Updated subject' }),
   },
   emailTemplateHistory: {
     create: jest.fn().mockResolvedValue(HISTORY_ENTRY),
@@ -116,7 +120,9 @@ describe('EmailTemplatesService.validatePlaceholders', () => {
   });
 
   it('passes when body has no placeholders', () => {
-    expect(() => service.validatePlaceholders('Hello world', ['{{inviteLink}}'])).not.toThrow();
+    expect(() =>
+      service.validatePlaceholders('Hello world', ['{{inviteLink}}']),
+    ).not.toThrow();
   });
 
   it('passes when all used placeholders are in the allowed list', () => {
@@ -136,7 +142,9 @@ describe('EmailTemplatesService.validatePlaceholders', () => {
 
   it('throws BadRequestException and lists all invalid placeholders', () => {
     try {
-      service.validatePlaceholders('{{badOne}} and {{badTwo}}', ['{{inviteLink}}']);
+      service.validatePlaceholders('{{badOne}} and {{badTwo}}', [
+        '{{inviteLink}}',
+      ]);
       fail('Should have thrown');
     } catch (e) {
       expect(e).toBeInstanceOf(BadRequestException);
@@ -171,7 +179,9 @@ describe('EmailTemplatesService.applyPlaceholders', () => {
   });
 
   it('allows caller overrides to take precedence over sample data', () => {
-    const result = service.applyPlaceholders('Hi {{userName}}', { '{{userName}}': 'Dr. House' });
+    const result = service.applyPlaceholders('Hi {{userName}}', {
+      '{{userName}}': 'Dr. House',
+    });
     expect(result).toBe('Hi Dr. House');
   });
 
@@ -183,7 +193,9 @@ describe('EmailTemplatesService.applyPlaceholders', () => {
   });
 
   it('logs a warning when a fallback is used', () => {
-    const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation();
+    const warnSpy = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation();
     service.applyPlaceholders('Hello, {{firstName}}!', {});
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('{{firstName}}'),
@@ -192,7 +204,9 @@ describe('EmailTemplatesService.applyPlaceholders', () => {
   });
 
   it('does not use a fallback (or warn) when the override value is provided', () => {
-    const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation();
+    const warnSpy = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation();
     const result = service.applyPlaceholders('Hello, {{firstName}}!', {
       '{{firstName}}': 'Jane',
     });
@@ -216,7 +230,9 @@ describe('EmailTemplatesService.findOne', () => {
     const { service } = await buildService({
       emailTemplate: { findFirst: jest.fn().mockResolvedValue(null) },
     });
-    await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne('nonexistent')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });
 
@@ -227,10 +243,14 @@ describe('EmailTemplatesService.findAll', () => {
     const { service, prisma } = await buildService();
     await service.findAll(1, 25, '', undefined, 'alliance');
     expect(prisma.emailTemplate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ category: 'alliance' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ category: 'alliance' }),
+      }),
     );
     expect(prisma.emailTemplate.count).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ category: 'alliance' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ category: 'alliance' }),
+      }),
     );
   });
 
@@ -246,7 +266,14 @@ describe('EmailTemplatesService.findAll', () => {
 
   it('combines category and functionality with businessUnit/search filters', async () => {
     const { service, prisma } = await buildService();
-    await service.findAll(1, 25, 'invite', 'medvirtual', 'talent', 'Onboarding');
+    await service.findAll(
+      1,
+      25,
+      'invite',
+      'medvirtual',
+      'talent',
+      'Onboarding',
+    );
     expect(prisma.emailTemplate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -262,7 +289,7 @@ describe('EmailTemplatesService.findAll', () => {
   it('does not filter by category/functionality when omitted', async () => {
     const { service, prisma } = await buildService();
     await service.findAll(1, 25, '');
-    const call = (prisma.emailTemplate.findMany as jest.Mock).mock.calls[0][0];
+    const call = prisma.emailTemplate.findMany.mock.calls[0][0];
     expect(call.where).not.toHaveProperty('category');
     expect(call.where).not.toHaveProperty('functionality');
   });
@@ -272,7 +299,10 @@ describe('EmailTemplatesService.findAll', () => {
     await service.findAll(1, 25, '');
     expect(prisma.emailTemplate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: expect.objectContaining({ category: true, functionality: true }),
+        select: expect.objectContaining({
+          category: true,
+          functionality: true,
+        }),
       }),
     );
   });
@@ -282,13 +312,17 @@ describe('EmailTemplatesService.findAll', () => {
       emailTemplate: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ ...TEMPLATE, id: 't1', updated_by: 'user-42' }]),
+          .mockResolvedValue([
+            { ...TEMPLATE, id: 't1', updated_by: 'user-42' },
+          ]),
         count: jest.fn().mockResolvedValue(1),
       },
       uSER: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ id: 'user-42', first_name: 'Jane', last_name: 'Doe' }]),
+          .mockResolvedValue([
+            { id: 'user-42', first_name: 'Jane', last_name: 'Doe' },
+          ]),
       },
     });
     const result = await service.findAll(1, 25, '');
@@ -308,19 +342,27 @@ describe('EmailTemplatesService.findAll', () => {
       },
     });
     const result = await service.findAll(1, 25, '');
-    expect(result.data[0]).toMatchObject({ updated_by: 'sync', updated_by_name: 'Auto-sync' });
+    expect(result.data[0]).toMatchObject({
+      updated_by: 'sync',
+      updated_by_name: 'Auto-sync',
+    });
     expect(prisma.uSER.findMany).not.toHaveBeenCalled();
   });
 
   it('returns null updated_by_name when updated_by is null', async () => {
     const { service } = await buildService({
       emailTemplate: {
-        findMany: jest.fn().mockResolvedValue([{ ...TEMPLATE, id: 't1', updated_by: null }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ ...TEMPLATE, id: 't1', updated_by: null }]),
         count: jest.fn().mockResolvedValue(1),
       },
     });
     const result = await service.findAll(1, 25, '');
-    expect(result.data[0]).toMatchObject({ updated_by: null, updated_by_name: null });
+    expect(result.data[0]).toMatchObject({
+      updated_by: null,
+      updated_by_name: null,
+    });
   });
 });
 
@@ -332,7 +374,10 @@ describe('EmailTemplatesService.getFunctionalityOptions', () => {
       emailTemplate: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ functionality: 'Onboarding' }, { functionality: 'Payroll' }]),
+          .mockResolvedValue([
+            { functionality: 'Onboarding' },
+            { functionality: 'Payroll' },
+          ]),
       },
     });
     const result = await service.getFunctionalityOptions();
@@ -463,7 +508,9 @@ describe('EmailTemplatesService.update', () => {
         update: jest.fn(),
       },
     });
-    await expect(service.update('ghost', dto, 'user-1')).rejects.toThrow(NotFoundException);
+    await expect(service.update('ghost', dto, 'user-1')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('does NOT call syncToPeer when PEER_ENV_API_URL is not set', async () => {
@@ -549,21 +596,23 @@ describe('EmailTemplatesService.rollback', () => {
         create: jest.fn(),
       },
     });
-    await expect(service.rollback('invite-signup', 'bad-id', 'user-1')).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      service.rollback('invite-signup', 'bad-id', 'user-1'),
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('throws NotFoundException when history entry belongs to a different template', async () => {
     const { service } = await buildService({
       emailTemplateHistory: {
-        findUnique: jest.fn().mockResolvedValue({ ...HISTORY_ENTRY, template_id: 'tpl-OTHER' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ ...HISTORY_ENTRY, template_id: 'tpl-OTHER' }),
         create: jest.fn(),
       },
     });
-    await expect(service.rollback('invite-signup', 'hist-1', 'user-1')).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      service.rollback('invite-signup', 'hist-1', 'user-1'),
+    ).rejects.toThrow(NotFoundException);
   });
 });
 
@@ -682,7 +731,11 @@ describe('EmailTemplatesService.testSend', () => {
   });
 
   it('honors business_unit from dto for the template row, not just branding', async () => {
-    const buRow = { ...TEMPLATE, business_unit: 'berry-virtual', headline: 'Berry Welcome!' };
+    const buRow = {
+      ...TEMPLATE,
+      business_unit: 'berry-virtual',
+      headline: 'Berry Welcome!',
+    };
     const findFirst = jest.fn().mockResolvedValueOnce(buRow);
     const { service, prisma, mail } = await buildService({
       emailTemplate: { findFirst },
@@ -697,7 +750,9 @@ describe('EmailTemplatesService.testSend', () => {
       where: { key: 'invite-signup', business_unit: 'berry-virtual' },
     });
     expect(mail.sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.stringContaining('Berry Welcome!') }),
+      expect.objectContaining({
+        html: expect.stringContaining('Berry Welcome!'),
+      }),
     );
   });
 
@@ -762,7 +817,11 @@ describe('EmailTemplatesService.preview', () => {
   });
 
   it('honors business_unit from dto for the template row, not just branding', async () => {
-    const buRow = { ...TEMPLATE, business_unit: 'berry-virtual', headline: 'Berry Welcome!' };
+    const buRow = {
+      ...TEMPLATE,
+      business_unit: 'berry-virtual',
+      headline: 'Berry Welcome!',
+    };
     const findFirst = jest.fn().mockResolvedValueOnce(buRow);
     const { service, prisma } = await buildService({
       emailTemplate: { findFirst },
@@ -897,8 +956,12 @@ describe('EmailTemplatesService — layout presets', () => {
     const result = await service.preview('invite-signup', {
       business_unit: 'medvirtual',
     });
-    expect(result.data.html).toContain(`background:${BRANDING.primary_color}33;`);
-    expect(result.data.html).toContain(`background:${BRANDING.primary_color};margin:0 auto 20px;`);
+    expect(result.data.html).toContain(
+      `background:${BRANDING.primary_color}33;`,
+    );
+    expect(result.data.html).toContain(
+      `background:${BRANDING.primary_color};margin:0 auto 20px;`,
+    );
   });
 
   it('falls back to the "default" structure for an unrecognized layout_preset value', async () => {
@@ -939,7 +1002,9 @@ describe('EmailTemplatesService — branding overrides in preview/testSend', () 
       business_unit: 'medvirtual',
       layout_preset: 'hero',
     });
-    expect(result.data.html).toContain(`background:${BRANDING.primary_color}33;`);
+    expect(result.data.html).toContain(
+      `background:${BRANDING.primary_color}33;`,
+    );
     expect(result.data.html).toContain(BRANDING.logo_url);
   });
 
@@ -1112,7 +1177,9 @@ describe('EmailTemplatesService header logo normalization', () => {
     } as EmailTheme);
 
     expect(result.html).not.toContain('max-width: 200px; height: auto;');
-    expect(result.html).toContain('height: 40px; width: auto; max-width: 200px');
+    expect(result.html).toContain(
+      'height: 40px; width: auto; max-width: 200px',
+    );
   });
 
   it('sizes the hero preset logo identically to the others', async () => {
