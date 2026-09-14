@@ -162,6 +162,12 @@ describe('UserService', () => {
         status: 'active',
       });
       prismaMock.uSER.create.mockResolvedValue({ id: 'new-user' });
+      // getUserEmailTheme looks up the new user via findUnique, not findFirst
+      prismaMock.uSER.findUnique.mockResolvedValue({
+        id: 'new-user',
+        organization_id: null,
+        role: 'organization_admin',
+      });
       mailServiceMock.sendMail.mockResolvedValue(true);
       prismaMock.emailInvitation.create.mockResolvedValue({ id: 'code-1' });
 
