@@ -79,7 +79,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
 
     this.logger.log(
       `Starting prebill reconciliation for invoice ${invoiceId} ` +
-        `(org: ${organizationId}, period: ${billingStartDate} → ${billingEndDate})`,
+      `(org: ${organizationId}, period: ${billingStartDate} → ${billingEndDate})`,
     );
 
     // -----------------------------------------------------------------------
@@ -339,25 +339,25 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     const staffRecords =
       hubstaffUserIds.length > 0
         ? await this.prisma.staff.findMany({
-            where: {
-              candidate: { hubstaff_id: { in: hubstaffUserIds } },
-              OR: [
-                { organization_id: organizationId },
-                ...(org.hubspot_id
-                  ? [{ hubspot_organization_id: org.hubspot_id }]
-                  : []),
-              ],
-            },
-            include: {
-              candidate: {
-                include: {
-                  // Needed by InvoiceWorker.fallbackHourlyRate to pick the bilingual vs.
-                  // english floor price when a worker has no salary/hourly_pay_rate.
-                  languages: true,
-                },
+          where: {
+            candidate: { hubstaff_id: { in: hubstaffUserIds } },
+            OR: [
+              { organization_id: organizationId },
+              ...(org.hubspot_id
+                ? [{ hubspot_organization_id: org.hubspot_id }]
+                : []),
+            ],
+          },
+          include: {
+            candidate: {
+              include: {
+                // Needed by InvoiceWorker.fallbackHourlyRate to pick the bilingual vs.
+                // english floor price when a worker has no salary/hourly_pay_rate.
+                languages: true,
               },
             },
-          })
+          },
+        })
         : [];
 
     // Fallback bill rate source for workers with neither a salary nor a candidate
@@ -410,10 +410,10 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     const ptoRequests =
       uniqueUserIds.length > 0
         ? await this.hubstaff.getTimeOffRequests(
-            uniqueUserIds,
-            startISO,
-            endISO,
-          )
+          uniqueUserIds,
+          startISO,
+          endISO,
+        )
         : [];
     const approvedPtos = ptoRequests.filter(
       (p: any) => p.status === 'approved',
@@ -552,7 +552,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
 
         if (staff && staff.salary) {
           const monthlySalary = Number(staff.salary);
-          const prorationRate = (monthlySalary * 12) / 52 / 40;
+          const prorationRate = (monthlySalary / 176);
           overtimeHourlyRate = new Decimal(prorationRate);
           overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
 
@@ -598,7 +598,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
               diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
             const deficit = requiredHours - actualHours;
             if (deficit > 10) {
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = (monthlySalary / 176)
               lineTotal = new Decimal(totalPayableHours).mul(
                 new Decimal(prorationRate),
               );
@@ -610,7 +610,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
                 ? lineTotal.div(new Decimal(totalPayableHours))
                 : new Decimal(0);
           } else {
-            const prorationRate = (monthlySalary * 12) / 52 / 40;
+            const prorationRate = (monthlySalary / 176)
             hourlyRate = new Decimal(prorationRate);
             lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
           }

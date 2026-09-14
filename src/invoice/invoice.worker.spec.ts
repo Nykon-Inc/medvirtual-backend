@@ -80,6 +80,33 @@ describe('InvoiceWorker', () => {
       },
     };
 
+    it('excludes hardcoded Hubstaff users from invoice generation', async () => {
+      const payload = {
+        organization_id: 'org_id',
+        billing_start_date: '2026-06-01',
+        billing_end_date: '2026-06-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      };
+
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 3020409, name: 'Nancy' },
+        { user_id: '1954999', name: 'Kier' },
+        { user_id: 2548488, name: 'Patricia' },
+        { user_id: 123, name: 'John Doe' },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, payload);
+
+      expect(prismaMock.staff.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            candidate: { hubstaff_id: { in: ['123'] } },
+          }),
+        }),
+      );
+    });
+
     it('calculates with proration rate for a short custom period (June 16 to 19 - below half month)', async () => {
       const payload = {
         organization_id: 'org_id',

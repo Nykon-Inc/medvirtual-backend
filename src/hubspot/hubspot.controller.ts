@@ -32,7 +32,7 @@ export class HubspotController {
   constructor(
     private readonly hubspotService: HubspotService,
     private readonly hubspotAuditService: HubspotAuditService,
-  ) {}
+  ) { }
 
   @Get('admin/audit-logs')
   @UseGuards(AuthGuard, RolesGuard)

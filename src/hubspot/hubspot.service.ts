@@ -1135,10 +1135,10 @@ export class HubspotService {
           : OrganizationRole.client;
       organizationData.specialties = organizationData.specialties
         ? organizationData.specialties
-            .toString()
-            .split(',')
-            .map((item: string) => item.trim())
-            .filter((item: string) => item.length > 0)
+          .toString()
+          .split(',')
+          .map((item: string) => item.trim())
+          .filter((item: string) => item.length > 0)
         : [];
       organizationData.number_of_employees =
         organizationData.number_of_employees
