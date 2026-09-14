@@ -33,7 +33,8 @@
     "invoice:init-configs": "ts-node scripts/init-invoice-configs.ts",
     "invoice:test-hubspot-sync": "ts-node scripts/test-hubspot-invoice-sync.ts",
     "invoice:test-hubstaff-sync": "ts-node scripts/test-hubstaff-sync.ts",
-    "backfill:hubspot-vaid": "ts-node scripts/backfill-hubspot-vaid.ts"
+    "backfill:hubspot-vaid": "ts-node scripts/backfill-hubspot-vaid.ts",
+    "backfill:hubstaff-id": "ts-node scripts/backfill-hubstaff-id.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.858.0",
