@@ -26,6 +26,9 @@ const CASE_INCLUDE = {
   resolvedBy: {
     select: { id: true, first_name: true, last_name: true, email: true },
   },
+  lineItem: {
+    select: { id: true, name: true, amount: true, invoice_id: true },
+  },
 };
 
 @Injectable()
@@ -36,13 +39,20 @@ export class ReviewCasesService {
 
   /**
    * Opens a review case for the given org and reason.
-   * Idempotent: if an open case for the same (org, reason) already exists,
+   * Idempotent: if an open case for the same (org, reason[, line item]) already exists,
    * the duplicate is silently ignored (catches Prisma P2002).
+   *
+   * `hubspotLineItemSnapshotId` scopes the dedup to a specific line item — required for
+   * unmatched_line_item/ambiguous_line_item, where a single organization can have several
+   * distinct open cases at once (one per unmatched line item). Omit it for org-scoped
+   * reason codes (multiple_hubspot_matches, etc.), which keep the original one-open-case
+   * per (org, reason) behavior.
    */
   async openOrSkip(
     organizationId: string,
     reasonCode: AdminReviewReasonCode,
     metadata?: Record<string, any>,
+    hubspotLineItemSnapshotId?: string,
   ): Promise<{ opened: boolean }> {
     try {
       await this.prisma.medAllianceAdminReviewCase.create({
@@ -51,15 +61,19 @@ export class ReviewCasesService {
           reason_code: reasonCode,
           status: AdminReviewStatus.open,
           metadata: metadata ?? undefined,
+          hubspot_line_item_snapshot_id: hubspotLineItemSnapshotId ?? undefined,
         },
       });
       this.logger.log(
-        `Opened review case: org=${organizationId} reason=${reasonCode}`,
+        `Opened review case: org=${organizationId} reason=${reasonCode}` +
+          (hubspotLineItemSnapshotId
+            ? ` lineItem=${hubspotLineItemSnapshotId}`
+            : ''),
       );
       return { opened: true };
     } catch (err: any) {
       if (err?.code === 'P2002') {
-        // An open case already exists for this (org, reason) — skip silently
+        // An open case already exists for this (org, reason[, line item]) — skip silently
         return { opened: false };
       }
       throw err;
@@ -112,7 +126,15 @@ export class ReviewCasesService {
    * - multiple_hubspot_matches + hubspot_company_id: sets org.hubspot_id and resets sync state
    * - reconciliation_invoice_changed + action=void_and_recreate: voids the linked commission
    *   and clears snapshot.sync_hash so next sync re-evaluates the invoice
+   * - unmatched_line_item / ambiguous_line_item + action=manual_link: sets the line item's
+   *   staff_id, match_status='matched', matched_by='admin_manual' — the commission that was
+   *   on hold is generated retroactively on the next CommissionDetectionService run.
+   * - unmatched_line_item / ambiguous_line_item + action=not_applicable: sets match_status
+   *   ='not_applicable', permanently excluding the line item from the commission flow.
    * - all other cases: close only
+   *
+   * Every resolution writes a medAllianceAuditLog entry (entity_type='review_case') — this
+   * closes a coverage gap where only the void_and_recreate path used to be logged.
    */
   async resolve(id: string, resolvedById: string, dto: ResolveReviewCaseDto) {
     const item = await this.findOne(id);
@@ -120,6 +142,8 @@ export class ReviewCasesService {
     if (item.status !== AdminReviewStatus.open) {
       throw new BadRequestException('Review case is already resolved');
     }
+
+    let auditEvent = `resolved_${item.reason_code}`;
 
     // --- Side-effect: multiple HubSpot matches — admin assigns the correct company ---
     if (
@@ -160,7 +184,38 @@ export class ReviewCasesService {
       // keep_existing: no side-effect, just close the case
     }
 
-    return this.prisma.medAllianceAdminReviewCase.update({
+    // --- Side-effect: unmatched/ambiguous line item — admin links a Staff or excludes it ---
+    if (
+      (item.reason_code === AdminReviewReasonCode.unmatched_line_item ||
+        item.reason_code === AdminReviewReasonCode.ambiguous_line_item) &&
+      item.hubspot_line_item_snapshot_id
+    ) {
+      if (dto.action === 'manual_link' && dto.staff_id) {
+        await this.prisma.hubspotLineItemSnapshot.update({
+          where: { id: item.hubspot_line_item_snapshot_id },
+          data: {
+            staff_id: dto.staff_id,
+            match_status: 'matched',
+            matched_by: 'admin_manual',
+          },
+        });
+        auditEvent = 'resolved_manual_link';
+        this.logger.log(
+          `Admin manually linked line item ${item.hubspot_line_item_snapshot_id} to staff ${dto.staff_id}`,
+        );
+      } else if (dto.action === 'not_applicable') {
+        await this.prisma.hubspotLineItemSnapshot.update({
+          where: { id: item.hubspot_line_item_snapshot_id },
+          data: { match_status: 'not_applicable', matched_by: 'admin_manual' },
+        });
+        auditEvent = 'resolved_not_applicable';
+        this.logger.log(
+          `Admin marked line item ${item.hubspot_line_item_snapshot_id} as not a collaborator`,
+        );
+      }
+    }
+
+    const resolved = await this.prisma.medAllianceAdminReviewCase.update({
       where: { id },
       data: {
         status: AdminReviewStatus.resolved,
@@ -170,6 +225,27 @@ export class ReviewCasesService {
       },
       include: CASE_INCLUDE,
     });
+
+    await this.prisma.medAllianceAuditLog.create({
+      data: {
+        entity_type: 'review_case',
+        entity_id: id,
+        event: auditEvent,
+        old_status: 'open',
+        new_status: 'resolved',
+        reason: dto.resolution,
+        source: 'admin_action',
+        actor_user_id: resolvedById,
+        metadata: {
+          organization_id: item.organization_id,
+          reason_code: item.reason_code,
+          hubspot_line_item_snapshot_id:
+            item.hubspot_line_item_snapshot_id ?? undefined,
+        } as any,
+      },
+    });
+
+    return resolved;
   }
 
   // ---------------------------------------------------------------------------

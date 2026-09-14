@@ -16,6 +16,11 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  hubspotLineItemSnapshot: {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
 };
 
 const mockReviewCases = { openOrSkip: jest.fn() };
@@ -66,7 +71,12 @@ describe('InvoiceIngestionService', () => {
 
     const result = await service.run('org-1', 'hs-company-1');
 
-    expect(result).toEqual({ created: 0, updated: 0, skipped: 0 });
+    expect(result).toEqual({
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      lineItems: { created: 0, updated: 0, skipped: 0 },
+    });
     expect(mockPrisma.hubspotInvoiceSnapshot.create).not.toHaveBeenCalled();
   });
 
@@ -337,5 +347,170 @@ describe('InvoiceIngestionService', () => {
 
     const [, config] = mockedAxios.get.mock.calls[0];
     expect((config as any).headers.Authorization).toBe('Bearer test-token-123');
+  });
+
+  // -------------------------------------------------------------------------
+  // Line item ingestion (§2 — previously dead HubspotLineItemSnapshot model)
+  // -------------------------------------------------------------------------
+  describe('line items', () => {
+    const makeInvoiceResponseWithLineItems = (lineItemIds: string[]) => ({
+      data: {
+        id: 'inv-1',
+        properties: {
+          hs_invoice_status: 'paid',
+          hs_payment_status: 'succeeded',
+          hs_amount_billed: '1500.00',
+          hs_currency_code: 'USD',
+          hs_due_date: '2026-02-10T00:00:00.000Z',
+        },
+        associations: {
+          'line items': {
+            results: lineItemIds.map((id) => ({ id })),
+          },
+        },
+      },
+    });
+
+    const makeLineItemDetailResponse = (overrides: Partial<any> = {}) => ({
+      data: {
+        properties: {
+          name: 'Rafael Delgado',
+          amount: '500.00',
+          description: null,
+          quantity: '1',
+          discount: null,
+          ...overrides,
+        },
+      },
+    });
+
+    it('fetches and creates a new HubspotLineItemSnapshot for each line item associated with the invoice', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
+
+      const result = await service.run('org-1', 'hs-company-1');
+
+      expect(result.lineItems.created).toBe(1);
+      expect(mockPrisma.hubspotLineItemSnapshot.create).toHaveBeenCalledWith({
+        data: {
+          hubspot_id: 'li-1',
+          invoice_id: 'snap-1',
+          name: 'Rafael Delgado',
+          description: null,
+          quantity: '1',
+          amount: '500.00',
+          discount: null,
+        },
+      });
+    });
+
+    it('does not set staff_id/match_status on newly created line items — matching happens in a later step', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
+
+      await service.run('org-1', 'hs-company-1');
+
+      const createCall = mockPrisma.hubspotLineItemSnapshot.create.mock.calls[0][0];
+      expect(createCall.data.staff_id).toBeUndefined();
+      expect(createCall.data.match_status).toBeUndefined();
+    });
+
+    it('updates an existing line item when its amount changed', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse({ amount: '750.00' }));
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue({
+        id: 'li-db-1',
+        name: 'Rafael Delgado',
+        amount: { toString: () => '500.00' },
+        description: null,
+        quantity: '1',
+        discount: null,
+      });
+      mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
+
+      const result = await service.run('org-1', 'hs-company-1');
+
+      expect(result.lineItems.updated).toBe(1);
+      expect(mockPrisma.hubspotLineItemSnapshot.update).toHaveBeenCalledWith({
+        where: { id: 'li-db-1' },
+        data: expect.objectContaining({ amount: '750.00' }),
+      });
+    });
+
+    it('skips an existing line item when nothing changed', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue({
+        id: 'li-db-1',
+        name: 'Rafael Delgado',
+        amount: { toString: () => '500.00' },
+        description: null,
+        quantity: '1',
+        discount: null,
+      });
+
+      const result = await service.run('org-1', 'hs-company-1');
+
+      expect(result.lineItems.skipped).toBe(1);
+      expect(mockPrisma.hubspotLineItemSnapshot.update).not.toHaveBeenCalled();
+    });
+
+    it('still upserts line items even when the parent invoice itself was skipped (unchanged sync_hash)', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse());
+
+      // Pre-run to capture the hash, matching the pattern used in the "skip" describe block above.
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValueOnce({ id: 'snap-1' });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
+
+      await service.run('org-1', 'hs-company-1');
+      const storedHash = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+
+      jest.clearAllMocks();
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
+        .mockResolvedValueOnce(makeLineItemDetailResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: storedHash,
+      });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
+
+      const result = await service.run('org-1', 'hs-company-1');
+
+      expect(result.skipped).toBe(1); // invoice itself skipped
+      expect(result.lineItems.created).toBe(1); // but its line item was still upserted
+    });
   });
 });

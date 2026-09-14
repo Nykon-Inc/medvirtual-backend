@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
+import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
 
-// One year in milliseconds — the eligibility/expiry window, anchored on deployment_date.
+// One year in milliseconds — the COMPANY-level deployment expiry backstop only
+// (see expireEligibility below). Per-collaborator eligibility windows are computed by
+// computeLineItemCommissionEligibility, anchored on each Staff row's own start_date.
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -101,22 +103,26 @@ export class CommissionDetectionService {
       return { created: 0, skipped: 0 };
     }
 
-    // Inline expiry backstop: deployed more than 365 days ago and not yet marked expired.
-    // Catches pending_confirmation, eligible, AND not_eligible (blocked) orgs — the cron sweep
-    // (cron.service.ts#expireStaleEligibility) does the same, this just keeps things correct
-    // between cron runs whenever this org is touched by the sync pipeline. Canceled orgs are
-    // excluded — that stage is terminal and orthogonal to eligibility status (rule 8 / BR-13).
-    if (
-      org.referral_stage === 'deployed' &&
-      org.deployment_date &&
-      now.getTime() - org.deployment_date.getTime() > ONE_YEAR_MS
-    ) {
-      await this.expireEligibility(
-        organizationId,
-        org.med_alliance_referral_status,
-      );
-      return { created: 0, skipped: 0 };
-    }
+    // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change):
+    // this inline backstop used to auto-set med_alliance_referral_status='expired' whenever
+    // deployment_date was >365 days in the past, pre-empting the admin's Block decision.
+    // Company-level eligibility (med_alliance_referral_status) is now exclusively a manual
+    // admin decision via the Confirm/Block endpoints — no automatic code path may set it.
+    // The `deployed` stage / deployment_date detection itself is untouched and still automatic
+    // (see markDeployed below) — that's the prerequisite signal that surfaces a company for
+    // the admin's decision, not the decision itself. See spec doc §4.6 for the full rationale.
+    //
+    // if (
+    //   org.referral_stage === 'deployed' &&
+    //   org.deployment_date &&
+    //   now.getTime() - org.deployment_date.getTime() > ONE_YEAR_MS
+    // ) {
+    //   await this.expireEligibility(
+    //     organizationId,
+    //     org.med_alliance_referral_status,
+    //   );
+    //   return { created: 0, skipped: 0 };
+    // }
 
     // Load the affiliate's active profile to get the commission percentage.
     const profile = await this.prisma.affiliateProfile.findFirst({
@@ -141,7 +147,8 @@ export class CommissionDetectionService {
     }
     const affiliateUserId: string = profile.user_id;
 
-    // Fetch all candidate paid snapshots for this organization.
+    // Fetch all candidate paid invoice snapshots for this organization — used both to
+    // gate the markDeployed transition below and as the parent scope for matched line items.
     const snapshots = await this.prisma.hubspotInvoiceSnapshot.findMany({
       where: {
         organization_id: organizationId,
@@ -208,35 +215,89 @@ export class CommissionDetectionService {
       });
     }
 
-    // Create commissions for all candidate snapshots.
+    // The unit of work is now the MATCHED line item, not the whole invoice — each
+    // collaborator's payment gets its own commission, anchored on that collaborator's
+    // own Staff.start_date, not the company's deployment_date. Unmatched line items
+    // (staff_id IS NULL) are skipped here — they already have an open review case from
+    // StaffMatchingService and are surfaced separately in the sync summary, not silently
+    // dropped.
+    const paidInvoiceIds = candidates.map((s) => s.id);
+    const matchedLineItems = await this.prisma.hubspotLineItemSnapshot.findMany({
+      where: {
+        invoice_id: { in: paidInvoiceIds },
+        match_status: 'matched',
+        staff_id: { not: null },
+        amount: { gt: 0 },
+      },
+      select: {
+        id: true,
+        amount: true,
+        invoice_id: true,
+        staff_id: true,
+        invoice: { select: { hubspot_id: true } },
+        staff: { select: { id: true, start_date: true } },
+      },
+    });
+
     let created = 0;
     let skipped = 0;
 
-    for (const snapshot of candidates) {
-      // NOTE(merge): upstream's dev branch simplified this key to
-      // affiliateId+hubspotInvoiceId only (dropping paidAt/baseAmount/commissionPercent
-      // that our branch hashed in). Flagged for review — changes duplicate-commission
-      // semantics if an invoice is resynced with a different amount.
+    for (const lineItem of matchedLineItems) {
+      const eligibility = computeLineItemCommissionEligibility({
+        lineItemAmount: lineItem.amount ?? 0,
+        staffStartDate: lineItem.staff?.start_date ?? null,
+        commissionPercent: profile.commission_percent_default,
+        now,
+      });
+
+      if (!eligibility.eligible) {
+        // Log every 365-day skip (staff_window_expired) — this is the money-adjacent
+        // event equivalent to a commission being voided, so it needs a durable, queryable
+        // trail even though no commission is created. "Not yet deployed" skips are not
+        // logged — that's not an exclusion, the collaborator just hasn't started the clock.
+        if (eligibility.skipReason === 'staff_window_expired') {
+          await this.prisma.medAllianceAuditLog.create({
+            data: {
+              entity_type: 'referred_company',
+              entity_id: organizationId,
+              event: 'commission_skipped_staff_expired',
+              old_status: null,
+              new_status: null,
+              reason: `Staff started ${eligibility.daysSinceStart} days ago — 365-day commission window elapsed`,
+              source: 'sync',
+              actor_user_id: null,
+              metadata: {
+                hubspot_invoice_snapshot_id: lineItem.invoice_id,
+                hubspot_line_item_snapshot_id: lineItem.id,
+                staff_id: lineItem.staff_id,
+                staff_start_date: lineItem.staff?.start_date?.toISOString(),
+                days_since_start: eligibility.daysSinceStart,
+              } as any,
+            },
+          });
+        }
+        skipped++;
+        continue;
+      }
+
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: affiliateUserId,
-        hubspotInvoiceId: snapshot.hubspot_id,
+        hubspotInvoiceId: lineItem.invoice.hubspot_id,
+        hubspotLineItemId: lineItem.id,
       });
 
       try {
-        const commissionAmount = new Decimal(snapshot.invoice_amount)
-          .mul(profile.commission_percent_default)
-          .div(100)
-          .toDecimalPlaces(2);
-
         const newCommission = await this.prisma.affiliateCommission.create({
           data: {
             affiliate_id: affiliateUserId,
             affiliate_profile_id: profile.id,
             organization_id: organizationId,
-            hubspot_invoice_snapshot_id: snapshot.id,
+            hubspot_invoice_snapshot_id: lineItem.invoice_id,
+            hubspot_line_item_snapshot_id: lineItem.id,
+            staff_id: lineItem.staff_id,
             commission_percent_snapshot: profile.commission_percent_default,
-            base_amount_snapshot: snapshot.invoice_amount,
-            commission_amount: commissionAmount,
+            base_amount_snapshot: lineItem.amount ?? 0,
+            commission_amount: eligibility.commissionAmount!,
             status: commissionStatus,
             idempotency_key: idempotencyKey,
           },
@@ -256,7 +317,9 @@ export class CommissionDetectionService {
             actor_user_id: null,
             metadata: {
               organization_id: organizationId,
-              hubspot_invoice_id: snapshot.hubspot_id,
+              hubspot_invoice_id: lineItem.invoice.hubspot_id,
+              hubspot_line_item_snapshot_id: lineItem.id,
+              staff_id: lineItem.staff_id,
             } as any,
           },
         });
@@ -265,7 +328,7 @@ export class CommissionDetectionService {
           void this.allianceNotifications.notifyAdminCommissionPending({
             organizationName: org.name ?? organizationId,
             affiliateName: affiliateUser?.email ?? affiliateUserId,
-            commissionAmount: parseFloat(String(commissionAmount)),
+            commissionAmount: parseFloat(String(eligibility.commissionAmount)),
             commissionId: newCommission.id,
           });
         }
@@ -277,7 +340,7 @@ export class CommissionDetectionService {
           continue;
         }
         this.logger.error(
-          `Failed to create commission for snapshot ${snapshot.id}: ${err?.message ?? err}`,
+          `Failed to create commission for line item ${lineItem.id}: ${err?.message ?? err}`,
         );
       }
     }
@@ -357,38 +420,44 @@ export class CommissionDetectionService {
     );
   }
 
-  /**
-   * Expires eligibility when deployment_date is more than 365 days in the past.
-   * Clears med_alliance_block_reason — expiry is now its own status, no reason-string encoding needed.
-   */
-  private async expireEligibility(
-    organizationId: string,
-    oldStatus: string | null,
-  ): Promise<void> {
-    await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: {
-        med_alliance_referral_status: 'expired',
-        med_alliance_block_reason: null,
-      },
-    });
-
-    await this.prisma.medAllianceAuditLog.create({
-      data: {
-        entity_type: 'referred_company',
-        entity_id: organizationId,
-        event: 'eligibility_expired',
-        old_status: oldStatus,
-        new_status: 'expired',
-        reason: 'One-year window since deployment_date elapsed',
-        source: 'sync',
-        actor_user_id: null,
-        metadata: undefined,
-      },
-    });
-
-    this.logger.log(
-      `Org ${organizationId} eligibility window expired — status set to expired`,
-    );
-  }
+  // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+  // spec doc §4.6): this method auto-set med_alliance_referral_status='expired' by day-count,
+  // with zero admin involvement. Company-level eligibility status is now exclusively a manual
+  // admin decision (Confirm/Block endpoints). Its only call site above is commented out;
+  // kept here, inert, so the reasoning isn't lost if this needs revisiting.
+  //
+  // /**
+  //  * Expires eligibility when deployment_date is more than 365 days in the past.
+  //  * Clears med_alliance_block_reason — expiry is now its own status, no reason-string encoding needed.
+  //  */
+  // private async expireEligibility(
+  //   organizationId: string,
+  //   oldStatus: string | null,
+  // ): Promise<void> {
+  //   await this.prisma.organization.update({
+  //     where: { id: organizationId },
+  //     data: {
+  //       med_alliance_referral_status: 'expired',
+  //       med_alliance_block_reason: null,
+  //     },
+  //   });
+  //
+  //   await this.prisma.medAllianceAuditLog.create({
+  //     data: {
+  //       entity_type: 'referred_company',
+  //       entity_id: organizationId,
+  //       event: 'eligibility_expired',
+  //       old_status: oldStatus,
+  //       new_status: 'expired',
+  //       reason: 'One-year window since deployment_date elapsed',
+  //       source: 'sync',
+  //       actor_user_id: null,
+  //       metadata: undefined,
+  //     },
+  //   });
+  //
+  //   this.logger.log(
+  //     `Org ${organizationId} eligibility window expired — status set to expired`,
+  //   );
+  // }
 }
