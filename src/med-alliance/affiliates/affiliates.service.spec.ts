@@ -32,6 +32,8 @@ const mockPrisma = {
   },
   uSER: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
   },
   affiliatePayoutRequest: {
     aggregate: jest.fn(),
@@ -263,6 +265,36 @@ describe('AffiliatesService', () => {
       const [, runtimeValues] = (emailTemplates.getTemplateContent as jest.Mock)
         .mock.calls[0];
       expect(runtimeValues).not.toHaveProperty('{{partnerName}}');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // inviteUserForAffiliate
+  // -------------------------------------------------------------------------
+  describe('inviteUserForAffiliate', () => {
+    const inviteDto: any = {
+      email: 'New@Partner.com',
+      first_name: 'New',
+      last_name: 'Partner',
+    };
+
+    it('should throw ConflictException when an existing user matches the email case-insensitively', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: null,
+      });
+      mockPrisma.uSER.findFirst.mockResolvedValue({ id: 'existing-user' });
+
+      await expect(
+        service.inviteUserForAffiliate('profile-1', inviteDto, 'admin-1'),
+      ).rejects.toThrow(
+        new ConflictException('A user with this email already exists'),
+      );
+
+      expect(mockPrisma.uSER.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'new@partner.com', mode: 'insensitive' } },
+      });
+      expect(mockPrisma.uSER.create).not.toHaveBeenCalled();
     });
   });
 

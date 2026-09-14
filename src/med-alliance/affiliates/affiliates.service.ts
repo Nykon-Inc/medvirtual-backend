@@ -180,7 +180,7 @@ export class AffiliatesService {
     //1. Create user
     const user = await this.prisma.uSER.create({
       data: {
-        email: dto.email,
+        email: dto.email.toLowerCase().trim(),
         first_name: dto.first_name,
         last_name: dto.last_name,
         phone: dto.phone_number ?? '',
@@ -342,8 +342,10 @@ export class AffiliatesService {
         'This affiliate already has a connected user',
       );
 
-    const emailInUse = await this.prisma.uSER.findUnique({
-      where: { email: dto.email },
+    const normalizedEmail = dto.email.toLowerCase().trim();
+
+    const emailInUse = await this.prisma.uSER.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
     if (emailInUse)
       throw new ConflictException('A user with this email already exists');
@@ -351,7 +353,7 @@ export class AffiliatesService {
     // 1. Create USER with status 'invited'
     const user = await this.prisma.uSER.create({
       data: {
-        email: dto.email,
+        email: normalizedEmail,
         first_name: dto.first_name,
         last_name: dto.last_name,
         phone: dto.phone_number ?? '',

@@ -17,6 +17,7 @@ describe('UserService', () => {
     uSER: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -93,7 +94,7 @@ describe('UserService', () => {
     });
 
     it('should throw BadRequestException when inviting user to an inactive organization', async () => {
-      prismaMock.uSER.findUnique.mockResolvedValue(null);
+      prismaMock.uSER.findFirst.mockResolvedValue(null);
       prismaMock.organization.findUnique.mockResolvedValue({
         id: 'org-1',
         name: 'Test Org',
@@ -110,7 +111,7 @@ describe('UserService', () => {
     });
 
     it('should throw NotFoundException when organization does not exist', async () => {
-      prismaMock.uSER.findUnique.mockResolvedValue(null);
+      prismaMock.uSER.findFirst.mockResolvedValue(null);
       prismaMock.organization.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -123,11 +124,76 @@ describe('UserService', () => {
     });
 
     it('should throw BadRequestException when user email already exists', async () => {
-      prismaMock.uSER.findUnique.mockResolvedValue({ id: 'existing-user' });
+      prismaMock.uSER.findFirst.mockResolvedValue({ id: 'existing-user' });
 
       await expect(
         service.inviteUserToOrganization('org-1', inviteData, currentUser),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should detect an existing user case-insensitively and not create a duplicate', async () => {
+      const mixedCaseInvite: any = {
+        email: 'New@Test.com',
+        role: 'organization_admin',
+      };
+      prismaMock.uSER.findFirst.mockResolvedValue({ id: 'existing-user' });
+
+      await expect(
+        service.inviteUserToOrganization('org-1', mixedCaseInvite, currentUser),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prismaMock.uSER.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'new@test.com', mode: 'insensitive' } },
+      });
+      expect(prismaMock.uSER.create).not.toHaveBeenCalled();
+    });
+
+    it('should persist the invited user email normalized to lowercase', async () => {
+      const mixedCaseInvite: any = {
+        email: 'New@Test.com',
+        role: 'organization_admin',
+      };
+      prismaMock.uSER.findFirst.mockResolvedValue(null);
+      prismaMock.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        name: 'Test Org',
+        status: 'active',
+      });
+      prismaMock.uSER.create.mockResolvedValue({ id: 'new-user' });
+      mailServiceMock.sendMail.mockResolvedValue(true);
+      prismaMock.emailInvitation.create.mockResolvedValue({ id: 'code-1' });
+
+      await service.inviteUserToOrganization(
+        'org-1',
+        mixedCaseInvite,
+        currentUser,
+      );
+
+      expect(prismaMock.uSER.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'new@test.com' }),
+        }),
+      );
+    });
+  });
+
+  describe('create', () => {
+    it('should persist the email normalized to lowercase', async () => {
+      prismaMock.uSER.create.mockResolvedValue({ id: 'new-user' });
+
+      await service.create({
+        email: 'Mixed@Case.com',
+        password: 'plain-password',
+        organization_name: 'Test Org',
+        first_name: 'Test',
+        last_name: 'User',
+      } as any);
+
+      expect(prismaMock.uSER.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'mixed@case.com' }),
+        }),
+      );
     });
   });
 
