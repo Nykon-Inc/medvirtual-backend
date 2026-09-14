@@ -766,6 +766,7 @@ export class OrganizationService {
       where: { organization_id: orgId },
       select: {
         id: true,
+        user_id: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
