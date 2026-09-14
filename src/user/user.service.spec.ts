@@ -148,9 +148,7 @@ describe('UserService', () => {
       expect(prismaMock.uSER.create).not.toHaveBeenCalled();
     });
 
-
-
-    it('should persist the invited user email normalized to lowercase- new test', async () => {
+    it('should persist the invited user email normalized to lowercase', async () => {
       const mixedCaseInvite: any = {
         email: 'New@Test.com',
         role: 'organization_admin',
@@ -161,23 +159,24 @@ describe('UserService', () => {
         name: 'Test Org',
         status: 'active',
       });
-      prismaMock.uSER.create.mockResolvedValue({ id: 'new-user' });
-      // getUserEmailTheme looks up the new user via findUnique, not findFirst
-      prismaMock.uSER.findUnique.mockResolvedValue({
-        id: 'new-user',
-        organization_id: null,
-        role: 'organization_admin',
+
+      // Capture the create() payload directly and short-circuit right after,
+      // so this test only depends on the code path up to the normalized
+      // email being persisted — not on the rest of the invite pipeline
+      // (email theme lookup, mail sending, HubSpot sync), which is covered
+      // by its own tests/mocks elsewhere.
+      let createCallArgs: any;
+      const sentinel = new Error('stop-after-create');
+      prismaMock.uSER.create.mockImplementationOnce((args: any) => {
+        createCallArgs = args;
+        throw sentinel;
       });
-      mailServiceMock.sendMail.mockResolvedValue(true);
-      prismaMock.emailInvitation.create.mockResolvedValue({ id: 'code-1' });
 
-      await service.inviteUserToOrganization(
-        'org-1',
-        mixedCaseInvite,
-        currentUser,
-      );
+      await expect(
+        service.inviteUserToOrganization('org-1', mixedCaseInvite, currentUser),
+      ).rejects.toThrow(BadRequestException);
 
-      expect(prismaMock.uSER.create).toHaveBeenCalledWith(
+      expect(createCallArgs).toEqual(
         expect.objectContaining({
           data: expect.objectContaining({ email: 'new@test.com' }),
         }),
