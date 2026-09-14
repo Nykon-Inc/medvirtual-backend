@@ -148,7 +148,9 @@ describe('UserService', () => {
       expect(prismaMock.uSER.create).not.toHaveBeenCalled();
     });
 
-    it('should persist the invited user email normalized to lowercase', async () => {
+
+
+    it('should persist the invited user email normalized to lowercase- new test', async () => {
       const mixedCaseInvite: any = {
         email: 'New@Test.com',
         role: 'organization_admin',
