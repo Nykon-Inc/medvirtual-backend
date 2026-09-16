@@ -120,6 +120,77 @@ describe('StaffMatchingService', () => {
       expect(result.matched).toBe(1);
     });
 
+    it('matches "Paulo Melo" against deal "Paulo Melo - test" (name BEFORE a trailing qualifier tag)', async () => {
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        { id: 'li-10', name: 'Paulo Melo', invoice_id: 'inv-1' },
+      ]);
+      mockPrisma.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff-10',
+          hubspot_deal_name: 'Paulo Melo - test',
+          candidate: null,
+        },
+      ]);
+
+      const result = await service.run('org-1');
+
+      expect(result.matched).toBe(1);
+      expect(mockPrisma.hubspotLineItemSnapshot.update).toHaveBeenCalledWith({
+        where: { id: 'li-10' },
+        data: {
+          match_status: 'matched',
+          staff_id: 'staff-10',
+          matched_by: 'auto',
+        },
+      });
+    });
+
+    it('matches "Elizabeth veloso " (lowercase, trailing space) against deal "Elizabeth Veloso - test"', async () => {
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        { id: 'li-11', name: 'Elizabeth veloso ', invoice_id: 'inv-1' },
+      ]);
+      mockPrisma.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff-11',
+          hubspot_deal_name: 'Elizabeth Veloso - test',
+          candidate: null,
+        },
+      ]);
+
+      const result = await service.run('org-1');
+
+      expect(result.matched).toBe(1);
+      expect(mockPrisma.hubspotLineItemSnapshot.update).toHaveBeenCalledWith({
+        where: { id: 'li-11' },
+        data: {
+          match_status: 'matched',
+          staff_id: 'staff-11',
+          matched_by: 'auto',
+        },
+      });
+    });
+
+    it('does not falsely match when the deal name has no real person on either side of the separator', async () => {
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-12',
+          name: 'Someone Entirely Different',
+          invoice_id: 'inv-1',
+        },
+      ]);
+      mockPrisma.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff-12',
+          hubspot_deal_name: 'Some Clinic - test',
+          candidate: null,
+        },
+      ]);
+
+      const result = await service.run('org-1');
+
+      expect(result.unmatched).toBe(1);
+    });
+
     it('prefers structured Candidate first_name/last_name over hubspot_deal_name when available', async () => {
       mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
         { id: 'li-5', name: 'Rafael Delgado', invoice_id: 'inv-1' },
@@ -172,7 +243,9 @@ describe('StaffMatchingService', () => {
       expect(mockReviewCases.openOrSkip).toHaveBeenCalledWith(
         'org-1',
         'unmatched_line_item',
-        expect.objectContaining({ line_item_name: 'Completely Unknown Person' }),
+        expect.objectContaining({
+          line_item_name: 'Completely Unknown Person',
+        }),
         'li-6',
       );
     });

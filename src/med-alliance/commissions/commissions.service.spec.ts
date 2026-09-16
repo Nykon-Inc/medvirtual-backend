@@ -1120,7 +1120,11 @@ describe('CommissionsService', () => {
     it('should skip a line item that is not matched to a Staff', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
-        makeLineItem({ match_status: 'unmatched', staff_id: null, staff: null }),
+        makeLineItem({
+          match_status: 'unmatched',
+          staff_id: null,
+          staff: null,
+        }),
       );
 
       const result = await service.createFromInvoices(
@@ -1133,10 +1137,12 @@ describe('CommissionsService', () => {
       expect(mockPrisma.organization.findUnique).not.toHaveBeenCalled();
     });
 
-    it("should skip a line item whose parent invoice fails re-validation (not paid)", async () => {
+    it('should skip a line item whose parent invoice fails re-validation (not paid)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
-        makeLineItem({ invoice: { ...makeLineItem().invoice, invoice_status: 'open' } }),
+        makeLineItem({
+          invoice: { ...makeLineItem().invoice, invoice_status: 'open' },
+        }),
       );
 
       const result = await service.createFromInvoices(
@@ -1151,7 +1157,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org is not found or not referred by this affiliate', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referred_by_affiliate_id: 'someone-else' }),
       );
@@ -1167,7 +1175,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org has an active_client_block reason (MA-004)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({
           med_alliance_block_reason:
@@ -1187,7 +1197,9 @@ describe('CommissionsService', () => {
 
     it('should skip (read-only) when org status is expired — no inline write', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ med_alliance_referral_status: 'expired' }),
       );
@@ -1206,7 +1218,9 @@ describe('CommissionsService', () => {
 
     it('should skip when org referral_stage is canceled', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referral_stage: 'canceled' }),
       );
@@ -1273,7 +1287,9 @@ describe('CommissionsService', () => {
 
     it('should NOT transition to deployed when org already has first_paid_invoice_at', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create.mockResolvedValue({
         id: 'comm-new',
@@ -1287,7 +1303,9 @@ describe('CommissionsService', () => {
 
     it('should create a commission at the LINE ITEM amount (not the invoice total) as pending_admin_confirmation and write an audit log', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create.mockResolvedValue({
         id: 'comm-new',
@@ -1317,7 +1335,8 @@ describe('CommissionsService', () => {
       );
       // 500 * 10% = 50, not 1500 * 10% = 150 (the invoice total).
       const createdAmount = String(
-        mockPrisma.affiliateCommission.create.mock.calls[0][0].data.commission_amount,
+        mockPrisma.affiliateCommission.create.mock.calls[0][0].data
+          .commission_amount,
       );
       expect(createdAmount).toBe('50');
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
@@ -1333,7 +1352,9 @@ describe('CommissionsService', () => {
 
     it('should count as skipped when commission creation hits a P2002 unique constraint', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(makeLineItem());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
+      );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       const uniqueError = Object.assign(new Error('Unique constraint failed'), {
         code: 'P2002',

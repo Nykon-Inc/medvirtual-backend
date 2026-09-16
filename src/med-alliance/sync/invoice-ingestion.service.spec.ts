@@ -391,7 +391,9 @@ describe('InvoiceIngestionService', () => {
         .mockResolvedValueOnce(makeLineItemDetailResponse());
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
-      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({
+        id: 'snap-1',
+      });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
 
@@ -418,13 +420,16 @@ describe('InvoiceIngestionService', () => {
         .mockResolvedValueOnce(makeLineItemDetailResponse());
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
-      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({
+        id: 'snap-1',
+      });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
 
       await service.run('org-1', 'hs-company-1');
 
-      const createCall = mockPrisma.hubspotLineItemSnapshot.create.mock.calls[0][0];
+      const createCall =
+        mockPrisma.hubspotLineItemSnapshot.create.mock.calls[0][0];
       expect(createCall.data.staff_id).toBeUndefined();
       expect(createCall.data.match_status).toBeUndefined();
     });
@@ -433,10 +438,14 @@ describe('InvoiceIngestionService', () => {
       mockedAxios.get
         .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
         .mockResolvedValueOnce(makeInvoiceResponseWithLineItems(['li-1']))
-        .mockResolvedValueOnce(makeLineItemDetailResponse({ amount: '750.00' }));
+        .mockResolvedValueOnce(
+          makeLineItemDetailResponse({ amount: '750.00' }),
+        );
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
-      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({
+        id: 'snap-1',
+      });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue({
         id: 'li-db-1',
         name: 'Rafael Delgado',
@@ -463,7 +472,9 @@ describe('InvoiceIngestionService', () => {
         .mockResolvedValueOnce(makeLineItemDetailResponse());
 
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
-      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({ id: 'snap-1' });
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValue({
+        id: 'snap-1',
+      });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue({
         id: 'li-db-1',
         name: 'Rafael Delgado',
@@ -487,12 +498,16 @@ describe('InvoiceIngestionService', () => {
 
       // Pre-run to capture the hash, matching the pattern used in the "skip" describe block above.
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValueOnce(null);
-      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValueOnce({ id: 'snap-1' });
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValueOnce({
+        id: 'snap-1',
+      });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
 
       await service.run('org-1', 'hs-company-1');
-      const storedHash = mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data.sync_hash;
+      const storedHash =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
 
       jest.clearAllMocks();
       mockedAxios.get

@@ -527,12 +527,16 @@ describe('ReviewCasesService', () => {
           action: 'manual_link',
         });
 
-        expect(mockPrisma.hubspotLineItemSnapshot.update).not.toHaveBeenCalled();
+        expect(
+          mockPrisma.hubspotLineItemSnapshot.update,
+        ).not.toHaveBeenCalled();
       });
 
       it('should mark the line item not_applicable and never reopen a case on not_applicable', async () => {
         mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
-          makeLineItemCase({ reason_code: AdminReviewReasonCode.ambiguous_line_item }),
+          makeLineItemCase({
+            reason_code: AdminReviewReasonCode.ambiguous_line_item,
+          }),
         );
         mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
         mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
@@ -607,12 +611,16 @@ describe('ReviewCasesService', () => {
     describe('audit log written for every resolution (§5 coverage gap fix)', () => {
       it('should write a review_case audit log entry even for a generic close-only resolution', async () => {
         mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
-          makeCase({ reason_code: AdminReviewReasonCode.soft_duplicate_referral }),
+          makeCase({
+            reason_code: AdminReviewReasonCode.soft_duplicate_referral,
+          }),
         );
         mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
         mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-        await service.resolve('case-1', 'admin-1', { resolution: 'Not a duplicate' });
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Not a duplicate',
+        });
 
         expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -629,7 +637,9 @@ describe('ReviewCasesService', () => {
       });
 
       it('should write a review_case audit log entry for multiple_hubspot_matches resolution', async () => {
-        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(makeCase());
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeCase(),
+        );
         mockPrisma.organization.update.mockResolvedValue({});
         mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
         mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});

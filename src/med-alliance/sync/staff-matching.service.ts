@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReviewCasesService } from '../review-cases/review-cases.service';
 import {
-  extractNameFromDealName,
+  extractNameCandidatesFromDealName,
   normalizeForComparison,
   scoreNameMatch,
   MIN_MATCH_THRESHOLD,
@@ -17,7 +17,7 @@ export interface StaffMatchStats {
 
 interface StaffCandidate {
   id: string;
-  normalizedName: string;
+  normalizedNames: string[];
 }
 
 @Injectable()
@@ -104,15 +104,17 @@ export class StaffMatchingService {
         .join(' ')
         .trim();
 
-      let normalizedName: string | null = null;
+      let normalizedNames: string[] = [];
       if (candidateName) {
-        normalizedName = normalizeForComparison(candidateName);
+        normalizedNames = [normalizeForComparison(candidateName)];
       } else if (s.hubspot_deal_name) {
-        normalizedName = extractNameFromDealName(s.hubspot_deal_name);
+        normalizedNames = extractNameCandidatesFromDealName(
+          s.hubspot_deal_name,
+        );
       }
 
-      if (normalizedName) {
-        candidates.push({ id: s.id, normalizedName });
+      if (normalizedNames.length > 0) {
+        candidates.push({ id: s.id, normalizedNames });
       }
     }
 
@@ -127,10 +129,12 @@ export class StaffMatchingService {
     const lineItemNormalized = normalizeForComparison(lineItem.name ?? '');
 
     const scored = staffCandidates
-      .map((candidate) => ({
-        candidate,
-        score: scoreNameMatch(lineItemNormalized, candidate.normalizedName),
-      }))
+      .map((candidate) => {
+        const best = candidate.normalizedNames
+          .map((name) => scoreNameMatch(lineItemNormalized, name))
+          .reduce((a, b) => (b.combined > a.combined ? b : a));
+        return { candidate, score: best };
+      })
       .filter((s) => s.score.combined >= MIN_MATCH_THRESHOLD)
       .sort((a, b) => b.score.combined - a.score.combined);
 
@@ -148,7 +152,10 @@ export class StaffMatchingService {
       return 'unmatched';
     }
 
-    if (scored.length === 1 || scored[0].score.combined >= STRONG_MATCH_THRESHOLD) {
+    if (
+      scored.length === 1 ||
+      scored[0].score.combined >= STRONG_MATCH_THRESHOLD
+    ) {
       // A single candidate, or a clear best match well above the ambiguity floor —
       // treat as a confident single match even if weaker second-place scores exist,
       // since real deal names often produce multiple weak partial-token overlaps.

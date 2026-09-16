@@ -47,12 +47,10 @@ export class HandlerOrganizationPropertyChange {
       // else: valid business_unit, org not deleted -> fall through to generic update below
     }
 
-
     //upsert invoiceConfiguration if the property updated is hubspot_project_id
-    // This should be located before the fieldExists check, because hubspot_project_id is not in the organizationToDbDictionary, 
+    // This should be located before the fieldExists check, because hubspot_project_id is not in the organizationToDbDictionary,
     // but we still want to upsert the invoiceConfiguration when this property is updated.
     if (event.propertyName === 'hubspot_project_id') {
-
       await this.prisma.invoiceConfiguration.upsert({
         where: {
           organization_id: organization.id,
@@ -78,14 +76,15 @@ export class HandlerOrganizationPropertyChange {
       return true;
     }
 
-
     const fieldExists = Object.keys(organizationToDbDictionary).includes(
       event.propertyName,
     );
     if (!fieldExists && event.propertyName !== 'hubspot_owner_id') {
-      console.log(`Property ${event.propertyName} does not exist in the organizationToDbDictionary. Skipping update.`);
-      return
-    };
+      console.log(
+        `Property ${event.propertyName} does not exist in the organizationToDbDictionary. Skipping update.`,
+      );
+      return;
+    }
 
     const fieldUpdated = organizationToDbDictionary[event.propertyName];
     let value = event.propertyValue;
@@ -145,8 +144,6 @@ export class HandlerOrganizationPropertyChange {
       }
       return true;
     }
-
-    
 
     // For deployment_date, fetch state needed for the eligibility branch BEFORE the generic
     // update below overwrites deployment_date — we need the prior value to detect a no-op

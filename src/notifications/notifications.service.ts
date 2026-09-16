@@ -2744,8 +2744,7 @@ ${getEmailLogoCss()}
     const trimmedEmail = creatorEmail?.trim();
     const domain = trimmedEmail?.split('@')[1]?.toLowerCase();
     const isVerified =
-      !!domain &&
-      NotificationsService.VERIFIED_SENDER_DOMAINS.includes(domain);
+      !!domain && NotificationsService.VERIFIED_SENDER_DOMAINS.includes(domain);
     return isVerified ? (trimmedEmail as string) : 'noreply@medvirtual.ai';
   }
 
