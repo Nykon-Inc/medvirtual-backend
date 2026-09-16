@@ -80,9 +80,7 @@ describe('NotificationsService.notifyPanelCandidateBlocked', () => {
   });
 
   it('resolves recipients from assign_user_id and calls mail.sendMail with all their emails', async () => {
-    mockPrismaService.hireRequest.findUnique.mockResolvedValue(
-      mockHireRequest,
-    );
+    mockPrismaService.hireRequest.findUnique.mockResolvedValue(mockHireRequest);
     mockPrismaService.uSER.findMany.mockResolvedValue([
       {
         id: 'user1',
@@ -147,9 +145,7 @@ describe('NotificationsService.notifyPanelCandidateBlocked', () => {
   });
 
   it('returns false without throwing when assignees have no email', async () => {
-    mockPrismaService.hireRequest.findUnique.mockResolvedValue(
-      mockHireRequest,
-    );
+    mockPrismaService.hireRequest.findUnique.mockResolvedValue(mockHireRequest);
     mockPrismaService.uSER.findMany.mockResolvedValue([
       { id: 'user1', email: null, first_name: 'Alice', last_name: 'Assignee' },
     ]);
@@ -165,9 +161,7 @@ describe('NotificationsService.notifyPanelCandidateBlocked', () => {
   });
 
   it('falls back to hardcoded HTML when no DB template row exists', async () => {
-    mockPrismaService.hireRequest.findUnique.mockResolvedValue(
-      mockHireRequest,
-    );
+    mockPrismaService.hireRequest.findUnique.mockResolvedValue(mockHireRequest);
     mockPrismaService.uSER.findMany.mockResolvedValue([
       {
         id: 'user1',
@@ -198,9 +192,7 @@ describe('NotificationsService.notifyPanelCandidateBlocked', () => {
   });
 
   it("uses the DB template's subject/html when one exists", async () => {
-    mockPrismaService.hireRequest.findUnique.mockResolvedValue(
-      mockHireRequest,
-    );
+    mockPrismaService.hireRequest.findUnique.mockResolvedValue(mockHireRequest);
     mockPrismaService.uSER.findMany.mockResolvedValue([
       {
         id: 'user1',

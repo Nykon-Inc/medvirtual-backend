@@ -43,7 +43,11 @@ export function computeLineItemCommissionEligibility(params: {
   );
 
   if (now.getTime() - params.staffStartDate.getTime() > ONE_YEAR_MS) {
-    return { eligible: false, skipReason: 'staff_window_expired', daysSinceStart };
+    return {
+      eligible: false,
+      skipReason: 'staff_window_expired',
+      daysSinceStart,
+    };
   }
 
   const commissionAmount = new Decimal(params.lineItemAmount)

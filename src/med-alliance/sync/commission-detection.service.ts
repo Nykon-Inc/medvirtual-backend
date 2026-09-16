@@ -222,22 +222,24 @@ export class CommissionDetectionService {
     // StaffMatchingService and are surfaced separately in the sync summary, not silently
     // dropped.
     const paidInvoiceIds = candidates.map((s) => s.id);
-    const matchedLineItems = await this.prisma.hubspotLineItemSnapshot.findMany({
-      where: {
-        invoice_id: { in: paidInvoiceIds },
-        match_status: 'matched',
-        staff_id: { not: null },
-        amount: { gt: 0 },
+    const matchedLineItems = await this.prisma.hubspotLineItemSnapshot.findMany(
+      {
+        where: {
+          invoice_id: { in: paidInvoiceIds },
+          match_status: 'matched',
+          staff_id: { not: null },
+          amount: { gt: 0 },
+        },
+        select: {
+          id: true,
+          amount: true,
+          invoice_id: true,
+          staff_id: true,
+          invoice: { select: { hubspot_id: true } },
+          staff: { select: { id: true, start_date: true } },
+        },
       },
-      select: {
-        id: true,
-        amount: true,
-        invoice_id: true,
-        staff_id: true,
-        invoice: { select: { hubspot_id: true } },
-        staff: { select: { id: true, start_date: true } },
-      },
-    });
+    );
 
     let created = 0;
     let skipped = 0;

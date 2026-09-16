@@ -195,7 +195,8 @@ export class HandlerOrganizationMerge {
                   organization_id: primaryOrganization.id,
                   reason_code: reviewCase.reason_code,
                   status: reviewCase.status,
-                  hubspot_line_item_snapshot_id: reviewCase.hubspot_line_item_snapshot_id,
+                  hubspot_line_item_snapshot_id:
+                    reviewCase.hubspot_line_item_snapshot_id,
                 },
               });
               if (!collision) {

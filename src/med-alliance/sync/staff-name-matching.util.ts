@@ -9,19 +9,6 @@
  * and compared by token overlap, not literal equality.
  */
 
-/** Strips a leading "{Company} | " or "{Company} - " prefix from a HubSpot deal name. */
-export function stripCompanyPrefix(dealName: string): string {
-  const separators = [' | ', ' - '];
-  let result = dealName;
-  for (const sep of separators) {
-    const lastIndex = result.lastIndexOf(sep);
-    if (lastIndex !== -1) {
-      result = result.slice(lastIndex + sep.length);
-    }
-  }
-  return result;
-}
-
 /** Strips a trailing "(n)" VA-counter suffix, e.g. "Maria Cielo Danao (2)" → "Maria Cielo Danao". */
 export function stripCounterSuffix(name: string): string {
   return name.replace(/\s*\(\d+\)\s*$/, '');
@@ -44,13 +31,37 @@ export function collapseDuplicateTokens(name: string): string {
   return result.join(' ');
 }
 
-/** Full normalization pipeline for a Deal/Staff-side name (no structured Candidate name available). */
-export function extractNameFromDealName(dealName: string): string {
-  let name = stripCompanyPrefix(dealName);
-  name = stripCounterSuffix(name);
-  name = stripMiddleInitials(name);
-  name = collapseDuplicateTokens(name);
-  return normalizeForComparison(name);
+/**
+ * Produces every plausible normalized name candidate from a HubSpot deal name.
+ * Deal names are never bare — but the person's name can appear either AFTER a
+ * "{Company}{separator}{Name}" prefix, or BEFORE a "{Name}{separator}{qualifier}"
+ * trailing tag (e.g. "Paulo Melo - test"). Since there is no reliable way to tell
+ * these shapes apart from the deal name alone, this returns both the prefix-stripped
+ * and suffix-stripped interpretation for every separator occurrence (not just the
+ * last), and lets the caller's scoring against real line-item names pick the winner.
+ */
+export function extractNameCandidatesFromDealName(dealName: string): string[] {
+  const separators = [' | ', ' - '];
+  const raw = new Set<string>([dealName]);
+
+  for (const sep of separators) {
+    let idx = dealName.indexOf(sep);
+    while (idx !== -1) {
+      raw.add(dealName.slice(0, idx)); // text BEFORE this occurrence
+      raw.add(dealName.slice(idx + sep.length)); // text AFTER this occurrence
+      idx = dealName.indexOf(sep, idx + sep.length);
+    }
+  }
+
+  const candidates = new Set<string>();
+  for (const piece of raw) {
+    let name = stripCounterSuffix(piece);
+    name = stripMiddleInitials(name);
+    name = collapseDuplicateTokens(name);
+    name = normalizeForComparison(name);
+    if (name) candidates.add(name);
+  }
+  return [...candidates];
 }
 
 /** Normalizes any name for comparison: trim, collapse whitespace, lowercase, strip accents. */
@@ -74,7 +85,9 @@ export function tokenize(normalizedName: string): string[] {
  */
 function levenshtein(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
-    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+    Array.from({ length: b.length + 1 }, (_, j) =>
+      i === 0 ? j : j === 0 ? i : 0,
+    ),
   );
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {

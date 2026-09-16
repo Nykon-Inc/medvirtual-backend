@@ -34,7 +34,11 @@ const staffMatchStats = (overrides = {}) => ({
   ambiguous: 0,
   ...overrides,
 });
-const commissionStats = (overrides = {}) => ({ created: 1, skipped: 0, ...overrides });
+const commissionStats = (overrides = {}) => ({
+  created: 1,
+  skipped: 0,
+  ...overrides,
+});
 
 const makeMatchResult = (
   outcome: string,
@@ -57,7 +61,10 @@ describe('ReferralSyncService', () => {
         { provide: HubspotMatchingService, useValue: mockHubspotMatching },
         { provide: InvoiceIngestionService, useValue: mockInvoiceIngestion },
         { provide: StaffMatchingService, useValue: mockStaffMatching },
-        { provide: CommissionDetectionService, useValue: mockCommissionDetection },
+        {
+          provide: CommissionDetectionService,
+          useValue: mockCommissionDetection,
+        },
       ],
     }).compile();
 
@@ -192,7 +199,9 @@ describe('ReferralSyncService', () => {
     });
 
     it('should call StaffMatchingService.run between invoice ingestion and commission detection', async () => {
-      mockHubspotMatching.run.mockResolvedValue(makeMatchResult('synced', 'hs-company-1'));
+      mockHubspotMatching.run.mockResolvedValue(
+        makeMatchResult('synced', 'hs-company-1'),
+      );
 
       await service.run('org-1');
 
@@ -258,7 +267,9 @@ describe('ReferralSyncService', () => {
   // Phase B stats propagated correctly
   // -------------------------------------------------------------------------
   it('should propagate invoice, line item, and commission stats into phaseB result', async () => {
-    mockHubspotMatching.run.mockResolvedValue(makeMatchResult('synced', 'hs-1'));
+    mockHubspotMatching.run.mockResolvedValue(
+      makeMatchResult('synced', 'hs-1'),
+    );
     mockPrisma.organization.findUnique.mockResolvedValue({
       hubspot_id: 'hs-1',
       med_alliance_referral_status: 'eligible',
@@ -269,7 +280,11 @@ describe('ReferralSyncService', () => {
       skipped: 2,
       lineItems: { created: 5, updated: 2, skipped: 1 },
     });
-    mockStaffMatching.run.mockResolvedValue({ matched: 4, unmatched: 1, ambiguous: 0 });
+    mockStaffMatching.run.mockResolvedValue({
+      matched: 4,
+      unmatched: 1,
+      ambiguous: 0,
+    });
     mockCommissionDetection.run.mockResolvedValue({ created: 2, skipped: 1 });
 
     const result = await service.run('org-1');

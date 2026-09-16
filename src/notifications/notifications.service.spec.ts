@@ -3398,7 +3398,10 @@ describe('NotificationsService', () => {
       it('sends as the creator when their email is on the other verified domain', async () => {
         (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
           ...basePanel,
-          createdBy: { ...basePanel.createdBy, email: 'hanieh@berryvirtual.com' },
+          createdBy: {
+            ...basePanel.createdBy,
+            email: 'hanieh@berryvirtual.com',
+          },
         });
 
         await service.notifyOfferPanelCreatedPublic('p1');

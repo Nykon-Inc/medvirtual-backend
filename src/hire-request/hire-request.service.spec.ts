@@ -2101,11 +2101,17 @@ describe('HireRequestService', () => {
     });
 
     describe('24h minimum lead time (client-originated hire requests)', () => {
-      const inTwoHours = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-      const in48Hours = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      const inTwoHours = new Date(
+        Date.now() + 2 * 60 * 60 * 1000,
+      ).toISOString();
+      const in48Hours = new Date(
+        Date.now() + 48 * 60 * 60 * 1000,
+      ).toISOString();
 
       beforeEach(() => {
-        jest.spyOn(service, 'verifyUnavailableCandidates').mockResolvedValue(false);
+        jest
+          .spyOn(service, 'verifyUnavailableCandidates')
+          .mockResolvedValue(false);
       });
 
       it('rejects when the hire request is client-originated and date_time is inside the 24h window', async () => {
@@ -2115,7 +2121,11 @@ describe('HireRequestService', () => {
         });
 
         await expect(
-          service.scheduleInterview(baseId, { date_time: inTwoHours } as any, user),
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
         ).rejects.toThrow(
           'Interviews for client-requested hire requests must be scheduled at least 24 hours in advance.',
         );
@@ -2129,14 +2139,21 @@ describe('HireRequestService', () => {
           id: baseId,
           createdBy: { role: 'organization_admin' },
         });
-        prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1', panelCandidates: [] });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
         prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
         prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
         prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
         jest.spyOn(service, 'findOne').mockResolvedValue(true);
 
         await expect(
-          service.scheduleInterview(baseId, { date_time: in48Hours } as any, user),
+          service.scheduleInterview(
+            baseId,
+            { date_time: in48Hours } as any,
+            user,
+          ),
         ).resolves.toBe(true);
       });
 
@@ -2145,14 +2162,21 @@ describe('HireRequestService', () => {
           id: baseId,
           createdBy: { role: 'system_admin' },
         });
-        prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1', panelCandidates: [] });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
         prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
         prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
         prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
         jest.spyOn(service, 'findOne').mockResolvedValue(true);
 
         await expect(
-          service.scheduleInterview(baseId, { date_time: inTwoHours } as any, user),
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
         ).resolves.toBe(true);
       });
 
@@ -2161,14 +2185,21 @@ describe('HireRequestService', () => {
           id: baseId,
           createdBy: null,
         });
-        prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1', panelCandidates: [] });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
         prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
         prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
         prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
         jest.spyOn(service, 'findOne').mockResolvedValue(true);
 
         await expect(
-          service.scheduleInterview(baseId, { date_time: inTwoHours } as any, user),
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
         ).resolves.toBe(true);
       });
     });
@@ -2249,10 +2280,16 @@ describe('HireRequestService', () => {
         id: baseId,
         createdBy: { role: 'organization_admin' },
       });
-      const threeHoursOut = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      const threeHoursOut = new Date(
+        Date.now() + 3 * 60 * 60 * 1000,
+      ).toISOString();
 
       await expect(
-        service.editInterview(baseId, { date_time: threeHoursOut } as any, user),
+        service.editInterview(
+          baseId,
+          { date_time: threeHoursOut } as any,
+          user,
+        ),
       ).rejects.toThrow(BadRequestException);
 
       expect(prismaMock.interview.updateMany).not.toHaveBeenCalled();

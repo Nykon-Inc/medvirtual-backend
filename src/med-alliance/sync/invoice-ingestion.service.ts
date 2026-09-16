@@ -261,7 +261,10 @@ export class InvoiceIngestionService {
   private async upsertSnapshot(
     organizationId: string,
     invoice: InvoiceRecord,
-  ): Promise<{ outcome: 'created' | 'updated' | 'skipped'; snapshotId: string }> {
+  ): Promise<{
+    outcome: 'created' | 'updated' | 'skipped';
+    snapshotId: string;
+  }> {
     const syncHash = this.computeSyncHash(invoice);
     const existing = await this.prisma.hubspotInvoiceSnapshot.findUnique({
       where: { hubspot_id: invoice.hubspot_id },
@@ -356,7 +359,14 @@ export class InvoiceIngestionService {
       try {
         const existing = await this.prisma.hubspotLineItemSnapshot.findUnique({
           where: { hubspot_id: item.hubspot_id },
-          select: { id: true, name: true, amount: true, description: true, quantity: true, discount: true },
+          select: {
+            id: true,
+            name: true,
+            amount: true,
+            description: true,
+            quantity: true,
+            discount: true,
+          },
         });
 
         if (!existing) {

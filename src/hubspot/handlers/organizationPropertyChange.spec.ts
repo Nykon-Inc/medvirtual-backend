@@ -561,7 +561,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -603,7 +604,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -645,7 +647,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -686,7 +689,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledTimes(1);
     expect(result).toBe(true);
@@ -724,7 +728,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -767,7 +772,8 @@ describe('HandlerOrganizationPropertyChange', () => {
       }),
     );
     expect(
-      prismaMock.organization.update.mock.calls[1][0].data.med_alliance_referral_status,
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
     ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({

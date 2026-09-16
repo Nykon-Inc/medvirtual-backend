@@ -66,7 +66,7 @@ function resetAllMocks() {
   prismaMock.$transaction.mockClear();
   for (const model of Object.values(txMock)) {
     for (const fn of Object.values(model)) {
-      (fn as jest.Mock).mockReset();
+      fn.mockReset();
     }
   }
 }

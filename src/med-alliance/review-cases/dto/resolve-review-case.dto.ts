@@ -22,7 +22,11 @@ export class ResolveReviewCaseDto {
    */
   @IsOptional()
   @IsIn(['void_and_recreate', 'keep_existing', 'manual_link', 'not_applicable'])
-  action?: 'void_and_recreate' | 'keep_existing' | 'manual_link' | 'not_applicable';
+  action?:
+    | 'void_and_recreate'
+    | 'keep_existing'
+    | 'manual_link'
+    | 'not_applicable';
 
   /**
    * For unmatched_line_item / ambiguous_line_item + action=manual_link:
