@@ -69,6 +69,7 @@ import { ContactFromCompanyCreationService } from './create/contactFromCompany';
 import { HubspotAuditService } from './hubspot-audit.service';
 import { BusinessUnitsModule } from '../business-units/business-units.module';
 import { CandidateAuditModule } from '../candidate/candidate-audit.module';
+import { SyncModule } from '../med-alliance/sync/sync.module';
 
 @Module({
   controllers: [HubspotController],
@@ -130,6 +131,7 @@ import { CandidateAuditModule } from '../candidate/candidate-audit.module';
     AllianceNotificationsModule,
     BusinessUnitsModule,
     CandidateAuditModule,
+    SyncModule,
     forwardRef(() => CandidatesModule),
     forwardRef(() => OrganizationModule),
     forwardRef(() => HireRequestModule),

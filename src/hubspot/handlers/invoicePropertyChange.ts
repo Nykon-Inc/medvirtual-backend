@@ -5,6 +5,7 @@ import { HandlerInvoiceCreation } from './invoiceCreation';
 import { invoiceToDbDictionary } from '../../common/dictionaries/invoice-dictionary';
 import { HandlerComissionCreation } from './comissionCreation';
 import { resolvePaidAt } from '../../common/utils/hubspot.util';
+import { StaffMatchingService } from '../../med-alliance/sync/staff-matching.service';
 
 @Injectable()
 export class HandlerInvoicePropertyChange {
@@ -12,6 +13,7 @@ export class HandlerInvoicePropertyChange {
     private readonly prisma: PrismaService,
     private readonly invoiceCreation: HandlerInvoiceCreation,
     private readonly comissionCreation: HandlerComissionCreation,
+    private readonly staffMatching: StaffMatchingService,
   ) {}
 
   async execute(event) {
@@ -111,13 +113,19 @@ export class HandlerInvoicePropertyChange {
         // This keeps the first commission in "detected" while the org waits
         // for the 30-day cron promotion to "eligible".
         console.log(
-          `Invoice ${event.objectId} is the first paid invoice for organization ${invoiceWithOrg.organization.id}. Checking if we need to mark the organization as deployed.`,
+          `Checking deployed transition for organization ${invoiceWithOrg.organization.id} (invoice ${event.objectId}).`,
         );
         await this.markOrganizationDeployedFromFirstPaidInvoice({
           organizationId: invoiceWithOrg.organization.id,
           firstInvoiceDate: invoiceWithOrg.paid_at ?? new Date(),
           hubspotInvoiceId: String(event.objectId),
         });
+
+        // Line items created by this same webhook (or left pending from an earlier
+        // pass) still have match_status=null — comissionCreation only picks up line
+        // items already matched to a Staff, so this must run first or commission
+        // creation silently no-ops until the next periodic sync.
+        await this.staffMatching.run(invoiceWithOrg.organization.id);
       }
 
       await this.comissionCreation.execute(event);
