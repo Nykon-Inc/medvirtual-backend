@@ -45,6 +45,7 @@ const mockPrisma = {
     groupBy: jest.fn(),
     findMany: jest.fn(),
     create: jest.fn(),
+    count: jest.fn(),
   },
   organization: {
     findUnique: jest.fn(),
@@ -1209,6 +1210,119 @@ describe('AffiliatesService', () => {
       expect(
         mockHubspotService.setCompanyAffiliateReferral,
       ).toHaveBeenCalledWith('org-1', 'affiliate-user-1', mockAdminUser.id);
+    });
+  });
+
+  describe('findEligibleCommissions', () => {
+    it('should throw when the affiliate profile does not exist', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.findEligibleCommissions('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return empty results when the profile has no connected user', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: null,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result).toEqual({
+        affiliate_profile_id: 'profile-1',
+        affiliate_user_id: null,
+        eligible_count: 0,
+        eligible_amount: 0,
+        commissions: [],
+      });
+      expect(mockPrisma.affiliateCommission.findMany).not.toHaveBeenCalled();
+    });
+
+    // Regression: the side panel caps commissions at the 50 most recent of any
+    // status, so an affiliate with a large pending backlog had eligible
+    // commissions pushed out of the payout selection. This query must be
+    // unbounded and filtered on status server-side.
+    it('should return every eligible commission with no take limit', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: 'user-1',
+      });
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          status: 'eligible',
+          commission_amount: '301.15',
+          createdAt: new Date('2026-07-07T19:54:34.650Z'),
+          organization_id: 'org-1',
+          organization: { id: 'org-1', name: 'Acme Health' },
+          hubspotInvoiceSnapshot: {
+            hubspot_id: 'hs-1',
+            invoice_number: 'INV-1',
+          },
+        },
+        {
+          id: 'c2',
+          status: 'eligible',
+          commission_amount: '77',
+          createdAt: new Date('2026-09-17T20:08:36.148Z'),
+          organization_id: null,
+          organization: null,
+          hubspotInvoiceSnapshot: null,
+        },
+      ]);
+      mockPrisma.affiliateCommission.aggregate.mockResolvedValue({
+        _sum: { commission_amount: '378.15' },
+        _count: 2,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result.eligible_count).toBe(2);
+      expect(result.eligible_amount).toBe(378.15);
+      expect(result.affiliate_user_id).toBe('user-1');
+      expect(result.commissions).toHaveLength(2);
+      expect(result.commissions[0]).toEqual({
+        id: 'c1',
+        organization_id: 'org-1',
+        organization_name: 'Acme Health',
+        amount: 301.15,
+        status: 'eligible',
+        date: '2026-07-07T19:54:34.650Z',
+        invoice_id: 'hs-1',
+        name: 'INV-1',
+      });
+      expect(result.commissions[1].organization_name).toBe('');
+      expect(result.commissions[1].invoice_id).toBeNull();
+
+      // Keys on the profile's user id, filters status in the query, and never
+      // caps the result set.
+      const findManyArgs =
+        mockPrisma.affiliateCommission.findMany.mock.calls[0][0];
+      expect(findManyArgs.where).toEqual({
+        affiliate_id: 'user-1',
+        status: 'eligible',
+      });
+      expect(findManyArgs.take).toBeUndefined();
+    });
+
+    it('should report zero amount when the affiliate has no eligible commissions', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: 'user-1',
+      });
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([]);
+      mockPrisma.affiliateCommission.aggregate.mockResolvedValue({
+        _sum: { commission_amount: null },
+        _count: 0,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result.eligible_count).toBe(0);
+      expect(result.eligible_amount).toBe(0);
+      expect(result.commissions).toEqual([]);
     });
   });
 });

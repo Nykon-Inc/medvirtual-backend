@@ -328,6 +328,35 @@ export class AffiliatesController {
     return { status: 'success', data };
   }
 
+  // GET /med-alliance/admin/affiliates/:id/eligible-commissions
+  // Authoritative eligible list for the payout flow — unlike the side panel's
+  // `recent_commissions`, this is not capped to a recency window.
+  @Get('admin/affiliates/:id/eligible-commissions')
+  @HttpCode(200)
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({
+    summary:
+      'List every eligible commission for an affiliate, with the total payable amount',
+  })
+  @ApiParam({ name: 'id', description: 'Affiliate profile UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Eligible commissions retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Affiliate profile not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied: insufficient permissions',
+  })
+  async findEligibleCommissions(@Param('id') id: string) {
+    const data = await this.affiliatesService.findEligibleCommissions(id);
+    return {
+      status: 200,
+      message: 'Eligible commissions retrieved successfully',
+      data,
+    };
+  }
+
   // GET /med-alliance/admin/affiliates/:id — Get one affiliate profile (enriched for side panel).
   @Get('admin/affiliates/:id')
   @HttpCode(200)
@@ -418,6 +447,15 @@ export class AffiliatesController {
           referral_stage: org.referral_stage ?? null,
           total_commissions: commsByOrgMap[org.id] ?? 0,
         }),
+      ),
+      // Authoritative totals over ALL eligible commissions. `recent_commissions`
+      // below is a capped preview, so counting eligible rows there undercounts
+      // whenever pending commissions crowd the window — consumers showing an
+      // eligible count, and anything driving a payout, must use these (or
+      // GET /admin/affiliates/:id/eligible-commissions for the full list).
+      eligible_count: (enriched as any).eligibleAgg?._count ?? 0,
+      eligible_amount: Number(
+        (enriched as any).eligibleAgg?._sum?.commission_amount ?? 0,
       ),
       recent_commissions: (profile.commissions ?? []).map((c: any) => ({
         id: c.id,

@@ -308,6 +308,21 @@ export class PayoutRequestsService {
 
     this.validateCommissionsEligible(commissions, dto.commission_ids);
 
+    // Completeness check. The admin UI historically derived its selection from a
+    // capped commission preview, which silently omitted eligible commissions and
+    // underpaid the affiliate. When the client states how many eligible
+    // commissions it saw, verify that against the real count before paying.
+    if (dto.expected_eligible_count !== undefined) {
+      const actualEligibleCount = await this.prisma.affiliateCommission.count({
+        where: { affiliate_id: affiliateUserId, status: 'eligible' },
+      });
+      if (actualEligibleCount !== dto.expected_eligible_count) {
+        throw new BadRequestException(
+          `Eligible commission count mismatch: the request was built from ${dto.expected_eligible_count} commission(s) but this affiliate currently has ${actualEligibleCount}. Reload the affiliate's eligible commissions and try again.`,
+        );
+      }
+    }
+
     // 3. Sum amounts
     const requestedAmount = commissions.reduce(
       (acc, c) => acc.add(new Decimal(c.commission_amount)),
