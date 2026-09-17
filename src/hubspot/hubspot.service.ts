@@ -727,6 +727,20 @@ export class HubspotService {
     );
   }
 
+  async setCompanyHubstaffProjectId(
+    organizationId: string,
+    hubstaffId: string | null,
+    actorUserId?: string,
+    reason?: string,
+  ): Promise<void> {
+    return this.organizationUpdateService.setHubstaffProjectId(
+      organizationId,
+      hubstaffId,
+      actorUserId,
+      reason,
+    );
+  }
+
   async setCompanyAffiliateReferral(
     organizationId: string,
     affiliateUserId: string,

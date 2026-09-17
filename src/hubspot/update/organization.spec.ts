@@ -205,6 +205,118 @@ describe('OrganizationUpdateService', () => {
     });
   });
 
+  // ── setHubstaffProjectId() ────────────────────────────────────────────────────
+
+  describe('setHubstaffProjectId()', () => {
+    const orgId = 'org-uuid-001';
+
+    beforeEach(() => {
+      prismaMock.organization.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-company-123',
+      });
+    });
+
+    it('patches hubspot_project_id on the matching company', async () => {
+      prismaMock.organization.findUnique.mockResolvedValueOnce({
+        hubspot_id: '987654',
+      });
+      mockedAxios.patch.mockResolvedValueOnce({ data: {} });
+
+      await service.setHubstaffProjectId(orgId, 'hubstaff-999', 'user-abc');
+
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        'https://api.hubapi.com/crm/v3/objects/companies/987654',
+        { properties: { hubspot_project_id: 'hubstaff-999' } },
+        expect.any(Object),
+      );
+    });
+
+    it('logs UPDATE with success=true and the patched field', async () => {
+      mockedAxios.patch.mockResolvedValueOnce({ data: {} });
+
+      await service.setHubstaffProjectId(
+        orgId,
+        'hubstaff-999',
+        'user-abc',
+        'Hubstaff ID updated from organization profile',
+      );
+
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorUserId: 'user-abc',
+          entityType: HubspotEntityType.organization,
+          entityId: orgId,
+          hubspotObjectId: 'hs-company-123',
+          hubspotObjectType: 'companies',
+          action: HubspotAuditAction.UPDATE,
+          source: HubspotAuditSource.user_action,
+          success: true,
+          payload: {
+            fields: ['hubspot_project_id'],
+            reason: 'Hubstaff ID updated from organization profile',
+          },
+        }),
+      );
+    });
+
+    it('sends an empty string when clearing the value', async () => {
+      mockedAxios.patch.mockResolvedValueOnce({ data: {} });
+
+      await service.setHubstaffProjectId(orgId, null, 'user-abc');
+
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        expect.any(String),
+        { properties: { hubspot_project_id: '' } },
+        expect.any(Object),
+      );
+    });
+
+    it('returns early without calling the API when org has no hubspot_id', async () => {
+      prismaMock.organization.findUnique.mockResolvedValueOnce({
+        hubspot_id: null,
+      });
+
+      await service.setHubstaffProjectId(orgId, 'hubstaff-999');
+
+      expect(mockedAxios.patch).not.toHaveBeenCalled();
+      expect(auditMock.log).not.toHaveBeenCalled();
+    });
+
+    it('logs success=false and does not throw when the patch fails', async () => {
+      mockedAxios.patch.mockRejectedValueOnce({
+        response: { status: 429, data: {} },
+        message: 'Too Many Requests',
+      });
+
+      await expect(
+        service.setHubstaffProjectId(orgId, 'hubstaff-999', 'user-abc'),
+      ).resolves.toBeUndefined();
+
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: orgId,
+          action: HubspotAuditAction.UPDATE,
+          success: false,
+          errorCode: '429',
+          errorMessage: 'Too Many Requests',
+        }),
+      );
+    });
+
+    it('uses cron source when actorUserId is absent', async () => {
+      mockedAxios.patch.mockResolvedValueOnce({ data: {} });
+
+      await service.setHubstaffProjectId(orgId, 'hubstaff-999');
+
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: HubspotAuditSource.cron,
+          success: true,
+        }),
+      );
+    });
+  });
+
   // ── Source inference ──────────────────────────────────────────────────────────
 
   describe('source inference', () => {
