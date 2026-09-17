@@ -129,23 +129,31 @@ export class HandlerComissionCreation {
           hubspotLineItemId: lineItem.id,
         });
 
-        await this.prisma.affiliateCommission.upsert({
-          where: { idempotency_key: idempotencyKey },
-          update: {}, // dont update anything if the record already exists
-          create: {
-            idempotency_key: idempotencyKey,
-            affiliate_id: affiliateId,
-            affiliate_profile_id: affiliateProfileId,
-            organization_id: invoiceExists.organization.id,
-            hubspot_invoice_snapshot_id: invoiceExists.id,
-            hubspot_line_item_snapshot_id: lineItem.id,
-            staff_id: lineItem.staff_id,
-            commission_percent_snapshot: commissionPercent,
-            base_amount_snapshot: lineItem.amount ?? 0,
-            commission_amount: eligibility.commissionAmount!,
-            status: commissionStatus,
-          },
-        });
+        try {
+          await this.prisma.affiliateCommission.upsert({
+            where: { idempotency_key: idempotencyKey },
+            update: {}, // dont update anything if the record already exists
+            create: {
+              idempotency_key: idempotencyKey,
+              affiliate_id: affiliateId,
+              affiliate_profile_id: affiliateProfileId,
+              organization_id: invoiceExists.organization.id,
+              hubspot_invoice_snapshot_id: invoiceExists.id,
+              hubspot_line_item_snapshot_id: lineItem.id,
+              staff_id: lineItem.staff_id,
+              commission_percent_snapshot: commissionPercent,
+              base_amount_snapshot: lineItem.amount ?? 0,
+              commission_amount: eligibility.commissionAmount!,
+              status: commissionStatus,
+            },
+          });
+        } catch (err: any) {
+          // One line item's failure must not block the other collaborators'
+          // commissions on the same invoice from being created.
+          console.error(
+            `❌ Error creating commission for line item ${lineItem.id} (invoice ${event.objectId}): ${err?.message ?? err}`,
+          );
+        }
       }
 
       return true;
