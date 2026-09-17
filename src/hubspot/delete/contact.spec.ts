@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { ContactDeleteService } from './contact';
 import { HubspotAuditService } from '../hubspot-audit.service';
-import { HubspotAuditAction, HubspotAuditSource, HubspotEntityType } from '@prisma/client';
+import {
+  HubspotAuditAction,
+  HubspotAuditSource,
+  HubspotEntityType,
+} from '@prisma/client';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -55,7 +59,10 @@ describe('ContactDeleteService', () => {
 
     it('uses hubspot_contact_id as entityId fallback when data.id is absent', async () => {
       mockedAxios.delete.mockResolvedValueOnce({ status: 204 });
-      await service.execute({ hubspot_contact_id: 'hs-contact-555' }, 'user-abc');
+      await service.execute(
+        { hubspot_contact_id: 'hs-contact-555' },
+        'user-abc',
+      );
 
       expect(auditMock.log).toHaveBeenCalledWith(
         expect.objectContaining({ entityId: 'hs-contact-555' }),
@@ -91,7 +98,10 @@ describe('ContactDeleteService', () => {
     });
 
     it('does not return true on failure', async () => {
-      mockedAxios.delete.mockRejectedValueOnce({ message: 'error', code: 'ECONNREFUSED' });
+      mockedAxios.delete.mockRejectedValueOnce({
+        message: 'error',
+        code: 'ECONNREFUSED',
+      });
       const result = await service.execute(contactData, 'user-abc');
       expect(result).not.toBe(true);
     });

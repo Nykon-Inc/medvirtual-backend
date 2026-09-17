@@ -965,10 +965,7 @@ export class HireRequestService {
               return false;
             }
             const panelMap = crossPanelMap.get(pc.candidate.id);
-            if (
-              panelMap &&
-              !(panelMap.size === 1 && panelMap.has(panel.id))
-            ) {
+            if (panelMap && !(panelMap.size === 1 && panelMap.has(panel.id))) {
               return false;
             }
             return true;
@@ -3171,7 +3168,8 @@ export class HireRequestService {
         pipeline_status: true,
       },
     });
-    if (!candidatesBeforeEndorse) throw new NotFoundException(`Candidates not found`);
+    if (!candidatesBeforeEndorse)
+      throw new NotFoundException(`Candidates not found`);
 
     //update candidates with pipelinestatus = 'Endorsed via Platform'
     const candidatesUpdated = await this.prisma.candidate.updateMany({
@@ -3465,7 +3463,8 @@ export class HireRequestService {
       },
     });
     candidates.forEach(async (c) => {
-      const revertedPipelineStatus = c.pipeline_status_origin || c.pipeline_status;
+      const revertedPipelineStatus =
+        c.pipeline_status_origin || c.pipeline_status;
       await this.prisma.candidate.update({
         where: { id: c.id },
         data: {
@@ -3696,7 +3695,9 @@ export class HireRequestService {
     const _pCfgs_E = await this.positionRateConfigService.findAllUnpaginated();
     const _cfgMap_E = buildConfigMap(_pCfgs_E);
     const _poolMap_E = await this.buildCandidatePoolMap(
-      panels.flatMap((panel) => panel.panelCandidates.map((pc) => pc.candidate)),
+      panels.flatMap((panel) =>
+        panel.panelCandidates.map((pc) => pc.candidate),
+      ),
     );
 
     const candidateSelectedInPanels = await this.buildCrossPanelSelectedMap();
@@ -4708,7 +4709,9 @@ export class HireRequestService {
     const _pCfgs_F = await this.positionRateConfigService.findAllUnpaginated();
     const _cfgMap_F = buildConfigMap(_pCfgs_F);
     const _poolMap_F = await this.buildCandidatePoolMap(
-      panels.flatMap((panel) => panel.panelCandidates.map((pc) => pc.candidate)),
+      panels.flatMap((panel) =>
+        panel.panelCandidates.map((pc) => pc.candidate),
+      ),
     );
 
     const result = panels.map((panel) => ({
@@ -4995,11 +4998,9 @@ export class HireRequestService {
       unavailableCandidates: mappedUnavailableCandidates,
     };
 
-    await this.redisSet(
-      availableCandidatesCacheKey,
-      JSON.stringify(result),
-      { EX: 300 },
-    );
+    await this.redisSet(availableCandidatesCacheKey, JSON.stringify(result), {
+      EX: 300,
+    });
 
     return result;
   }

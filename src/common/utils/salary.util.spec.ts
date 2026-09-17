@@ -42,7 +42,9 @@ function makeCandidate(overrides: Partial<CandidateLike> = {}): CandidateLike {
 describe('salary.util', () => {
   describe('findPayRateMonthly', () => {
     it('uses full-time hours (176) when employment_type is not part-time code', () => {
-      expect(findPayRateMonthly(10, 'some-other-code')).toBe(10 * FULL_TIME_HOURS);
+      expect(findPayRateMonthly(10, 'some-other-code')).toBe(
+        10 * FULL_TIME_HOURS,
+      );
     });
 
     it('uses part-time hours (88) when employment_type is the part-time code', () => {
@@ -50,7 +52,9 @@ describe('salary.util', () => {
     });
 
     it('trims whitespace from employment_type before comparing', () => {
-      expect(findPayRateMonthly(10, `  ${PART_TIME_CODE}  `)).toBe(10 * PART_TIME_HOURS);
+      expect(findPayRateMonthly(10, `  ${PART_TIME_CODE}  `)).toBe(
+        10 * PART_TIME_HOURS,
+      );
     });
 
     it('handles zero hourly rate', () => {
@@ -96,7 +100,9 @@ describe('salary.util', () => {
     });
 
     it('multiplies bill_hourly by part-time hours when part-time code', () => {
-      expect(findBillRateMonthly(25, PART_TIME_CODE)).toBe(25 * PART_TIME_HOURS);
+      expect(findBillRateMonthly(25, PART_TIME_CODE)).toBe(
+        25 * PART_TIME_HOURS,
+      );
     });
 
     it('handles zero bill_hourly', () => {

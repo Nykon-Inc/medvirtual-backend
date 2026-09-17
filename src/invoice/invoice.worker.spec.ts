@@ -60,7 +60,10 @@ describe('InvoiceWorker', () => {
         { provide: PusherService, useValue: {} },
         { provide: StripeService, useValue: {} },
         { provide: ConfigService, useValue: {} },
-        { provide: PositionRateConfigService, useValue: positionRateConfigMock },
+        {
+          provide: PositionRateConfigService,
+          useValue: positionRateConfigMock,
+        },
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
       ],
     }).compile();
@@ -76,6 +79,33 @@ describe('InvoiceWorker', () => {
         billing_currency: 'USD',
       },
     };
+
+    it('excludes hardcoded Hubstaff users from invoice generation', async () => {
+      const payload = {
+        organization_id: 'org_id',
+        billing_start_date: '2026-06-01',
+        billing_end_date: '2026-06-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      };
+
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 3020409, name: 'Nancy' },
+        { user_id: '1954999', name: 'Kier' },
+        { user_id: 2548488, name: 'Patricia' },
+        { user_id: 123, name: 'John Doe' },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, payload);
+
+      expect(prismaMock.staff.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            candidate: { hubstaff_id: { in: ['123'] } },
+          }),
+        }),
+      );
+    });
 
     it('calculates with proration rate for a short custom period (June 16 to 19 - below half month)', async () => {
       const payload = {
@@ -106,7 +136,9 @@ describe('InvoiceWorker', () => {
       // Verify what was passed to invoiceLineItem.create
       expect(prismaMock.invoiceLineItem.create).toHaveBeenCalled();
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -145,7 +177,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -180,7 +214,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -215,7 +251,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       const serviceAmount = primaryLineCall[0].data.service_amount;
@@ -270,7 +308,9 @@ describe('InvoiceWorker', () => {
       await (worker as any).generateInvoiceRecord(org, payload);
 
       const calls = prismaMock.invoiceLineItem.create.mock.calls;
-      const primaryLineCall = calls.find((c: any) => c[0].data.type === 'primary');
+      const primaryLineCall = calls.find(
+        (c: any) => c[0].data.type === 'primary',
+      );
       expect(primaryLineCall).toBeDefined();
 
       // floor (18) + margin (2) = $20/hr — not the old hardcoded $12/hr fallback.

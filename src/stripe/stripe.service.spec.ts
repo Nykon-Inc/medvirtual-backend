@@ -89,7 +89,10 @@ describe('StripeService', () => {
         { provide: PrismaService, useValue: {} },
         { provide: PusherService, useValue: {} },
         { provide: getQueueToken('invoice'), useValue: {} },
-        { provide: getQueueToken('invoice-prebill-reconciliation'), useValue: {} },
+        {
+          provide: getQueueToken('invoice-prebill-reconciliation'),
+          useValue: {},
+        },
         { provide: InvoiceService, useValue: {} },
       ],
     }).compile();
@@ -131,13 +134,13 @@ describe('StripeService', () => {
       // in ':' got another ':' appended at the call site.
       expect(redisMock.set).toHaveBeenCalledWith(
         'MEDVIRTUAL:LOCAL:stripe_webhook_secret',
-        'whsec_123'
+        'whsec_123',
       );
       // The endpoint id must be cached too, otherwise the next boot can't tell
       // whether the cached secret belongs to the endpoint it finds.
       expect(redisMock.set).toHaveBeenCalledWith(
         'MEDVIRTUAL:LOCAL:stripe_webhook_endpoint_id',
-        'wh_123'
+        'wh_123',
       );
     });
 
@@ -242,7 +245,11 @@ describe('StripeService', () => {
       mockWebhookEndpointsList
         .mockResolvedValueOnce({
           data: [
-            { id: 'wh_other', url: 'https://elsewhere.test/webhooks/stripe', metadata: {} },
+            {
+              id: 'wh_other',
+              url: 'https://elsewhere.test/webhooks/stripe',
+              metadata: {},
+            },
           ],
           has_more: true,
         })
@@ -283,10 +290,17 @@ describe('StripeService', () => {
 
     it('sends the gross amount and a discountCents when the line has a discount', async () => {
       const invoice = buildInvoice([
-        { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+        {
+          id: 'line-1',
+          final_total: 450,
+          adjustment_amount: -50,
+          description: 'Staff A',
+        },
       ]);
 
-      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+      const result = await (service as any).buildDeterministicInvoiceItems(
+        invoice,
+      );
 
       expect(result).toEqual([
         {
@@ -301,10 +315,17 @@ describe('StripeService', () => {
 
     it('keeps the netted amount and omits discountCents for a surcharge', async () => {
       const invoice = buildInvoice([
-        { id: 'line-1', final_total: 550, adjustment_amount: 50, description: 'Staff A' },
+        {
+          id: 'line-1',
+          final_total: 550,
+          adjustment_amount: 50,
+          description: 'Staff A',
+        },
       ]);
 
-      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+      const result = await (service as any).buildDeterministicInvoiceItems(
+        invoice,
+      );
 
       expect(result).toEqual([
         {
@@ -318,10 +339,17 @@ describe('StripeService', () => {
 
     it('keeps existing behavior unchanged when there is no adjustment', async () => {
       const invoice = buildInvoice([
-        { id: 'line-1', final_total: 500, adjustment_amount: 0, description: 'Staff A' },
+        {
+          id: 'line-1',
+          final_total: 500,
+          adjustment_amount: 0,
+          description: 'Staff A',
+        },
       ]);
 
-      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+      const result = await (service as any).buildDeterministicInvoiceItems(
+        invoice,
+      );
 
       expect(result).toEqual([
         {
@@ -335,10 +363,17 @@ describe('StripeService', () => {
 
     it('skips a line whose gross amount rounds to zero', async () => {
       const invoice = buildInvoice([
-        { id: 'line-1', final_total: 0, adjustment_amount: 0, description: 'Staff A' },
+        {
+          id: 'line-1',
+          final_total: 0,
+          adjustment_amount: 0,
+          description: 'Staff A',
+        },
       ]);
 
-      const result = await (service as any).buildDeterministicInvoiceItems(invoice);
+      const result = await (service as any).buildDeterministicInvoiceItems(
+        invoice,
+      );
 
       expect(result).toEqual([]);
     });
@@ -361,7 +396,12 @@ describe('StripeService', () => {
         stripe_invoice_id: 'in_123',
         currentVersion: {
           line_items: [
-            { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+            {
+              id: 'line-1',
+              final_total: 450,
+              adjustment_amount: -50,
+              description: 'Staff A',
+            },
           ],
         },
       };
@@ -373,7 +413,11 @@ describe('StripeService', () => {
       await service.attachStripeInvoiceItems(invoice, 'cus_123');
 
       expect(mockCouponsCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ amount_off: 5000, currency: 'usd', duration: 'once' }),
+        expect.objectContaining({
+          amount_off: 5000,
+          currency: 'usd',
+          duration: 'once',
+        }),
         expect.objectContaining({
           idempotencyKey: 'line-discount-coupon-INV-1-INV-1:line-1',
         }),
@@ -396,7 +440,12 @@ describe('StripeService', () => {
         stripe_invoice_id: 'in_123',
         currentVersion: {
           line_items: [
-            { id: 'line-1', final_total: 500, adjustment_amount: 0, description: 'Staff A' },
+            {
+              id: 'line-1',
+              final_total: 500,
+              adjustment_amount: 0,
+              description: 'Staff A',
+            },
           ],
         },
       };
@@ -422,7 +471,12 @@ describe('StripeService', () => {
         stripe_invoice_id: 'in_123',
         currentVersion: {
           line_items: [
-            { id: 'line-1', final_total: 450, adjustment_amount: -50, description: 'Staff A' },
+            {
+              id: 'line-1',
+              final_total: 450,
+              adjustment_amount: -50,
+              description: 'Staff A',
+            },
           ],
         },
       };

@@ -347,13 +347,14 @@ export class CommissionsController {
   }
 
   // POST /med-alliance/admin/affiliates/:affiliateId/commissions/from-invoices
-  // Creates commissions for the selected invoice IDs.
+  // Creates commissions for the selected line item IDs (per-collaborator, §4.5 #4 —
+  // renamed from invoice-level selection; the route path is kept for backward compatibility).
   @Post('admin/affiliates/:affiliateId/commissions/from-invoices')
   @HttpCode(200)
   @Roles(...ADMIN_ROLES)
   @ApiOperation({
     summary:
-      'Manually create commissions for an affiliate from selected paid HubSpot invoices',
+      'Manually create commissions for an affiliate from selected matched line items (one commission per collaborator payment)',
   })
   @ApiParam({ name: 'affiliateId', description: 'AffiliateProfile UUID' })
   @ApiBody({ type: CreateFromInvoicesDto })
@@ -370,7 +371,7 @@ export class CommissionsController {
   ) {
     const result = await this.commissionsService.createFromInvoices(
       affiliateId,
-      dto.invoice_ids,
+      dto.line_item_ids,
       admin,
     );
     return {

@@ -25,7 +25,10 @@ jest.mock('fs', () => ({
   writeFileSync: jest.fn(),
 }));
 
-const chatResponse = (content: string, model = 'google/gemma-4-26b-a4b-it:free') => ({
+const chatResponse = (
+  content: string,
+  model = 'google/gemma-4-26b-a4b-it:free',
+) => ({
   model,
   choices: [{ message: { content } }],
   usage: { prompt_tokens: 100, completion_tokens: 50 },
@@ -53,7 +56,9 @@ describe('OpenrouterService', () => {
     });
 
     it('should strip ```json fences', () => {
-      expect(parseJsonLoose('```json\n{"bio":"hi"}\n```')).toEqual({ bio: 'hi' });
+      expect(parseJsonLoose('```json\n{"bio":"hi"}\n```')).toEqual({
+        bio: 'hi',
+      });
     });
 
     it('should strip bare ``` fences', () => {
@@ -170,7 +175,9 @@ describe('OpenrouterService', () => {
     it('should advance the cascade when the first model fails', async () => {
       mockChatCreate
         .mockRejectedValueOnce(new Error('model down'))
-        .mockResolvedValueOnce(chatResponse('{"bio":"second"}', 'google/gemma-4-31b-it:free'));
+        .mockResolvedValueOnce(
+          chatResponse('{"bio":"second"}', 'google/gemma-4-31b-it:free'),
+        );
 
       const result = await service.chatJson('prompt');
 
@@ -242,7 +249,10 @@ describe('OpenrouterService', () => {
         data: { data: [{ b64_json: Buffer.from('img').toString('base64') }] },
       });
 
-      const result = await service.editImage('/tmp/in.png', 'make it corporate');
+      const result = await service.editImage(
+        '/tmp/in.png',
+        'make it corporate',
+      );
 
       const [url, body] = (axios.post as jest.Mock).mock.calls[0];
       expect(url).toBe('https://openrouter.ai/api/v1/images');

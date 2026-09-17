@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ReferredCompaniesService } from './referred-companies.service';
 import { CommissionsAction } from './dto/block-eligibility.dto';
 
@@ -72,7 +76,7 @@ const mockReviewCasesService = {
 const mockOrganizationService = {
   create: jest.fn(),
   getById: jest.fn(),
-}
+};
 
 const mockHubspotService = {
   createOrganizationInHubspot: jest.fn(),
@@ -83,7 +87,9 @@ const mockHubspotService = {
 
 const mockContactService = {
   createForOrganization: jest.fn(),
-  createForReferredCompany: jest.fn().mockResolvedValue({ contact: null, hubspotId: null }),
+  createForReferredCompany: jest
+    .fn()
+    .mockResolvedValue({ contact: null, hubspotId: null }),
   deleteById: jest.fn(),
 };
 
@@ -127,13 +133,19 @@ describe('ReferredCompaniesService', () => {
         ReferredCompaniesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AffiliatesService, useValue: mockAffiliatesService },
-        { provide: EligibilityCheckService, useValue: mockEligibilityCheckService },
+        {
+          provide: EligibilityCheckService,
+          useValue: mockEligibilityCheckService,
+        },
         { provide: ReferralSyncService, useValue: mockReferralSyncService },
         { provide: ReviewCasesService, useValue: mockReviewCasesService },
-        { provide: OrganizationService, useValue: mockOrganizationService},
+        { provide: OrganizationService, useValue: mockOrganizationService },
         { provide: HubspotService, useValue: mockHubspotService },
         { provide: ContactService, useValue: mockContactService },
-        { provide: AllianceNotificationsService, useValue: mockAllianceNotifications },
+        {
+          provide: AllianceNotificationsService,
+          useValue: mockAllianceNotifications,
+        },
       ],
     }).compile();
 
@@ -178,13 +190,18 @@ describe('ReferredCompaniesService', () => {
     });
 
     it('should create org, run eligibility check, and return updated record', async () => {
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
       mockOrganizationService.create.mockResolvedValue(mockOrg);
       mockOrganizationService.getById.mockResolvedValue(mockOrgWithEligibility);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.organization.findFirst.mockResolvedValue(null); // no soft duplicate
-      mockPrisma.organization.findUnique.mockResolvedValue(mockOrgWithEligibility);
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        mockOrgWithEligibility,
+      );
 
       const result = await service.create(createDto, mockCurrentUser);
 
@@ -205,16 +222,25 @@ describe('ReferredCompaniesService', () => {
     });
 
     it('should write an immutable referral_submission_snapshot from the submitted DTO', async () => {
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
       mockOrganizationService.create.mockResolvedValue(mockOrg);
       mockOrganizationService.getById.mockResolvedValue(mockOrgWithEligibility);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.organization.findFirst.mockResolvedValue(null); // no soft duplicate
-      mockPrisma.organization.findUnique.mockResolvedValue(mockOrgWithEligibility);
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        mockOrgWithEligibility,
+      );
 
       await service.create(
-        { ...createDto, phone: '+1-555-0000', refer_to_user_id: 'refer-user-1' },
+        {
+          ...createDto,
+          phone: '+1-555-0000',
+          refer_to_user_id: 'refer-user-1',
+        },
         mockCurrentUser,
       );
 
@@ -242,10 +268,14 @@ describe('ReferredCompaniesService', () => {
       const blockedOrg = {
         ...mockOrg,
         med_alliance_referral_status: 'not_eligible',
-        med_alliance_block_reason: 'active_client_block: organization_active_by_email',
+        med_alliance_block_reason:
+          'active_client_block: organization_active_by_email',
       };
 
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
       mockOrganizationService.create.mockResolvedValue(mockOrg);
       mockOrganizationService.getById.mockResolvedValue(blockedOrg);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
@@ -254,16 +284,22 @@ describe('ReferredCompaniesService', () => {
 
       const result = await service.create(createDto, mockCurrentUser);
 
-      expect(result!.med_alliance_referral_status).toBe('not_eligible');
-      expect(result!.med_alliance_block_reason).toBe(
+      expect(result.med_alliance_referral_status).toBe('not_eligible');
+      expect(result.med_alliance_block_reason).toBe(
         'active_client_block: organization_active_by_email',
       );
     });
 
     it('should create organization with only required fields when optionals are omitted', async () => {
       const orgNoEmail = { ...mockOrgWithEligibility, email: null };
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
-      mockOrganizationService.create.mockResolvedValue({ ...mockOrg, email: null });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
+      mockOrganizationService.create.mockResolvedValue({
+        ...mockOrg,
+        email: null,
+      });
       mockOrganizationService.getById.mockResolvedValue(orgNoEmail);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
       mockPrisma.organization.findFirst.mockResolvedValue(null); // no soft duplicate
@@ -276,12 +312,12 @@ describe('ReferredCompaniesService', () => {
           website_url: 'https://minorg.com',
           contact_first_name: 'John',
           contact_last_name: 'Doe',
-          contact_email: 'contato@org1.com' 
+          contact_email: 'contato@org1.com',
         },
         mockCurrentUser,
       );
 
-      expect(result!.email).toBeNull();
+      expect(result.email).toBeNull();
     });
   });
 
@@ -305,7 +341,10 @@ describe('ReferredCompaniesService', () => {
     it('should apply status filter', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAffiliate({ status: 'inactive' as any }, mockCurrentUser);
+      const result = await service.findAllForAffiliate(
+        { status: 'inactive' as any },
+        mockCurrentUser,
+      );
 
       expect(result.data).toHaveLength(0);
     });
@@ -313,7 +352,10 @@ describe('ReferredCompaniesService', () => {
     it('should apply search filter', async () => {
       mockPrisma.$transaction.mockResolvedValue([[mockOrg], 1]);
 
-      const result = await service.findAllForAffiliate({ search: 'Acme' }, mockCurrentUser);
+      const result = await service.findAllForAffiliate(
+        { search: 'Acme' },
+        mockCurrentUser,
+      );
 
       expect(result.data).toHaveLength(1);
     });
@@ -321,7 +363,10 @@ describe('ReferredCompaniesService', () => {
     it('should respect pagination params', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAffiliate({ page: 3, limit: 5 }, mockCurrentUser);
+      const result = await service.findAllForAffiliate(
+        { page: 3, limit: 5 },
+        mockCurrentUser,
+      );
 
       expect(result.pagination).toEqual({ page: 3, limit: 5, total: 0 });
     });
@@ -403,7 +448,9 @@ describe('ReferredCompaniesService', () => {
       await expect(
         service.findOneForAffiliate('org-1', mockCurrentUser),
       ).rejects.toThrow(
-        new ForbiddenException('You do not have access to this referred company'),
+        new ForbiddenException(
+          'You do not have access to this referred company',
+        ),
       );
     });
 
@@ -416,7 +463,10 @@ describe('ReferredCompaniesService', () => {
       // Second call: scoped select
       mockPrisma.organization.findUnique.mockResolvedValueOnce(scopedOrg);
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect(result).toEqual(scopedOrg);
     });
@@ -428,7 +478,10 @@ describe('ReferredCompaniesService', () => {
       });
       mockPrisma.organization.findUnique.mockResolvedValueOnce(scopedOrg);
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect(result).not.toHaveProperty('hubspot_id');
       expect(result).not.toHaveProperty('owner');
@@ -448,7 +501,8 @@ describe('ReferredCompaniesService', () => {
 
       await service.findOneForAffiliate('org-1', mockCurrentUser);
 
-      const scopedCallArgs = mockPrisma.organization.findUnique.mock.calls[1][0];
+      const scopedCallArgs =
+        mockPrisma.organization.findUnique.mock.calls[1][0];
       expect(
         scopedCallArgs.select.affiliateCommissions.select.hubspotInvoiceSnapshot
           .select,
@@ -468,7 +522,12 @@ describe('ReferredCompaniesService', () => {
     it('should return all referred organizations without affiliate scoping', async () => {
       const orgWithAffiliate = {
         ...mockOrg,
-        referredByAffiliate: { id: 'user-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
+        referredByAffiliate: {
+          id: 'user-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
       };
       mockPrisma.$transaction.mockResolvedValue([[orgWithAffiliate], 1]);
 
@@ -493,7 +552,9 @@ describe('ReferredCompaniesService', () => {
     it('should filter by referral_stage when provided', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAdmin({ referral_stage: 'deployed' as any });
+      const result = await service.findAllForAdmin({
+        referral_stage: 'deployed' as any,
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -501,7 +562,9 @@ describe('ReferredCompaniesService', () => {
     it('should filter by med_alliance_referral_status when provided', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAdmin({ med_alliance_referral_status: 'eligible' as any });
+      const result = await service.findAllForAdmin({
+        med_alliance_referral_status: 'eligible' as any,
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -509,7 +572,9 @@ describe('ReferredCompaniesService', () => {
     it('should filter by affiliate_user_id when provided', async () => {
       mockPrisma.$transaction.mockResolvedValue([[], 0]);
 
-      const result = await service.findAllForAdmin({ affiliate_user_id: 'user-99' });
+      const result = await service.findAllForAdmin({
+        affiliate_user_id: 'user-99',
+      });
 
       expect(result.data).toHaveLength(0);
     });
@@ -530,7 +595,12 @@ describe('ReferredCompaniesService', () => {
     it('should return organization with referredByAffiliate details', async () => {
       const orgWithAffiliate = {
         ...mockOrg,
-        referredByAffiliate: { id: 'user-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
+        referredByAffiliate: {
+          id: 'user-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
       };
       mockPrisma.organization.findUnique.mockResolvedValue(orgWithAffiliate);
 
@@ -546,7 +616,12 @@ describe('ReferredCompaniesService', () => {
         owner: { id: 'owner-1', email: 'owner@acme.com' },
         admin: { id: 'admin-1', email: 'admin@acme.com' },
         users: [{ id: 'u1', email: 'u1@acme.com' }],
-        referredByAffiliate: { id: 'user-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
+        referredByAffiliate: {
+          id: 'user-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
       };
       mockPrisma.organization.findUnique.mockResolvedValue(fullOrg);
 
@@ -681,7 +756,10 @@ describe('ReferredCompaniesService', () => {
         makeOrgWithStatus('eligible', twoYearsAgo),
       );
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect((result as any).med_alliance_referral_status).toBe('eligible');
     });
@@ -691,7 +769,10 @@ describe('ReferredCompaniesService', () => {
         makeOrgWithStatus('eligible', null),
       );
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect((result as any).med_alliance_referral_status).toBe('eligible');
     });
@@ -702,7 +783,10 @@ describe('ReferredCompaniesService', () => {
         makeOrgWithStatus('not_eligible', fortyDaysAgo),
       );
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect((result as any).med_alliance_referral_status).toBe('not_eligible');
     });
@@ -713,7 +797,10 @@ describe('ReferredCompaniesService', () => {
         makeOrgWithStatus('expired', twoYearsAgo),
       );
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect((result as any).med_alliance_referral_status).toBe('expired');
     });
@@ -723,7 +810,10 @@ describe('ReferredCompaniesService', () => {
         makeOrgWithStatus('pending_confirmation', null),
       );
 
-      const result = await service.findOneForAffiliate('org-1', mockCurrentUser);
+      const result = await service.findOneForAffiliate(
+        'org-1',
+        mockCurrentUser,
+      );
 
       expect((result as any).med_alliance_referral_status).toBe(
         'pending_confirmation',
@@ -765,7 +855,11 @@ describe('ReferredCompaniesService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updateReferralStage('org-99', { stage: 'contacted' as any }, mockAdminUser),
+        service.updateReferralStage(
+          'org-99',
+          { stage: 'contacted' as any },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(new NotFoundException('Referred company not found'));
     });
 
@@ -778,7 +872,11 @@ describe('ReferredCompaniesService', () => {
       });
 
       await expect(
-        service.updateReferralStage('org-1', { stage: 'contacted' as any }, mockAdminUser),
+        service.updateReferralStage(
+          'org-1',
+          { stage: 'contacted' as any },
+          mockAdminUser,
+        ),
       ).rejects.toThrow(new BadRequestException('Not a referred company'));
     });
 
@@ -973,7 +1071,8 @@ describe('ReferredCompaniesService', () => {
       ...overrides,
     });
 
-    const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+    const daysAgo = (n: number) =>
+      new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
     // mockReset drains any queued mockResolvedValueOnce values so a test that
     // rejects before consuming the reload mock cannot leak into the next test
@@ -1005,7 +1104,9 @@ describe('ReferredCompaniesService', () => {
           med_alliance_referral_status: 'pending_confirmation',
           ...firstOrg,
         })
-        .mockResolvedValueOnce(makeFullOrg({ referral_stage: firstOrg.referral_stage }));
+        .mockResolvedValueOnce(
+          makeFullOrg({ referral_stage: firstOrg.referral_stage }),
+        );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
     };
@@ -1069,7 +1170,9 @@ describe('ReferredCompaniesService', () => {
       );
 
       const updateData = mockPrisma.organization.update.mock.calls[0][0].data;
-      expect(updateData.med_alliance_referral_status).toBe('pending_confirmation');
+      expect(updateData.med_alliance_referral_status).toBe(
+        'pending_confirmation',
+      );
     });
 
     // 4 — out of canceled, deployment_date 400 days ago, → deployed → expired.
@@ -1170,7 +1273,9 @@ describe('ReferredCompaniesService', () => {
       );
 
       const updateData = mockPrisma.organization.update.mock.calls[0][0].data;
-      expect(updateData.med_alliance_referral_status).toBe('pending_confirmation');
+      expect(updateData.med_alliance_referral_status).toBe(
+        'pending_confirmation',
+      );
     });
 
     // 9 — out of canceled with no anchor, target in_negotiation → also allowed.
@@ -1189,7 +1294,9 @@ describe('ReferredCompaniesService', () => {
       );
 
       const updateData = mockPrisma.organization.update.mock.calls[0][0].data;
-      expect(updateData.med_alliance_referral_status).toBe('pending_confirmation');
+      expect(updateData.med_alliance_referral_status).toBe(
+        'pending_confirmation',
+      );
     });
 
     // 10 — transition not involving canceled → status field must NOT be present.
@@ -1280,7 +1387,9 @@ describe('ReferredCompaniesService', () => {
           deployment_date: new Date('2026-01-15T00:00:00.000Z'),
           referral_stage: 'deployed',
         })
-        .mockResolvedValueOnce(makeAdminOrg({ med_alliance_referral_status: 'eligible' }));
+        .mockResolvedValueOnce(
+          makeAdminOrg({ med_alliance_referral_status: 'eligible' }),
+        );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.affiliateCommission.findMany.mockResolvedValue([
         { id: 'comm-1' },
@@ -1339,9 +1448,13 @@ describe('ReferredCompaniesService', () => {
           deployment_date: new Date('2026-01-15T00:00:00.000Z'),
           referral_stage: 'deployed',
         })
-        .mockResolvedValueOnce(makeAdminOrg({ med_alliance_referral_status: 'eligible' }));
+        .mockResolvedValueOnce(
+          makeAdminOrg({ med_alliance_referral_status: 'eligible' }),
+        );
       mockPrisma.organization.update.mockResolvedValue({});
-      mockPrisma.affiliateCommission.findMany.mockResolvedValue([{ id: 'comm-1' }]);
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([
+        { id: 'comm-1' },
+      ]);
       mockPrisma.affiliateCommission.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
@@ -1352,8 +1465,8 @@ describe('ReferredCompaniesService', () => {
       );
 
       const after = Date.now();
-      const eligibilityStart = mockPrisma.organization.update.mock.calls[0][0].data
-        .eligibility_start_at as Date;
+      const eligibilityStart = mockPrisma.organization.update.mock.calls[0][0]
+        .data.eligibility_start_at as Date;
 
       expect(eligibilityStart).toBeInstanceOf(Date);
       expect(eligibilityStart.getTime()).toBeGreaterThanOrEqual(before);
@@ -1453,7 +1566,9 @@ describe('ReferredCompaniesService', () => {
           referred_by_affiliate_id: 'user-1',
           med_alliance_referral_status: 'pending_confirmation',
         })
-        .mockResolvedValueOnce(makeAdminOrg({ med_alliance_referral_status: 'not_eligible' }));
+        .mockResolvedValueOnce(
+          makeAdminOrg({ med_alliance_referral_status: 'not_eligible' }),
+        );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.affiliateCommission.findMany.mockResolvedValue([
         { id: 'comm-1' },
@@ -1464,7 +1579,10 @@ describe('ReferredCompaniesService', () => {
 
       await service.blockEligibility(
         'org-1',
-        { reason: 'Existing active client', commissions_action: CommissionsAction.void },
+        {
+          reason: 'Existing active client',
+          commissions_action: CommissionsAction.void,
+        },
         mockAdminUser,
       );
 
@@ -1506,13 +1624,18 @@ describe('ReferredCompaniesService', () => {
           referred_by_affiliate_id: 'user-1',
           med_alliance_referral_status: 'pending_confirmation',
         })
-        .mockResolvedValueOnce(makeAdminOrg({ med_alliance_referral_status: 'not_eligible' }));
+        .mockResolvedValueOnce(
+          makeAdminOrg({ med_alliance_referral_status: 'not_eligible' }),
+        );
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
       await service.blockEligibility(
         'org-1',
-        { reason: 'Existing active client', commissions_action: CommissionsAction.keep },
+        {
+          reason: 'Existing active client',
+          commissions_action: CommissionsAction.keep,
+        },
         mockAdminUser,
       );
 
@@ -1773,7 +1896,9 @@ describe('ReferredCompaniesService', () => {
       const orgWithEligible = {
         ...mockOrg,
         eligibility_start_at: fortyDaysAgo,
-        affiliateCommissions: [{ status: 'eligible', commission_amount: '300.00' }],
+        affiliateCommissions: [
+          { status: 'eligible', commission_amount: '300.00' },
+        ],
       };
       mockPrisma.$transaction.mockResolvedValue([[orgWithEligible], 1]);
 
@@ -1786,7 +1911,9 @@ describe('ReferredCompaniesService', () => {
       const orgWithPending = {
         ...mockOrg,
         eligibility_start_at: fortyDaysAgo,
-        affiliateCommissions: [{ status: 'detected', commission_amount: '200.00' }],
+        affiliateCommissions: [
+          { status: 'detected', commission_amount: '200.00' },
+        ],
       };
       mockPrisma.$transaction.mockResolvedValue([[orgWithPending], 1]);
 
@@ -1810,7 +1937,12 @@ describe('ReferredCompaniesService', () => {
           { status: 'requested', commission_amount: '50.00' },
         ],
         _count: { adminReviewCases: 0 },
-        referredByAffiliate: { id: 'user-1', first_name: 'Jane', last_name: 'Affiliate', email: 'jane@example.com' },
+        referredByAffiliate: {
+          id: 'user-1',
+          first_name: 'Jane',
+          last_name: 'Affiliate',
+          email: 'jane@example.com',
+        },
       };
       mockPrisma.$transaction.mockResolvedValue([[orgWithCommissions], 1]);
 
@@ -1827,7 +1959,7 @@ describe('ReferredCompaniesService', () => {
   // -------------------------------------------------------------------------
   describe('getReferredToOptions', () => {
     it('should return available owners matching HubSpot property options', async () => {
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.get.mockResolvedValue({
         data: {
           results: [
@@ -1839,7 +1971,13 @@ describe('ReferredCompaniesService', () => {
         },
       });
       mockPrisma.uSER.findMany.mockResolvedValue([
-        { id: 'u1', first_name: 'Alice', last_name: 'Smith', email: 'alice@example.com', hubspot_id: 'hs-1' },
+        {
+          id: 'u1',
+          first_name: 'Alice',
+          last_name: 'Smith',
+          email: 'alice@example.com',
+          hubspot_id: 'hs-1',
+        },
       ]);
 
       const result = await service.getReferredToOptions();
@@ -1849,7 +1987,7 @@ describe('ReferredCompaniesService', () => {
     });
 
     it('should return empty array when referred_to property is not found', async () => {
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.get.mockResolvedValue({
         data: { results: [{ name: 'other_property', options: [] }] },
       });
@@ -1860,7 +1998,7 @@ describe('ReferredCompaniesService', () => {
     });
 
     it('should throw Error when axios.get rejects', async () => {
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.get.mockRejectedValue(new Error('Network error'));
 
       await expect(service.getReferredToOptions()).rejects.toThrow(
@@ -1886,17 +2024,26 @@ describe('ReferredCompaniesService', () => {
       };
 
       const createdOrg = { ...mockOrg, id: 'org-new', hubspot_id: null };
-      const updatedOrg = { ...createdOrg, med_alliance_referral_status: 'eligible' };
+      const updatedOrg = {
+        ...createdOrg,
+        med_alliance_referral_status: 'eligible',
+      };
       const duplicateOrg = { id: 'org-old', name: 'Acme Corp' };
 
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
       mockOrganizationService.create.mockResolvedValue(createdOrg);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
       mockReferralSyncService.run.mockResolvedValue(undefined);
       mockPrisma.organization.findFirst.mockResolvedValue(duplicateOrg); // soft duplicate found
       mockPrisma.organization.findUnique.mockResolvedValue(updatedOrg); // final reload
       mockReviewCasesService.openOrSkip.mockResolvedValue(undefined);
-      mockContactService.createForReferredCompany.mockResolvedValue({ contact: null, hubspotId: null });
+      mockContactService.createForReferredCompany.mockResolvedValue({
+        contact: null,
+        hubspotId: null,
+      });
 
       const result = await service.create(createDto, mockCurrentUser);
 
@@ -1923,11 +2070,20 @@ describe('ReferredCompaniesService', () => {
         contact_email: 'rob@rollback.com',
       };
 
-      const createdOrg = { ...mockOrg, id: 'org-rollback', hubspot_id: 'hs-org-1' };
+      const createdOrg = {
+        ...mockOrg,
+        id: 'org-rollback',
+        hubspot_id: 'hs-org-1',
+      };
       const conflictError: any = new Error('Contact exists');
-      conflictError.response = { data: { category: 'CONFLICT', message: 'Contact already exists' } };
+      conflictError.response = {
+        data: { category: 'CONFLICT', message: 'Contact already exists' },
+      };
 
-      mockAffiliatesService.requireActiveProfile.mockResolvedValue({ id: 'profile-1', status: 'active' });
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
       mockOrganizationService.create.mockResolvedValue(createdOrg);
       mockEligibilityCheckService.runAndPersist.mockResolvedValue(undefined);
       mockReferralSyncService.run.mockResolvedValue(undefined);
@@ -1935,13 +2091,17 @@ describe('ReferredCompaniesService', () => {
       mockPrisma.organization.findUnique
         .mockResolvedValueOnce(createdOrg) // inside cleanupStack closure
         .mockResolvedValueOnce({ ...createdOrg, hubspot_id: 'hs-org-1' }); // final reload
-      mockContactService.createForReferredCompany.mockRejectedValue(conflictError);
+      mockContactService.createForReferredCompany.mockRejectedValue(
+        conflictError,
+      );
       mockHubspotService.deleteCompanyInHubspot.mockResolvedValue(undefined);
       mockPrisma.$transaction.mockResolvedValue([]);
       mockPrisma.medAllianceAuditLog.deleteMany.mockResolvedValue({ count: 0 });
       mockPrisma.organization.delete.mockResolvedValue({});
 
-      await expect(service.create(createDto, mockCurrentUser)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto, mockCurrentUser)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(mockHubspotService.deleteCompanyInHubspot).toHaveBeenCalled();
     });
   });

@@ -15,7 +15,9 @@ export class PusherService {
     const useTLS = this.configService.get<boolean>('PUSHER_USE_TLS', true);
 
     if (!appId || !key || !secret || !cluster) {
-      this.logger.warn('Pusher configuration is incomplete. Real-time notifications may not work.');
+      this.logger.warn(
+        'Pusher configuration is incomplete. Real-time notifications may not work.',
+      );
       return;
     }
 

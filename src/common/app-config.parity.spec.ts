@@ -13,11 +13,12 @@ import {
 } from './app-config';
 
 const cfg = (vars: Record<string, string | undefined>): ConfigLike => ({
-  get: <T,>(key: string, def?: T) => (vars[key] ?? def) as T | undefined,
+  get: <T>(key: string, def?: T) => (vars[key] ?? def) as T | undefined,
 });
 
 // Legacy implementations, copied verbatim from the pre-refactor source.
-const legacyIsLocalMode = (baseKey: string) => baseKey.toUpperCase().includes('LOCAL');
+const legacyIsLocalMode = (baseKey: string) =>
+  baseKey.toUpperCase().includes('LOCAL');
 const legacyBullPrefix = (baseKey: string) =>
   baseKey.endsWith(':') ? baseKey.slice(0, -1) : baseKey;
 const legacyIsProd = (baseKey: string) => baseKey.includes('PROD');
@@ -51,7 +52,9 @@ describe('legacy REDIS_BASE_KEY fallback parity', () => {
 
       it('production detection matches includes("PROD")', () => {
         expect(appEnv(c) === 'production').toBe(
-          legacyIsProd(baseKey) && !legacyIsLocalMode(baseKey) && !baseKey.includes('STAGING'),
+          legacyIsProd(baseKey) &&
+            !legacyIsLocalMode(baseKey) &&
+            !baseKey.includes('STAGING'),
         );
       });
 
@@ -79,23 +82,34 @@ describe('legacy REDIS_BASE_KEY fallback parity', () => {
 
 describe('explicit config wins over legacy', () => {
   it('QUEUES_ENABLED overrides a LOCAL base key', () => {
-    expect(queuesEnabled(cfg({ REDIS_BASE_KEY: 'X:LOCAL', QUEUES_ENABLED: 'true' }))).toBe(true);
-    expect(queuesEnabled(cfg({ REDIS_BASE_KEY: 'X:PROD', QUEUES_ENABLED: 'false' }))).toBe(false);
+    expect(
+      queuesEnabled(cfg({ REDIS_BASE_KEY: 'X:LOCAL', QUEUES_ENABLED: 'true' })),
+    ).toBe(true);
+    expect(
+      queuesEnabled(cfg({ REDIS_BASE_KEY: 'X:PROD', QUEUES_ENABLED: 'false' })),
+    ).toBe(false);
   });
 
   it('APP_ENV overrides a PROD base key, so no accidental live Stripe keys', () => {
-    const c = cfg({ REDIS_BASE_KEY: 'MEDVIRTUAL:PROD:MANNY', APP_ENV: 'local' });
+    const c = cfg({
+      REDIS_BASE_KEY: 'MEDVIRTUAL:PROD:MANNY',
+      APP_ENV: 'local',
+    });
     expect(appEnv(c)).toBe('local');
     expect(webhookServerLabel(c)).toContain('local:');
   });
 
   it('rejects a typo rather than defaulting to on', () => {
-    expect(() => queuesEnabled(cfg({ QUEUES_ENABLED: 'ture' }))).toThrow(/Invalid QUEUES_ENABLED/);
+    expect(() => queuesEnabled(cfg({ QUEUES_ENABLED: 'ture' }))).toThrow(
+      /Invalid QUEUES_ENABLED/,
+    );
     expect(() => appEnv(cfg({ APP_ENV: 'prodd' }))).toThrow(/Invalid APP_ENV/);
   });
 
   it('gives concurrent local devs distinct webhook labels', () => {
-    const a = webhookServerLabel(cfg({ APP_ENV: 'local', INSTANCE_ID: 'manny' }));
+    const a = webhookServerLabel(
+      cfg({ APP_ENV: 'local', INSTANCE_ID: 'manny' }),
+    );
     const b = webhookServerLabel(cfg({ APP_ENV: 'local', INSTANCE_ID: 'ada' }));
     expect(a).not.toBe(b);
   });

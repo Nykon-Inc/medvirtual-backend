@@ -9,7 +9,9 @@ import { AffiliateUpdateService } from '../hubspot/update/affiliate';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { generateVerificationCode } from '../common/utils/generateCode.util';
 
-const mockEmailTemplates = { getTemplateContent: jest.fn().mockResolvedValue(null) };
+const mockEmailTemplates = {
+  getTemplateContent: jest.fn().mockResolvedValue(null),
+};
 
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
@@ -17,12 +19,12 @@ import { first } from 'rxjs';
 
 jest.mock('jsonwebtoken', () => ({
   sign: jest.fn(() => 'mocked-jwt-token'),
-  verify: jest.fn(() =>  'mocked-jwt-token-verify' )
+  verify: jest.fn(() => 'mocked-jwt-token-verify'),
 }));
 
 jest.mock('../common/utils/generateCode.util', () => ({
   generateVerificationCode: jest.fn(),
-}))
+}));
 
 jest.mock('bcryptjs', () => ({
   hash: jest.fn(() => 'hashed-password'),
@@ -66,7 +68,10 @@ describe('AuthService - signIn', () => {
         { provide: UserService, useValue: userMock },
         { provide: MailService, useValue: mailMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -93,7 +98,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'deleted' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('This account has been deleted. Please contact support.'),
+      new UnauthorizedException(
+        'This account has been deleted. Please contact support.',
+      ),
     );
   });
 
@@ -101,7 +108,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'inactive' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('Your account is inactive. Please contact your administrator to reactivate your account.'),
+      new UnauthorizedException(
+        'Your account is inactive. Please contact your administrator to reactivate your account.',
+      ),
     );
   });
 
@@ -109,7 +118,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'suspended' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('Your account has been suspended. Please contact support for assistance.'),
+      new UnauthorizedException(
+        'Your account has been suspended. Please contact support for assistance.',
+      ),
     );
   });
 
@@ -117,7 +128,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'pending_verification' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('Your account is pending verification. Please check your email and verify your account.'),
+      new UnauthorizedException(
+        'Your account is pending verification. Please check your email and verify your account.',
+      ),
     );
   });
 
@@ -125,7 +138,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'prospect' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('Your account is not yet activated. Please contact support.'),
+      new UnauthorizedException(
+        'Your account is not yet activated. Please contact support.',
+      ),
     );
   });
 
@@ -133,7 +148,9 @@ describe('AuthService - signIn', () => {
     userMock.findByEmail.mockResolvedValue({ status: 'incomplete' });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('Your account setup is incomplete. Please contact support.'),
+      new UnauthorizedException(
+        'Your account setup is incomplete. Please contact support.',
+      ),
     );
   });
 
@@ -145,7 +162,9 @@ describe('AuthService - signIn', () => {
     });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('User does not belong to any organization. Please contact support.'),
+      new UnauthorizedException(
+        'User does not belong to any organization. Please contact support.',
+      ),
     );
   });
 
@@ -159,7 +178,9 @@ describe('AuthService - signIn', () => {
     prismaMock.organization.findMany.mockResolvedValue([]);
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
-      new UnauthorizedException('User organization not found or inactive. Please contact support.'),
+      new UnauthorizedException(
+        'User organization not found or inactive. Please contact support.',
+      ),
     );
   });
 
@@ -170,9 +191,10 @@ describe('AuthService - signIn', () => {
       authentication_method: 'different',
       status: 'active',
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Test Unit', 
-      status: 'active' 
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
+      business_unit: 'Test Unit',
+      status: 'active',
     });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
@@ -190,9 +212,10 @@ describe('AuthService - signIn', () => {
       verified: false,
       status: 'active',
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Test Unit', 
-      status: 'active' 
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
+      business_unit: 'Test Unit',
+      status: 'active',
     });
 
     await expect(service.signIn(dataFake)).rejects.toThrow(
@@ -210,9 +233,10 @@ describe('AuthService - signIn', () => {
       status: 'active',
       organization_id: 'org1',
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Test Unit', 
-      status: 'active' 
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
+      business_unit: 'Test Unit',
+      status: 'active',
     });
 
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
@@ -232,9 +256,10 @@ describe('AuthService - signIn', () => {
       status: 'active',
       organization_id: 'org1',
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Test Unit', 
-      status: 'active' 
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
+      business_unit: 'Test Unit',
+      status: 'active',
     });
 
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -263,9 +288,10 @@ describe('AuthService - signIn', () => {
       onboarding_tour_dismissed: true,
     };
     userMock.findByEmail.mockResolvedValue(userObj);
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
       business_unit: 'Berry Virtual',
-      status: 'active'
+      status: 'active',
     });
 
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -311,9 +337,10 @@ describe('AuthService - signIn', () => {
       role: 'admin',
     };
     userMock.findByEmail.mockResolvedValue(userObj);
-    prismaMock.organization.findUnique.mockResolvedValue({ // Change from findMany to findUnique
-      business_unit: 'Berry Virtual', 
-      status: 'active' 
+    prismaMock.organization.findUnique.mockResolvedValue({
+      // Change from findMany to findUnique
+      business_unit: 'Berry Virtual',
+      status: 'active',
     });
 
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -327,22 +354,21 @@ describe('AuthService - signIn', () => {
   });
 });
 
-
 describe('AuthService - Signup', () => {
   let service: AuthService;
   let user: UserService;
-  let mail: MailService
-  let prisma: PrismaService
+  let mail: MailService;
+  let prisma: PrismaService;
 
-  let userServiceMock = {
+  const userServiceMock = {
     findByEmail: jest.fn(),
   };
 
-  let mailmock = {
+  const mailmock = {
     sendMail: jest.fn(),
-  }
+  };
 
-  let prismamock = {
+  const prismamock = {
     emailVerification: {
       create: jest.fn(),
     },
@@ -350,9 +376,9 @@ describe('AuthService - Signup', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
     },
-  }
-  
-  const datafake = { 
+  };
+
+  const datafake = {
     firstName: 'Test',
     lastName: 'User',
     password: 'testpassword',
@@ -361,8 +387,8 @@ describe('AuthService - Signup', () => {
     companyName: 'TestCompany',
     organizationId: 'org-123`',
     email: 'test@test.com',
-    status: 'prospect'
-  }
+    status: 'prospect',
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -371,13 +397,16 @@ describe('AuthService - Signup', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailmock },
         { provide: PrismaService, useValue: prismamock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-user = module.get<UserService>(UserService);
+    user = module.get<UserService>(UserService);
     mail = module.get<MailService>(MailService);
     prisma = module.get<PrismaService>(PrismaService);
   });
@@ -389,20 +418,18 @@ user = module.get<UserService>(UserService);
     user.findByEmail = jest.fn().mockResolvedValue({ id: 'existing-userId' });
     await expect(service.signUp(datafake)).rejects.toThrow(
       new BadRequestException('User already exists with this email'),
-    )
+    );
   });
 
   it('should return 400 if Failed to create user', async () => {
     user.findByEmail = jest.fn().mockResolvedValue(null);
     prisma.organization.create = jest.fn().mockResolvedValue(true);
     user.create = jest.fn().mockResolvedValue(null);
-    
 
     await expect(service.signUp(datafake)).rejects.toThrow(
       new BadRequestException('Failed to create user'),
     );
-
-  })
+  });
 
   it('should return 400 if Failed to generate verification code', async () => {
     user.findByEmail = jest.fn().mockResolvedValue(null);
@@ -412,8 +439,7 @@ user = module.get<UserService>(UserService);
     await expect(service.signUp(datafake)).rejects.toThrow(
       new BadRequestException('Failed to generate verification code'),
     );
-
-  })
+  });
 
   it('should return 400 if failed to send verification email', async () => {
     user.findByEmail = jest.fn().mockResolvedValue(null);
@@ -425,9 +451,9 @@ user = module.get<UserService>(UserService);
     await expect(service.signUp(datafake)).rejects.toThrow(
       new BadRequestException('Failed to send verification email'),
     );
-  })
-  
-  it('should return 400 if failed to store verification code', async() => {
+  });
+
+  it('should return 400 if failed to store verification code', async () => {
     user.findByEmail = jest.fn().mockResolvedValue(null);
     prisma.organization.create = jest.fn().mockResolvedValue(true);
     user.create = jest.fn().mockResolvedValue(true);
@@ -438,10 +464,10 @@ user = module.get<UserService>(UserService);
 
     await expect(service.signUp(datafake)).rejects.toThrow(
       new BadRequestException('Failed to store verification code'),
-    );    
-  })
+    );
+  });
 
-  it ('should return 200 if everything is ok', async () => {
+  it('should return 200 if everything is ok', async () => {
     user.findByEmail = jest.fn().mockResolvedValue(null);
     prisma.organization.create = jest.fn().mockResolvedValue(true);
     user.create = jest.fn().mockResolvedValue(true);
@@ -453,11 +479,10 @@ user = module.get<UserService>(UserService);
     jest.spyOn(jwt, 'sign').mockImplementation(() => 'mocked-jwt-token');
 
     await expect(service.signUp(datafake)).resolves.toEqual({
-      token: 'mocked-jwt-token'
-    })
-  })
-
-})
+      token: 'mocked-jwt-token',
+    });
+  });
+});
 
 describe('AuthService - inviteUser', () => {
   let service: AuthService;
@@ -494,14 +519,16 @@ describe('AuthService - inviteUser', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
   });
-
 
   it('should throw if user already exists', async () => {
     const dataFake = {
@@ -545,12 +572,10 @@ describe('AuthService - inviteUser', () => {
 });
 
 describe('AuthService - getUser', () => {
-
   let service: AuthService;
   let prisma: PrismaService;
 
-  beforeEach(async () =>{
-
+  beforeEach(async () => {
     const prismamock = {
       emailInvitation: {
         findFirst: jest.fn(),
@@ -558,34 +583,36 @@ describe('AuthService - getUser', () => {
       uSER: {
         findFirst: jest.fn(),
       },
-
-    }
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismamock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     prisma = module.get<PrismaService>(PrismaService);
-  })
+  });
 
-  it ('should return 400 if the token is not provided', async () => {
-    await expect(service.getUser({ token : ''})).rejects.toThrow(
+  it('should return 400 if the token is not provided', async () => {
+    await expect(service.getUser({ token: '' })).rejects.toThrow(
       new BadRequestException('Token is required'),
     );
   });
 
   it('should return 404 if the token is not found', async () => {
-    const token= 'tokenFake';
+    const token = 'tokenFake';
     (jwt.verify as jest.Mock).mockImplementation(() => {
-      throw new UnauthorizedException('Invalid token')
-    })
+      throw new UnauthorizedException('Invalid token');
+    });
   });
 
   it('should return 404 if the token is not found', async () => {
@@ -594,7 +621,7 @@ describe('AuthService - getUser', () => {
     });
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(null);
 
-    await expect(service.getUser({ token: 'valid-token'})).rejects.toThrow(
+    await expect(service.getUser({ token: 'valid-token' })).rejects.toThrow(
       new BadRequestException('Token not found!'),
     );
   });
@@ -606,10 +633,10 @@ describe('AuthService - getUser', () => {
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(true);
     prisma.uSER.findFirst = jest.fn().mockResolvedValue(false);
 
-    await expect(service.getUser({ token: 'valid-token'})).rejects.toThrow(
+    await expect(service.getUser({ token: 'valid-token' })).rejects.toThrow(
       new BadRequestException('User not found!'),
     );
-  })
+  });
 
   it('should return user object if everything is ok', async () => {
     (jwt.verify as jest.Mock).mockImplementation(() => {
@@ -618,19 +645,16 @@ describe('AuthService - getUser', () => {
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(true);
     prisma.uSER.findFirst = jest.fn().mockResolvedValue(true);
 
-    const result = await service.getUser({ token: 'valid-token'});
+    const result = await service.getUser({ token: 'valid-token' });
     expect(result).toBeTruthy(); // Assuming the user object is returned as true for simplicity
-  })
-
-  
-})
+  });
+});
 
 describe('AuthService - invitedUserSignup', () => {
   let service: AuthService;
   let prisma: PrismaService;
 
   beforeEach(async () => {
-
     const prismamock = {
       emailInvitation: {
         findFirst: jest.fn(),
@@ -643,11 +667,11 @@ describe('AuthService - invitedUserSignup', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
-      session:{
+      session: {
         updateMany: jest.fn(),
         create: jest.fn(),
-      }
-    }
+      },
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -655,19 +679,22 @@ describe('AuthService - invitedUserSignup', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismamock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
-      ]
+      ],
     }).compile();
     service = module.get<AuthService>(AuthService);
     prisma = module.get<PrismaService>(PrismaService);
-  })
+  });
 
   it('should return 404 if the token is not found', async () => {
-    const token= 'tokenFake';
+    const token = 'tokenFake';
     (jwt.verify as jest.Mock).mockImplementation(() => {
-      throw new UnauthorizedException('Invalid token')
-    })
+      throw new UnauthorizedException('Invalid token');
+    });
   });
 
   it('should return 404 if the token is not found', async () => {
@@ -676,7 +703,7 @@ describe('AuthService - invitedUserSignup', () => {
     });
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(null);
 
-    await expect(service.getUser({ token: 'valid-token'})).rejects.toThrow(
+    await expect(service.getUser({ token: 'valid-token' })).rejects.toThrow(
       new BadRequestException('Token not found!'),
     );
   });
@@ -688,10 +715,10 @@ describe('AuthService - invitedUserSignup', () => {
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(true);
     prisma.uSER.findFirst = jest.fn().mockResolvedValue(false);
 
-    await expect(service.getUser({ token: 'valid-token'})).rejects.toThrow(
+    await expect(service.getUser({ token: 'valid-token' })).rejects.toThrow(
       new BadRequestException('User not found!'),
     );
-  })
+  });
 
   it('should return 400 if there error in set user password', async () => {
     const dataFake = {
@@ -701,7 +728,7 @@ describe('AuthService - invitedUserSignup', () => {
       firstName: 'Test',
       lastName: 'User',
       jobTitle: 'Tester',
-      status: 'prospect'
+      status: 'prospect',
     };
     (jwt.verify as jest.Mock).mockImplementation(() => {
       return { id: 'UserIdfake' };
@@ -715,7 +742,7 @@ describe('AuthService - invitedUserSignup', () => {
     await expect(service.invitedUserSignup(dataFake)).rejects.toThrow(
       new BadRequestException('Error in set user password'),
     );
-  })
+  });
 
   it('should return message if everything is ok', async () => {
     const dataFake = {
@@ -725,7 +752,7 @@ describe('AuthService - invitedUserSignup', () => {
       firstName: 'Test',
       lastName: 'User',
       jobTitle: 'Tester',
-      status: 'prospect'
+      status: 'prospect',
     };
     (jwt.verify as jest.Mock).mockImplementation(() => {
       return { id: 'UserIdfake' };
@@ -741,9 +768,10 @@ describe('AuthService - invitedUserSignup', () => {
     prisma.session.updateMany = jest.fn().mockResolvedValue({ count: 1 });
     prisma.session.create = jest.fn().mockResolvedValue(true);
 
-    await expect(service.invitedUserSignup(dataFake)).resolves.toEqual('mocked-jwt-token')
-
-  })
+    await expect(service.invitedUserSignup(dataFake)).resolves.toEqual(
+      'mocked-jwt-token',
+    );
+  });
 
   it('should activate affiliate profile when user has one', async () => {
     const dataFake = {
@@ -754,9 +782,13 @@ describe('AuthService - invitedUserSignup', () => {
     };
     (jwt.verify as jest.Mock).mockImplementation(() => ({ id: 'UserIdfake' }));
     prisma.emailInvitation.findFirst = jest.fn().mockResolvedValue(true);
-    prisma.uSER.findFirst = jest.fn().mockResolvedValue({ id: 'UserIdfake', email: 'test@test.com' });
+    prisma.uSER.findFirst = jest
+      .fn()
+      .mockResolvedValue({ id: 'UserIdfake', email: 'test@test.com' });
     prisma.uSER.update = jest.fn().mockResolvedValue(true);
-    prisma.affiliateProfile.findUnique = jest.fn().mockResolvedValue({ user_id: 'UserIdfake', hubspot_id: 'hs-1' });
+    prisma.affiliateProfile.findUnique = jest
+      .fn()
+      .mockResolvedValue({ user_id: 'UserIdfake', hubspot_id: 'hs-1' });
     prisma.affiliateProfile.update = jest.fn().mockResolvedValue(true);
     jest.spyOn(jwt, 'sign').mockImplementation(() => 'mocked-jwt-token');
     prisma.session.updateMany = jest.fn().mockResolvedValue({ count: 1 });
@@ -769,7 +801,7 @@ describe('AuthService - invitedUserSignup', () => {
       expect.objectContaining({ data: { status: 'active' } }),
     );
   });
-})
+});
 
 describe('AuthService - resendCode', () => {
   let service: AuthService;
@@ -794,7 +826,10 @@ describe('AuthService - resendCode', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -805,28 +840,48 @@ describe('AuthService - resendCode', () => {
   });
 
   it('should throw BadRequestException when no token', async () => {
-    await expect(service.resendCode({ token: '' } as any)).rejects.toThrow('Token are required');
+    await expect(service.resendCode({ token: '' } as any)).rejects.toThrow(
+      'Token are required',
+    );
   });
 
   it('should throw UnauthorizedException when jwt.verify fails', async () => {
-    (jwt.verify as jest.Mock).mockImplementation(() => { throw new Error('bad'); });
-    await expect(service.resendCode({ token: 'bad' } as any)).rejects.toThrow('Invalid token');
+    (jwt.verify as jest.Mock).mockImplementation(() => {
+      throw new Error('bad');
+    });
+    await expect(service.resendCode({ token: 'bad' } as any)).rejects.toThrow(
+      'Invalid token',
+    );
   });
 
   it('should throw when user not found', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     userServiceMock.findById.mockResolvedValue(null);
-    await expect(service.resendCode({ token: 'tok' } as any)).rejects.toThrow('User not found');
+    await expect(service.resendCode({ token: 'tok' } as any)).rejects.toThrow(
+      'User not found',
+    );
   });
 
   it('should resend code and return new token on success', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     (jwt.sign as jest.Mock).mockReturnValue('new-jwt');
     (generateVerificationCode as jest.Mock).mockReturnValue('654321');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com', organization_id: 'org1' });
-    (prisma.emailVerification as any).updateMany.mockResolvedValue({ count: 1 });
-    (prisma.emailVerification as any).create.mockResolvedValue({ id: 'code-1' });
-    (prisma.organization as any).findUnique.mockResolvedValue({ name: 'MedVirtual', status: 'active', business_unit: 'MedVirtual' });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+      organization_id: 'org1',
+    });
+    (prisma.emailVerification as any).updateMany.mockResolvedValue({
+      count: 1,
+    });
+    (prisma.emailVerification as any).create.mockResolvedValue({
+      id: 'code-1',
+    });
+    (prisma.organization as any).findUnique.mockResolvedValue({
+      name: 'MedVirtual',
+      status: 'active',
+      business_unit: 'MedVirtual',
+    });
     mailServiceMock.sendMail.mockResolvedValue(true);
 
     const result = await service.resendCode({ token: 'tok' } as any);
@@ -854,7 +909,10 @@ describe('AuthService - reInviteUser', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -866,13 +924,23 @@ describe('AuthService - reInviteUser', () => {
 
   it('should throw NotFoundException when user does not exist', async () => {
     userServiceMock.findById.mockResolvedValue(null);
-    await expect(service.reInviteUser('u-not-found')).rejects.toThrow('User not found');
+    await expect(service.reInviteUser('u-not-found')).rejects.toThrow(
+      'User not found',
+    );
   });
 
   it('should send reinvite email and return success message', async () => {
     (jwt.sign as jest.Mock).mockReturnValue('invite-code');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com', organization_id: 'org1' });
-    (prisma.organization as any).findUnique.mockResolvedValue({ name: 'MedVirtual', status: 'active', business_unit: 'MedVirtual' });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+      organization_id: 'org1',
+    });
+    (prisma.organization as any).findUnique.mockResolvedValue({
+      name: 'MedVirtual',
+      status: 'active',
+      business_unit: 'MedVirtual',
+    });
     mailServiceMock.sendMail.mockResolvedValue(true);
     (prisma.emailInvitation as any).create.mockResolvedValue({ id: 'inv-1' });
 
@@ -906,7 +974,10 @@ describe('AuthService - verifyCode', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -917,46 +988,60 @@ describe('AuthService - verifyCode', () => {
   });
 
   it('should throw BadRequestException when code or token is missing', async () => {
-    await expect(service.verifyCode({ code: '', token: '' } as any)).rejects.toThrow(
-      'Code and token are required',
-    );
+    await expect(
+      service.verifyCode({ code: '', token: '' } as any),
+    ).rejects.toThrow('Code and token are required');
   });
 
   it('should throw UnauthorizedException when jwt.verify throws', async () => {
-    (jwt.verify as jest.Mock).mockImplementation(() => { throw new Error('bad token'); });
-    await expect(service.verifyCode({ code: '123456', token: 'bad' } as any)).rejects.toThrow(
-      'Invalid token',
-    );
+    (jwt.verify as jest.Mock).mockImplementation(() => {
+      throw new Error('bad token');
+    });
+    await expect(
+      service.verifyCode({ code: '123456', token: 'bad' } as any),
+    ).rejects.toThrow('Invalid token');
   });
 
   it('should throw BadRequestException when user is not found', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     userServiceMock.findById.mockResolvedValue(null);
-    await expect(service.verifyCode({ code: '123456', token: 'tok' } as any)).rejects.toThrow(
-      'User not found',
-    );
+    await expect(
+      service.verifyCode({ code: '123456', token: 'tok' } as any),
+    ).rejects.toThrow('User not found');
   });
 
   it('should throw when verification code is not found', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     userServiceMock.findById.mockResolvedValue({ id: 'u1' });
     (prisma.emailVerification as any).findFirst.mockResolvedValue(null);
-    await expect(service.verifyCode({ code: '123456', token: 'tok' } as any)).rejects.toThrow(
-      'Invalid verification code',
-    );
+    await expect(
+      service.verifyCode({ code: '123456', token: 'tok' } as any),
+    ).rejects.toThrow('Invalid verification code');
   });
 
   it('should verify code and return token on success', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     (jwt.sign as jest.Mock).mockReturnValue('jwt-out');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com' });
-    (prisma.emailVerification as any).findFirst.mockResolvedValue({ id: 'code-1', verified: false });
-    (prisma.emailVerification as any).update.mockResolvedValue({ id: 'code-1', verified: true });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+    });
+    (prisma.emailVerification as any).findFirst.mockResolvedValue({
+      id: 'code-1',
+      verified: false,
+    });
+    (prisma.emailVerification as any).update.mockResolvedValue({
+      id: 'code-1',
+      verified: true,
+    });
     (prisma.uSER as any).update.mockResolvedValue({});
     (prisma.session as any).updateMany.mockResolvedValue({});
     (prisma.session as any).create.mockResolvedValue({ id: 'sess-1' });
 
-    const result = await service.verifyCode({ code: '123456', token: 'tok' } as any);
+    const result = await service.verifyCode({
+      code: '123456',
+      token: 'tok',
+    } as any);
     expect(result).toBe('jwt-out');
   });
 });
@@ -976,7 +1061,10 @@ describe('AuthService - logout', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1028,7 +1116,10 @@ describe('AuthService - updatePassword', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1039,32 +1130,47 @@ describe('AuthService - updatePassword', () => {
 
   it('should throw BadRequestException when passwords are missing', async () => {
     await expect(
-      service.updatePassword({ oldPassword: '', password: '' } as any, { id: 'u1' }),
+      service.updatePassword({ oldPassword: '', password: '' } as any, {
+        id: 'u1',
+      }),
     ).rejects.toThrow('Old password and new password are required');
   });
 
   it('should throw NotFoundException when user is not found', async () => {
     (prisma.uSER as any).findUnique.mockResolvedValue(null);
     await expect(
-      service.updatePassword({ oldPassword: 'old', password: 'new' } as any, { id: 'u1' }),
+      service.updatePassword({ oldPassword: 'old', password: 'new' } as any, {
+        id: 'u1',
+      }),
     ).rejects.toThrow('User not found');
   });
 
   it('should throw BadRequestException when old password is invalid', async () => {
-    (prisma.uSER as any).findUnique.mockResolvedValue({ id: 'u1', password: 'hashed' });
+    (prisma.uSER as any).findUnique.mockResolvedValue({
+      id: 'u1',
+      password: 'hashed',
+    });
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
     await expect(
-      service.updatePassword({ oldPassword: 'wrong', password: 'new' } as any, { id: 'u1' }),
+      service.updatePassword({ oldPassword: 'wrong', password: 'new' } as any, {
+        id: 'u1',
+      }),
     ).rejects.toThrow('Invalid old password');
   });
 
   it('should update password and return true', async () => {
-    (prisma.uSER as any).findUnique.mockResolvedValue({ id: 'u1', password: 'hashed' });
+    (prisma.uSER as any).findUnique.mockResolvedValue({
+      id: 'u1',
+      password: 'hashed',
+    });
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
     (bcrypt.hash as jest.Mock).mockResolvedValue('new-hashed');
     (prisma.uSER as any).update.mockResolvedValue({ id: 'u1' });
 
-    const result = await service.updatePassword({ oldPassword: 'old', password: 'new' } as any, { id: 'u1' });
+    const result = await service.updatePassword(
+      { oldPassword: 'old', password: 'new' } as any,
+      { id: 'u1' },
+    );
     expect(result).toBe(true);
     expect((prisma.uSER as any).update).toHaveBeenCalledWith({
       where: { id: 'u1' },
@@ -1091,7 +1197,10 @@ describe('AuthService - signIn (additional branches)', () => {
         { provide: UserService, useValue: userMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1103,7 +1212,9 @@ describe('AuthService - signIn (additional branches)', () => {
 
   it('should throw for unknown/default user status', async () => {
     userMock.findByEmail.mockResolvedValue({ status: 'unknown_custom_status' });
-    await expect(service.signIn(dataFake)).rejects.toThrow(UnauthorizedException);
+    await expect(service.signIn(dataFake)).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('should return active affiliateId when affiliate profile is active', async () => {
@@ -1120,12 +1231,17 @@ describe('AuthService - signIn (additional branches)', () => {
       role: 'admin',
       affiliateProfile: { id: 'aff-1' },
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ business_unit: 'MedVirtual', status: 'active' });
+    prismaMock.organization.findUnique.mockResolvedValue({
+      business_unit: 'MedVirtual',
+      status: 'active',
+    });
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
     (jwt.sign as jest.Mock).mockReturnValue('mocked-token');
     prismaMock.session.updateMany.mockResolvedValue({});
     prismaMock.session.create.mockResolvedValue({ id: 'session1' });
-    prismaMock.affiliateProfile.findUnique.mockResolvedValue({ status: 'active' });
+    prismaMock.affiliateProfile.findUnique.mockResolvedValue({
+      status: 'active',
+    });
 
     const result = await service.signIn(dataFake);
     expect((result as any).user.affiliate_profile_id).toBe('aff-1');
@@ -1145,12 +1261,17 @@ describe('AuthService - signIn (additional branches)', () => {
       role: 'admin',
       affiliateProfile: { id: 'aff-1' },
     });
-    prismaMock.organization.findUnique.mockResolvedValue({ business_unit: 'MedVirtual', status: 'active' });
+    prismaMock.organization.findUnique.mockResolvedValue({
+      business_unit: 'MedVirtual',
+      status: 'active',
+    });
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
     (jwt.sign as jest.Mock).mockReturnValue('mocked-token');
     prismaMock.session.updateMany.mockResolvedValue({});
     prismaMock.session.create.mockResolvedValue({ id: 'session1' });
-    prismaMock.affiliateProfile.findUnique.mockResolvedValue({ status: 'inactive' });
+    prismaMock.affiliateProfile.findUnique.mockResolvedValue({
+      status: 'inactive',
+    });
 
     const result = await service.signIn(dataFake);
     expect((result as any).user.affiliate_profile_id).toBeNull();
@@ -1175,7 +1296,10 @@ describe('AuthService - verifyCode (additional branches)', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1187,28 +1311,49 @@ describe('AuthService - verifyCode (additional branches)', () => {
   it('should throw when verification code is already verified', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     userServiceMock.findById.mockResolvedValue({ id: 'u1' });
-    (prisma.emailVerification as any).findFirst.mockResolvedValue({ id: 'code-1', verified: true });
-    await expect(service.verifyCode({ code: '123456', token: 'tok' } as any)).rejects.toThrow('Code already verified');
+    (prisma.emailVerification as any).findFirst.mockResolvedValue({
+      id: 'code-1',
+      verified: true,
+    });
+    await expect(
+      service.verifyCode({ code: '123456', token: 'tok' } as any),
+    ).rejects.toThrow('Code already verified');
   });
 
   it('should throw when emailVerification.update returns null', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     userServiceMock.findById.mockResolvedValue({ id: 'u1' });
-    (prisma.emailVerification as any).findFirst.mockResolvedValue({ id: 'code-1', verified: false });
+    (prisma.emailVerification as any).findFirst.mockResolvedValue({
+      id: 'code-1',
+      verified: false,
+    });
     (prisma.emailVerification as any).update.mockResolvedValue(null);
-    await expect(service.verifyCode({ code: '123456', token: 'tok' } as any)).rejects.toThrow('Failed to verify code');
+    await expect(
+      service.verifyCode({ code: '123456', token: 'tok' } as any),
+    ).rejects.toThrow('Failed to verify code');
   });
 
   it('should throw when session.create returns null in verifyCode', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     (jwt.sign as jest.Mock).mockReturnValue('jwt-out');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com' });
-    (prisma.emailVerification as any).findFirst.mockResolvedValue({ id: 'code-1', verified: false });
-    (prisma.emailVerification as any).update.mockResolvedValue({ id: 'code-1', verified: true });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+    });
+    (prisma.emailVerification as any).findFirst.mockResolvedValue({
+      id: 'code-1',
+      verified: false,
+    });
+    (prisma.emailVerification as any).update.mockResolvedValue({
+      id: 'code-1',
+      verified: true,
+    });
     (prisma.uSER as any).update.mockResolvedValue({});
     (prisma.session as any).updateMany.mockResolvedValue({});
     (prisma.session as any).create.mockResolvedValue(null);
-    await expect(service.verifyCode({ code: '123456', token: 'tok' } as any)).rejects.toThrow('Failed to create session');
+    await expect(
+      service.verifyCode({ code: '123456', token: 'tok' } as any),
+    ).rejects.toThrow('Failed to create session');
   });
 });
 
@@ -1227,7 +1372,10 @@ describe('AuthService - logout (additional)', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1238,7 +1386,9 @@ describe('AuthService - logout (additional)', () => {
 
   it('should throw when session.updateMany returns null', async () => {
     (prisma.session as any).updateMany.mockResolvedValue(null);
-    await expect(service.logout('user-1')).rejects.toThrow('Failed to revoke token');
+    await expect(service.logout('user-1')).rejects.toThrow(
+      'Failed to revoke token',
+    );
   });
 });
 
@@ -1262,7 +1412,10 @@ describe('AuthService - inviteUser (additional branches)', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1272,7 +1425,10 @@ describe('AuthService - inviteUser (additional branches)', () => {
 
   it('should throw when organizationId is missing for non-admin role', async () => {
     await expect(
-      service.inviteUser({ email: 'a@b.com', role: 'organization_admin' } as any),
+      service.inviteUser({
+        email: 'a@b.com',
+        role: 'organization_admin',
+      } as any),
     ).rejects.toThrow('Organization Id not provided');
   });
 
@@ -1283,7 +1439,12 @@ describe('AuthService - inviteUser (additional branches)', () => {
     mailServiceMock.sendMail.mockResolvedValue(false);
 
     await expect(
-      service.inviteUser({ email: 'a@b.com', role: 'organization_admin', organizationId: 'org1', companyName: 'Co' } as any),
+      service.inviteUser({
+        email: 'a@b.com',
+        role: 'organization_admin',
+        organizationId: 'org1',
+        companyName: 'Co',
+      } as any),
     ).rejects.toThrow('Failed to send invitation email');
   });
 
@@ -1295,7 +1456,12 @@ describe('AuthService - inviteUser (additional branches)', () => {
     prismaMock.emailInvitation.create.mockResolvedValue(null);
 
     await expect(
-      service.inviteUser({ email: 'a@b.com', role: 'organization_admin', organizationId: 'org1', companyName: 'Co' } as any),
+      service.inviteUser({
+        email: 'a@b.com',
+        role: 'organization_admin',
+        organizationId: 'org1',
+        companyName: 'Co',
+      } as any),
     ).rejects.toThrow('Failed to store invite code');
   });
 });
@@ -1314,7 +1480,10 @@ describe('AuthService - getUser (additional)', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1323,8 +1492,12 @@ describe('AuthService - getUser (additional)', () => {
   });
 
   it('should throw UnauthorizedException when jwt.verify throws', async () => {
-    (jwt.verify as jest.Mock).mockImplementation(() => { throw new Error('bad token'); });
-    await expect(service.getUser({ token: 'bad-token' })).rejects.toThrow('Invalid token');
+    (jwt.verify as jest.Mock).mockImplementation(() => {
+      throw new Error('bad token');
+    });
+    await expect(service.getUser({ token: 'bad-token' })).rejects.toThrow(
+      'Invalid token',
+    );
   });
 });
 
@@ -1345,7 +1518,10 @@ describe('AuthService - invitedUserSignup (additional branches)', () => {
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1354,47 +1530,73 @@ describe('AuthService - invitedUserSignup (additional branches)', () => {
     jest.clearAllMocks();
   });
 
-  const dataFake: any = { token: 'valid-token', password: 'pass123', firstName: 'Test', lastName: 'User' };
+  const dataFake: any = {
+    token: 'valid-token',
+    password: 'pass123',
+    firstName: 'Test',
+    lastName: 'User',
+  };
 
   it('should throw UnauthorizedException when jwt.verify throws', async () => {
-    (jwt.verify as jest.Mock).mockImplementation(() => { throw new Error('bad'); });
-    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow('Invalid token');
+    (jwt.verify as jest.Mock).mockImplementation(() => {
+      throw new Error('bad');
+    });
+    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow(
+      'Invalid token',
+    );
   });
 
   it('should throw when invitation token not found in DB', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     (prisma.emailInvitation as any).findFirst.mockResolvedValue(null);
-    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow('Token not found!');
+    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow(
+      'Token not found!',
+    );
   });
 
   it('should throw when user not found in DB', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
-    (prisma.emailInvitation as any).findFirst.mockResolvedValue({ id: 'inv-1' });
+    (prisma.emailInvitation as any).findFirst.mockResolvedValue({
+      id: 'inv-1',
+    });
     (prisma.uSER as any).findFirst.mockResolvedValue(null);
-    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow('User not found');
+    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow(
+      'User not found',
+    );
   });
 
   it('should throw when session.create returns null', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
     (jwt.sign as jest.Mock).mockReturnValue('jwt-out');
-    (prisma.emailInvitation as any).findFirst.mockResolvedValue({ id: 'inv-1' });
-    (prisma.uSER as any).findFirst.mockResolvedValue({ id: 'u1', email: 'u@test.com' });
+    (prisma.emailInvitation as any).findFirst.mockResolvedValue({
+      id: 'inv-1',
+    });
+    (prisma.uSER as any).findFirst.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+    });
     (prisma.uSER as any).update.mockResolvedValue({ id: 'u1' });
     (prisma.affiliateProfile as any).findUnique.mockResolvedValue(null);
     (prisma.session as any).updateMany.mockResolvedValue({});
     (prisma.session as any).create.mockResolvedValue(null);
-    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow('Failed to create session');
+    await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow(
+      'Failed to create session',
+    );
   });
 
   it('should throw BadRequestException when completing signup for an inactive organization', async () => {
     (jwt.verify as jest.Mock).mockReturnValue({ id: 'u1' });
-    (prisma.emailInvitation as any).findFirst.mockResolvedValue({ id: 'inv-1' });
+    (prisma.emailInvitation as any).findFirst.mockResolvedValue({
+      id: 'inv-1',
+    });
     (prisma.uSER as any).findFirst.mockResolvedValue({
       id: 'u1',
       email: 'u@test.com',
       organization_id: 'org-inactive',
     });
-    (prisma as any).organization = { findUnique: jest.fn().mockResolvedValue({ status: 'inactive' }) };
+    (prisma as any).organization = {
+      findUnique: jest.fn().mockResolvedValue({ status: 'inactive' }),
+    };
 
     await expect(service.invitedUserSignup({ ...dataFake })).rejects.toThrow(
       'Cannot complete signup for an inactive organization',
@@ -1421,7 +1623,10 @@ describe('AuthService - reInviteUser (additional branches)', () => {
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: AffiliateUpdateService, useValue: { reactivate: jest.fn() } },
+        {
+          provide: AffiliateUpdateService,
+          useValue: { reactivate: jest.fn() },
+        },
         { provide: EmailTemplatesService, useValue: mockEmailTemplates },
       ],
     }).compile();
@@ -1432,18 +1637,30 @@ describe('AuthService - reInviteUser (additional branches)', () => {
 
   it('should throw when mail send fails in reInviteUser', async () => {
     (jwt.sign as jest.Mock).mockReturnValue('invite-code');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com', organization_id: 'org1' });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+      organization_id: 'org1',
+    });
     mailServiceMock.sendMail.mockResolvedValue(false);
 
-    await expect(service.reInviteUser('u1')).rejects.toThrow('Failed to send invitation email');
+    await expect(service.reInviteUser('u1')).rejects.toThrow(
+      'Failed to send invitation email',
+    );
   });
 
   it('should throw when emailInvitation.create returns null in reInviteUser', async () => {
     (jwt.sign as jest.Mock).mockReturnValue('invite-code');
-    userServiceMock.findById.mockResolvedValue({ id: 'u1', email: 'u@test.com', organization_id: 'org1' });
+    userServiceMock.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'u@test.com',
+      organization_id: 'org1',
+    });
     mailServiceMock.sendMail.mockResolvedValue(true);
     (prisma.emailInvitation as any).create.mockResolvedValue(null);
 
-    await expect(service.reInviteUser('u1')).rejects.toThrow('Failed to store invite code');
+    await expect(service.reInviteUser('u1')).rejects.toThrow(
+      'Failed to store invite code',
+    );
   });
 });

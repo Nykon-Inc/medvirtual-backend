@@ -7,7 +7,9 @@ export class AdminLoginRowDto {
   @ApiProperty()
   userName: string;
 
-  @ApiProperty({ description: 'Human-readable role label, e.g. "System Admin"' })
+  @ApiProperty({
+    description: 'Human-readable role label, e.g. "System Admin"',
+  })
   role: string;
 
   @ApiProperty()

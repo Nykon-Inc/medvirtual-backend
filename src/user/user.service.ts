@@ -33,6 +33,7 @@ export class UserService {
 
     const newUserData = {
       ...rest,
+      email: rest.email.toLowerCase().trim(),
       password: hash,
       // Set default creation tracking if not provided
       createdByMethod: rest.createdByMethod || 'self_signup',
@@ -1015,9 +1016,11 @@ export class UserService {
     currentUser: USER,
   ): Promise<string> {
     try {
+      const normalizedEmail = inviteData.email.toLowerCase().trim();
+
       // Check if user already exists
-      const existingUser = await this.prisma.uSER.findUnique({
-        where: { email: inviteData.email },
+      const existingUser = await this.prisma.uSER.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       });
 
       if (existingUser) {
@@ -1042,7 +1045,7 @@ export class UserService {
       // Create the user with invited status
       const newUser = await this.prisma.uSER.create({
         data: {
-          email: inviteData.email,
+          email: normalizedEmail,
           first_name: inviteData.first_name || '',
           last_name: inviteData.last_name || '',
           phone: inviteData.phone || '',

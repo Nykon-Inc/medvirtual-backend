@@ -787,6 +787,8 @@ model Staff {
   organization            Organization? @relation(fields: [organization_id], references: [id])
   tickets                 Ticket[]
   replaced_in_requests    HireRequest[] @relation("StaffToBeReplaced")
+  hubspotLineItemMatches  HubspotLineItemSnapshot[]
+  affiliateCommissions    AffiliateCommission[]
 
   @@index([candidate_id], map: "idx_staff_candidate_id")
   @@index([hirerequest_id], map: "idx_staff_hirerequest_id")
@@ -980,54 +982,76 @@ model HubspotInvoiceSnapshot {
 }
 
 model HubspotLineItemSnapshot {
-  id          String   @id @default(uuid())
-  hubspot_id  String   @unique
-  invoice_id  String
-  name        String?
-  description String?
-  quantity    String?
-  amount      Decimal? @db.Decimal(14, 2)
-  discount    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  invoice HubspotInvoiceSnapshot @relation(fields: [invoice_id], references: [id])
+  id           String   @id @default(uuid())
+  hubspot_id   String   @unique
+  invoice_id   String
+  name         String?
+  description  String?
+  quantity     String?
+  amount       Decimal? @db.Decimal(14, 2)
+  discount     String?
+  // Per-collaborator matching (line item name → Staff), see StaffMatchingService.
+  staff_id     String?
+  // 'matched' | 'unmatched' | 'ambiguous' | 'not_applicable' (not a collaborator payment)
+  match_status String?
+  // 'auto' | 'admin_manual' — distinguishes an algorithmic match from an admin's manual link
+  matched_by   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  invoice    HubspotInvoiceSnapshot       @relation(fields: [invoice_id], references: [id])
+  staff      Staff?                       @relation(fields: [staff_id], references: [id])
+  commissions AffiliateCommission[]
+  reviewCases MedAllianceAdminReviewCase[]
 
   @@index([invoice_id], map: "idx_hubspot_line_item_snapshots_invoice_id")
+  @@index([staff_id], map: "idx_hubspot_line_item_snapshots_staff_id")
+  @@index([match_status], map: "idx_hubspot_line_item_snapshots_match_status")
 }
 
 model AffiliateCommission {
-  id                          String           @id @default(uuid())
-  affiliate_id                String
-  affiliate_profile_id        String
-  organization_id             String
-  hubspot_invoice_snapshot_id String
-  commission_percent_snapshot Decimal          @db.Decimal(5, 2)
-  base_amount_snapshot        Decimal          @db.Decimal(14, 2)
-  commission_amount           Decimal          @db.Decimal(14, 2)
-  status                      CommissionStatus @default(detected)
-  idempotency_key             String           @unique
-  admin_decision_by           String?
-  admin_decision_reason       String?
-  admin_decision_at           DateTime?
-  createdAt                   DateTime         @default(now())
-  updatedAt                   DateTime         @updatedAt
+  id                            String           @id @default(uuid())
+  affiliate_id                  String
+  affiliate_profile_id          String
+  organization_id               String
+  hubspot_invoice_snapshot_id   String
+  // The specific line item (collaborator payment) this commission was computed from.
+  // Nullable to preserve legacy pre-per-collaborator rows created under the old invoice-level logic.
+  hubspot_line_item_snapshot_id String?
+  // Denormalized for fast per-collaborator queries/reporting without joining through the line item.
+  staff_id                      String?
+  commission_percent_snapshot   Decimal          @db.Decimal(5, 2)
+  base_amount_snapshot          Decimal          @db.Decimal(14, 2)
+  commission_amount             Decimal          @db.Decimal(14, 2)
+  status                        CommissionStatus @default(detected)
+  idempotency_key               String           @unique
+  admin_decision_by             String?
+  admin_decision_reason         String?
+  admin_decision_at             DateTime?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
 
   affiliate                USER                               @relation("AffiliateCommissions", fields: [affiliate_id], references: [id])
   // Back-relation to AffiliateProfile — enables AffiliateProfile.commissions[]
   affiliateProfile         AffiliateProfile                   @relation(fields: [affiliate_profile_id], references: [id])
   organization             Organization                       @relation(fields: [organization_id], references: [id])
   hubspotInvoiceSnapshot   HubspotInvoiceSnapshot             @relation(fields: [hubspot_invoice_snapshot_id], references: [id])
+  hubspotLineItemSnapshot  HubspotLineItemSnapshot?           @relation(fields: [hubspot_line_item_snapshot_id], references: [id])
+  staff                    Staff?                             @relation(fields: [staff_id], references: [id])
   adminDecisionBy          USER?                              @relation("CommissionAdminDecision", fields: [admin_decision_by], references: [id])
   // Junction records linking this commission to payout requests
   payoutRequestCommissions AffiliatePayoutRequestCommission[]
 
-  // Enforces one commission per invoice snapshot — closes the gap left by the hash-based idempotency_key
-  @@unique([hubspot_invoice_snapshot_id], map: "uq_affiliate_commissions_invoice_snapshot")
+  // Enforces one commission per line item — supersedes the old invoice-level uniqueness now that
+  // commission is computed per collaborator payment, not per whole invoice. Legacy rows with a null
+  // hubspot_line_item_snapshot_id are exempt (Postgres treats NULLs as distinct for unique indexes).
+  @@unique([hubspot_line_item_snapshot_id], map: "uq_affiliate_commissions_line_item_snapshot")
   // Scoped listing: all commissions for a given affiliate filtered by status
   @@index([affiliate_id, status], map: "idx_affiliate_commissions_affiliate_status")
   // Scoped listing: all commissions for a given organization filtered by status
   @@index([organization_id, status], map: "idx_affiliate_commissions_org_status")
   @@index([status], map: "idx_affiliate_commissions_status")
+  @@index([staff_id], map: "idx_affiliate_commissions_staff_id")
+  @@index([hubspot_invoice_snapshot_id], map: "idx_affiliate_commissions_invoice_snapshot_id")
 }
 
 model AffiliatePayoutRequest {
@@ -1128,19 +1152,29 @@ model MedAllianceAdminReviewCase {
   organization_id String
   reason_code     AdminReviewReasonCode
   status          AdminReviewStatus     @default(open)
+  // Scopes the case to a specific line item for unmatched_line_item/ambiguous_line_item cases
+  // (one company can have several unmatched line items at once — each needs its own case).
+  // Null for every other reason_code, which stays org-scoped as before.
+  hubspot_line_item_snapshot_id String?
   metadata Json?
   resolved_by_id String?
   resolved_at    DateTime?
   resolution      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  organization Organization @relation(fields: [organization_id], references: [id])
-  resolvedBy   USER?        @relation("ReviewCaseResolvedBy", fields: [resolved_by_id], references: [id])
+  organization Organization              @relation(fields: [organization_id], references: [id])
+  resolvedBy   USER?                     @relation("ReviewCaseResolvedBy", fields: [resolved_by_id], references: [id])
+  lineItem     HubspotLineItemSnapshot?  @relation(fields: [hubspot_line_item_snapshot_id], references: [id])
 
-  @@unique([organization_id, reason_code, status], name: "uq_open_review_case")
+  // NULLS NOT DISTINCT would be ideal here, but Postgres unique indexes already treat multiple
+  // NULLs in hubspot_line_item_snapshot_id as distinct rows — which is exactly what we want:
+  // org-scoped reason codes (line item = null) keep today's single-open-case-per-reason behavior,
+  // while line-item-scoped reason codes get one open case per line item.
+  @@unique([organization_id, reason_code, status, hubspot_line_item_snapshot_id], name: "uq_open_review_case")
   @@index([organization_id], map: "idx_review_cases_org")
   @@index([status], map: "idx_review_cases_status")
   @@index([reason_code], map: "idx_review_cases_reason_code")
+  @@index([hubspot_line_item_snapshot_id], map: "idx_review_cases_line_item")
 }
 
 // Per-organization billing settings. One row per Organization (1:1). Everything the
@@ -1430,6 +1464,7 @@ enum MedAllianceEntityType {
   referred_company
   commission
   payout_request
+  review_case
 }
 
 // Eligibility status within the Med Alliance affiliate program.
@@ -1449,6 +1484,8 @@ enum AdminReviewReasonCode {
   reconciliation_invoice_changed // A paid invoice was updated in HubSpot after commission was already detected
   soft_duplicate_referral // A referred org appears to match an existing referred org (name/email similarity)
   org_deleted_with_pending_payout // Org was deleted in HubSpot while commissions sit in a pending payout request — admin must decide pay vs void
+  unmatched_line_item // Invoice line item name didn't match any Staff in the organization — admin must manually link it or mark it not a collaborator
+  ambiguous_line_item // Invoice line item name matched 2+ Staff in the organization — admin must pick the correct one
 }
 
 enum AdminReviewStatus {

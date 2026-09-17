@@ -44,6 +44,8 @@ describe('UpdateBusinessUnitDto', () => {
 
   it('accepts "medical" and "non_medical" candidate_pool values', async () => {
     expect(await validateDto({ candidate_pool: 'medical' })).toHaveLength(0);
-    expect(await validateDto({ candidate_pool: 'non_medical' })).toHaveLength(0);
+    expect(await validateDto({ candidate_pool: 'non_medical' })).toHaveLength(
+      0,
+    );
   });
 });

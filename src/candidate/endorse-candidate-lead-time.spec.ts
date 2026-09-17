@@ -39,7 +39,11 @@ const mockPrisma = {
   },
 };
 
-const s3Mock = { uploadFile: jest.fn(), getFile: jest.fn(), deleteFile: jest.fn() };
+const s3Mock = {
+  uploadFile: jest.fn(),
+  getFile: jest.fn(),
+  deleteFile: jest.fn(),
+};
 const googleMock = { downloadFile: jest.fn() };
 const openAIMock = { organizeText: jest.fn() };
 const hubspotMock = {
@@ -53,7 +57,11 @@ const notificationsMock = {
   notifyPanelCandidateBlocked: jest.fn(),
 };
 const positionRateConfigMock = {
-  findAll: jest.fn().mockResolvedValue({ status: 200, data: [], meta: { total: 0, page: 1, perPage: 10, totalPages: 0 } }),
+  findAll: jest.fn().mockResolvedValue({
+    status: 200,
+    data: [],
+    meta: { total: 0, page: 1, perPage: 10, totalPages: 0 },
+  }),
   findAllUnpaginated: jest.fn().mockResolvedValue([]),
 };
 const businessUnitContextMock = {
@@ -109,10 +117,16 @@ describe('CandidatesService.endorseCandidate — 48h panel-candidate lead time',
         { provide: MailService, useValue: mailMock },
         { provide: HireRequestService, useValue: hireRequestMock },
         { provide: NotificationsService, useValue: notificationsMock },
-        { provide: PositionRateConfigService, useValue: positionRateConfigMock },
+        {
+          provide: PositionRateConfigService,
+          useValue: positionRateConfigMock,
+        },
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
         { provide: CandidateAuditService, useValue: candidateAuditMock },
-        { provide: Logger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        {
+          provide: Logger,
+          useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        },
       ],
     }).compile();
 

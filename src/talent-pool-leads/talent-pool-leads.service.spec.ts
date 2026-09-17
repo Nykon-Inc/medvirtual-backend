@@ -190,7 +190,10 @@ describe('TalentPoolLeadsService', () => {
       mockPrisma.organization.findFirst.mockResolvedValue(null);
       // No pre-existing org, so the service creates one before the ticket. Without this
       // mock the surrounding try/catch swallows the failure and no ticket is ever created.
-      mockPrisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Healthcare Organization' });
+      mockPrisma.organization.create.mockResolvedValue({
+        id: 'org-1',
+        name: 'Healthcare Organization',
+      });
       mockPrisma.uSER.findUnique.mockResolvedValue(null);
       mockPrisma.ticket.create.mockResolvedValue({
         id: 'ticket-1',
@@ -273,7 +276,8 @@ describe('TalentPoolLeadsService', () => {
       mockPrisma.talentPoolLead.create.mockResolvedValue({
         id: 'lead-1',
         name: '&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;John Doe',
-        first_name: '&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;John',
+        first_name:
+          '&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;John',
         last_name: 'Doe',
         email: 'john@healthcare.com',
         organization: 'Healthcare Org',
@@ -319,7 +323,11 @@ describe('TalentPoolLeadsService', () => {
         status: 'new',
         created_at: new Date(),
       };
-      const mockCreatedOrg = { id: 'org-1', hubspot_id: null, name: 'Healthcare Organization' };
+      const mockCreatedOrg = {
+        id: 'org-1',
+        hubspot_id: null,
+        name: 'Healthcare Organization',
+      };
       const mockCreatedContact = { id: 'contact-1', hubspot_id: null };
 
       mockPrisma.talentPoolLead.count.mockResolvedValue(0);
@@ -327,7 +335,10 @@ describe('TalentPoolLeadsService', () => {
       mockPrisma.talentPoolLead.create.mockResolvedValue(mockCreatedLead);
       mockPrisma.organization.findFirst.mockResolvedValue(null);
       mockPrisma.organization.create.mockResolvedValue(mockCreatedOrg);
-      mockPrisma.organization.update.mockResolvedValue({ ...mockCreatedOrg, hubspot_id: 'hs-org-1' });
+      mockPrisma.organization.update.mockResolvedValue({
+        ...mockCreatedOrg,
+        hubspot_id: 'hs-org-1',
+      });
       mockPrisma.uSER.findUnique.mockResolvedValue(null);
       mockPrisma.ticket.create.mockResolvedValue({
         id: 'ticket-1',
@@ -338,9 +349,12 @@ describe('TalentPoolLeadsService', () => {
       });
       mockPrisma.contact.findFirst.mockResolvedValue(null);
       mockPrisma.contact.create.mockResolvedValue(mockCreatedContact);
-      mockPrisma.contact.update.mockResolvedValue({ ...mockCreatedContact, hubspot_id: 'hs-c-1' });
+      mockPrisma.contact.update.mockResolvedValue({
+        ...mockCreatedContact,
+        hubspot_id: 'hs-c-1',
+      });
       mockPrisma.candidate.findUnique.mockResolvedValue(null);
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post
         .mockResolvedValueOnce({ data: { id: 'hs-org-1' } }) // HubSpot org sync
         .mockResolvedValueOnce({ data: { id: 'hs-c-1' } }); // HubSpot contact sync
@@ -746,7 +760,9 @@ describe('TalentPoolLeadsService', () => {
         assignedTo: null,
       };
 
-      mockPrisma.talentPoolLead.findUnique.mockResolvedValue(leadWithContactedAt);
+      mockPrisma.talentPoolLead.findUnique.mockResolvedValue(
+        leadWithContactedAt,
+      );
       mockPrisma.talentPoolLead.update.mockResolvedValue(updatedLead);
 
       await service.update('lead-1', updateDto);
@@ -763,4 +779,3 @@ describe('TalentPoolLeadsService', () => {
     });
   });
 });
-

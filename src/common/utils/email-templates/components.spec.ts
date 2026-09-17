@@ -34,7 +34,9 @@ describe('email logo helpers', () => {
     });
 
     it('should fall back to the MedVirtual logo when none is configured', () => {
-      expect(getLogoUrl(theme())).toBe('https://staging.medvirtual.ai/logo.png');
+      expect(getLogoUrl(theme())).toBe(
+        'https://staging.medvirtual.ai/logo.png',
+      );
     });
 
     it('should fall back to MedVirtual when no theme is provided', () => {

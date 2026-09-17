@@ -253,7 +253,11 @@ describe('StaffService', () => {
         .mockResolvedValueOnce(mockFindOneResult);
       mockPrisma.uSER.findUnique.mockResolvedValue({ id: 'user-1' });
       mockPrisma.bonus.create.mockResolvedValue({ id: 'bonus-1' });
-      mockPrisma.ticket.create.mockResolvedValue({ id: 'ticket-1', status: 'new', type: 'bonus' });
+      mockPrisma.ticket.create.mockResolvedValue({
+        id: 'ticket-1',
+        status: 'new',
+        type: 'bonus',
+      });
       mockPrisma.$transaction.mockImplementation((arr: any[]) =>
         Promise.all(arr),
       );
@@ -420,7 +424,11 @@ describe('StaffService', () => {
         id: 'staff-1',
         status: 'termination-requested',
       });
-      mockPrisma.ticket.create.mockResolvedValue({ id: 'ticket-1', status: 'new', type: 'termination' });
+      mockPrisma.ticket.create.mockResolvedValue({
+        id: 'ticket-1',
+        status: 'new',
+        type: 'termination',
+      });
       mockPrisma.$transaction.mockImplementation((arr: any[]) =>
         Promise.all(arr),
       );
@@ -1327,7 +1335,7 @@ describe('StaffService', () => {
     let axiosMock: jest.Mocked<any>;
 
     beforeEach(() => {
-      axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      axiosMock = jest.requireMock('axios');
       jest.clearAllMocks();
     });
 

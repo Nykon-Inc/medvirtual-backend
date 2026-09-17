@@ -53,14 +53,18 @@ describe('PusherService', () => {
 
       await service.trigger('my-channel', 'my-event', { text: 'hello' });
 
-      expect(mockTrigger).toHaveBeenCalledWith('my-channel', 'my-event', { text: 'hello' });
+      expect(mockTrigger).toHaveBeenCalledWith('my-channel', 'my-event', {
+        text: 'hello',
+      });
     });
 
     it('should throw an error if trigger fails', async () => {
       const error = new Error('Pusher Error');
       mockTrigger.mockRejectedValueOnce(error);
 
-      await expect(service.trigger('my-channel', 'my-event', {})).rejects.toThrow('Pusher Error');
+      await expect(
+        service.trigger('my-channel', 'my-event', {}),
+      ).rejects.toThrow('Pusher Error');
     });
 
     it('should not call trigger if Pusher is not initialized', async () => {
@@ -74,14 +78,22 @@ describe('PusherService', () => {
   describe('authenticate', () => {
     it('should call pusher.authenticate', () => {
       mockAuthenticate.mockReturnValueOnce('auth-response');
-      const res = service.authenticate('socket-id', 'presence-channel', { user_id: '1' });
-      expect(mockAuthenticate).toHaveBeenCalledWith('socket-id', 'presence-channel', { user_id: '1' });
+      const res = service.authenticate('socket-id', 'presence-channel', {
+        user_id: '1',
+      });
+      expect(mockAuthenticate).toHaveBeenCalledWith(
+        'socket-id',
+        'presence-channel',
+        { user_id: '1' },
+      );
       expect(res).toBe('auth-response');
     });
 
     it('should throw error if Pusher is not initialized', () => {
       (service as any).pusher = null;
-      expect(() => service.authenticate('socket-id', 'channel')).toThrow('Pusher is not initialized');
+      expect(() => service.authenticate('socket-id', 'channel')).toThrow(
+        'Pusher is not initialized',
+      );
     });
   });
 });

@@ -1051,135 +1051,135 @@ export class CronService {
   }
 
   /**
-   * Sweeps referred companies whose deployment_date passed 365 days ago and marks them
-   * 'expired'. Replaces the old 30-day promotion behavior — decisions (Confirm/Block) are now
-   * available immediately on deploy, so there is nothing left to "promote" after 30 days.
-   *
-   * referral_stage: 'deployed' structurally excludes 'canceled' orgs already (a single enum
-   * column can't hold both values at once) — no extra exclusion clause is needed here, unlike
-   * the notIn-style guards used elsewhere in this codebase for the same canceled-org rule.
+   * DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+   * spec doc §4.6): this swept referred companies whose deployment_date passed 365 days ago
+   * and auto-set med_alliance_referral_status='expired' with zero admin involvement — exactly
+   * the automatic status transition the plan removes. Company eligibility status is now
+   * exclusively a manual admin decision via the Confirm/Block endpoints. Its only caller
+   * (cron.controller.ts's GET /cron/expire-stale-eligibility) now returns 410 without invoking
+   * this method. Kept here, inert, so the reasoning isn't lost if this needs revisiting.
    */
-  async expireStaleEligibility(): Promise<{
-    companiesExpired: number;
-    errors: string[];
-  }> {
-    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-    const now = new Date();
-    const oneYearAgo = new Date(now.getTime() - ONE_YEAR_MS);
-
-    const orgs = await this.prisma.organization.findMany({
-      where: {
-        referral_stage: 'deployed' as any,
-        referred_by_affiliate_id: { not: null },
-        deployment_date: { lte: oneYearAgo },
-        med_alliance_referral_status: {
-          in: ['pending_confirmation', 'eligible', 'not_eligible'] as any,
-        },
-        status: { not: 'deleted' },
-      },
-      select: {
-        id: true,
-        name: true,
-        deployment_date: true,
-        med_alliance_referral_status: true,
-      },
-    });
-
-    let companiesExpired = 0;
-    const errors: string[] = [];
-    const expiredEntries: ExpiredCompanyEntry[] = [];
-
-    for (const org of orgs) {
-      try {
-        console.log(
-          `Expiring org ${org.id} (${org.name}): deployment_date=${org.deployment_date}, status=${org.med_alliance_referral_status}`,
-        );
-
-        await this.prisma.organization.update({
-          where: { id: org.id },
-          data: {
-            med_alliance_referral_status: 'expired' as any,
-            med_alliance_block_reason: null,
-          },
-        });
-        await this.prisma.medAllianceAuditLog.create({
-          data: {
-            entity_type: 'referred_company',
-            entity_id: org.id,
-            event: 'eligibility_expired',
-            old_status: org.med_alliance_referral_status,
-            new_status: 'expired',
-            reason: 'Cron sweep — deployment_date passed 365 days',
-            source: 'cron',
-            actor_user_id: null,
-            metadata: {
-              deployment_date: org.deployment_date?.toISOString(),
-            } as any,
-          },
-        });
-        companiesExpired++;
-
-        expiredEntries.push({
-          orgId: org.id,
-          orgName: org.name ?? org.id,
-          deploymentDate: org.deployment_date
-            ? org.deployment_date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })
-            : 'N/A',
-          previousStatus: org.med_alliance_referral_status ?? 'unknown',
-        });
-      } catch (err: any) {
-        const msg = `Failed to expire org ${org.id}: ${err?.message ?? err}`;
-        console.error(msg);
-        errors.push(msg);
-      }
-    }
-
-    console.log(
-      `expireStaleEligibility: expired=${companiesExpired}, errors=${errors.length}`,
-    );
-
-    if (companiesExpired > 0) {
-      try {
-        const runDate = now.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        const tplExpired = await this.getCronTplContent(
-          'med-alliance-expired-eligibility',
-          {
-            '{{reportDate}}': runDate,
-            '{{expiredCount}}': String(companiesExpired),
-            '{{errorCount}}': String(errors.length),
-            '{{reportContent}}': '(see attached report)',
-          },
-        );
-        await this.mailService.sendMail({
-          from: 'MedVirtual <noreply@medvirtual.ai>',
-          to: ['paulo@regenta.ai'],
-          subject:
-            tplExpired?.subject ??
-            `Med Alliance — Expired Eligibility Report (${runDate})`,
-          html: medAllianceExpiredEligibilityReport(
-            expiredEntries,
-            errors,
-            now,
-          ),
-        });
-      } catch (mailError) {
-        console.error(
-          'expireStaleEligibility: failed to send report email:',
-          mailError,
-        );
-      }
-    }
-
-    return { companiesExpired, errors };
-  }
+  // async expireStaleEligibility(): Promise<{
+  //   companiesExpired: number;
+  //   errors: string[];
+  // }> {
+  //   const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+  //   const now = new Date();
+  //   const oneYearAgo = new Date(now.getTime() - ONE_YEAR_MS);
+  //
+  //   const orgs = await this.prisma.organization.findMany({
+  //     where: {
+  //       referral_stage: 'deployed' as any,
+  //       referred_by_affiliate_id: { not: null },
+  //       deployment_date: { lte: oneYearAgo },
+  //       med_alliance_referral_status: {
+  //         in: ['pending_confirmation', 'eligible', 'not_eligible'] as any,
+  //       },
+  //       status: { not: 'deleted' },
+  //     },
+  //     select: {
+  //       id: true,
+  //       name: true,
+  //       deployment_date: true,
+  //       med_alliance_referral_status: true,
+  //     },
+  //   });
+  //
+  //   let companiesExpired = 0;
+  //   const errors: string[] = [];
+  //   const expiredEntries: ExpiredCompanyEntry[] = [];
+  //
+  //   for (const org of orgs) {
+  //     try {
+  //       console.log(
+  //         `Expiring org ${org.id} (${org.name}): deployment_date=${org.deployment_date}, status=${org.med_alliance_referral_status}`,
+  //       );
+  //
+  //       await this.prisma.organization.update({
+  //         where: { id: org.id },
+  //         data: {
+  //           med_alliance_referral_status: 'expired' as any,
+  //           med_alliance_block_reason: null,
+  //         },
+  //       });
+  //       await this.prisma.medAllianceAuditLog.create({
+  //         data: {
+  //           entity_type: 'referred_company',
+  //           entity_id: org.id,
+  //           event: 'eligibility_expired',
+  //           old_status: org.med_alliance_referral_status,
+  //           new_status: 'expired',
+  //           reason: 'Cron sweep — deployment_date passed 365 days',
+  //           source: 'cron',
+  //           actor_user_id: null,
+  //           metadata: {
+  //             deployment_date: org.deployment_date?.toISOString(),
+  //           } as any,
+  //         },
+  //       });
+  //       companiesExpired++;
+  //
+  //       expiredEntries.push({
+  //         orgId: org.id,
+  //         orgName: org.name ?? org.id,
+  //         deploymentDate: org.deployment_date
+  //           ? org.deployment_date.toLocaleDateString('en-US', {
+  //               year: 'numeric',
+  //               month: 'short',
+  //               day: 'numeric',
+  //             })
+  //           : 'N/A',
+  //         previousStatus: org.med_alliance_referral_status ?? 'unknown',
+  //       });
+  //     } catch (err: any) {
+  //       const msg = `Failed to expire org ${org.id}: ${err?.message ?? err}`;
+  //       console.error(msg);
+  //       errors.push(msg);
+  //     }
+  //   }
+  //
+  //   console.log(
+  //     `expireStaleEligibility: expired=${companiesExpired}, errors=${errors.length}`,
+  //   );
+  //
+  //   if (companiesExpired > 0) {
+  //     try {
+  //       const runDate = now.toLocaleDateString('en-US', {
+  //         month: 'short',
+  //         day: 'numeric',
+  //         year: 'numeric',
+  //       });
+  //       const tplExpired = await this.getCronTplContent(
+  //         'med-alliance-expired-eligibility',
+  //         {
+  //           '{{reportDate}}': runDate,
+  //           '{{expiredCount}}': String(companiesExpired),
+  //           '{{errorCount}}': String(errors.length),
+  //           '{{reportContent}}': '(see attached report)',
+  //         },
+  //       );
+  //       await this.mailService.sendMail({
+  //         from: 'MedVirtual <noreply@medvirtual.ai>',
+  //         to: ['paulo@regenta.ai'],
+  //         subject:
+  //           tplExpired?.subject ??
+  //           `Med Alliance — Expired Eligibility Report (${runDate})`,
+  //         html: medAllianceExpiredEligibilityReport(
+  //           expiredEntries,
+  //           errors,
+  //           now,
+  //         ),
+  //       });
+  //     } catch (mailError) {
+  //       console.error(
+  //         'expireStaleEligibility: failed to send report email:',
+  //         mailError,
+  //       );
+  //     }
+  //   }
+  //
+  //   return { companiesExpired, errors };
+  // }
 
   /**
    * Syncs referred organizations against HubSpot:
@@ -1205,12 +1205,12 @@ export class CronService {
     if (organizationId) {
       orgIds = [organizationId];
     } else {
-      //Since this cron goals is to ingest invoice and create commissions, 
+      //Since this cron goals is to ingest invoice and create commissions,
       // we only retrieve active organizations which have referred_by_affiliate_id set (i.e. referred companies)
       const orgs = await this.prisma.organization.findMany({
-        where: { 
+        where: {
           status: 'active',
-          referred_by_affiliate_id: { not: null }   
+          referred_by_affiliate_id: { not: null },
         },
         select: { id: true },
         orderBy: { updatedAt: 'asc' },
@@ -1287,6 +1287,7 @@ export class CronService {
         outcome: r.phaseA.outcome,
         hubspotCompanyId: r.phaseA.hubspotCompanyId,
         invoices: r.phaseB?.invoices,
+        lineItems: r.phaseB?.lineItems,
         commissions: r.phaseB?.commissions,
         error: r.phaseA.error,
       })),
@@ -1298,17 +1299,31 @@ export class CronService {
       })),
     ];
 
+    // Organizations with unmatched/ambiguous line items also need admin attention — this is
+    // the same alert as the review-case dashboard's "cases open longer than X days" counter,
+    // just surfaced at sync-run level rather than dashboard level (spec doc §4.5).
     const needsAttention = allEntries.filter(
-      (e) => attentionOutcomes.has(e.outcome) || e.outcome === 'sync_failed',
+      (e) =>
+        attentionOutcomes.has(e.outcome) ||
+        e.outcome === 'sync_failed' ||
+        (e.lineItems?.unmatched ?? 0) > 0 ||
+        (e.lineItems?.ambiguous ?? 0) > 0,
     );
 
     const totals = allEntries.reduce(
       (acc, e) => {
         acc.invoicesCreated += e.invoices?.created ?? 0;
         acc.commissionsCreated += e.commissions?.created ?? 0;
+        acc.lineItemsUnmatched += e.lineItems?.unmatched ?? 0;
+        acc.lineItemsAmbiguous += e.lineItems?.ambiguous ?? 0;
         return acc;
       },
-      { invoicesCreated: 0, commissionsCreated: 0 },
+      {
+        invoicesCreated: 0,
+        commissionsCreated: 0,
+        lineItemsUnmatched: 0,
+        lineItemsAmbiguous: 0,
+      },
     );
 
     const runAt = new Date();

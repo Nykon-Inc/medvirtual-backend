@@ -595,7 +595,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).approvedBy.id).toBe('admin-1');
+      expect(result.approvedBy.id).toBe('admin-1');
     });
 
     it('should flatten the widened hubspotInvoiceSnapshot fields with the invoice_ prefix', async () => {
@@ -638,7 +638,7 @@ describe('PayoutRequestsService', () => {
       );
 
       const result = await service.findOneForAdmin('payout-1');
-      const commission = (result as any).commissions[0];
+      const commission = result.commissions[0];
 
       expect(commission.invoice_hubspot_id).toBe('hs-123');
       expect(commission.invoice_currency).toBe('USD');
@@ -676,7 +676,7 @@ describe('PayoutRequestsService', () => {
       });
 
       const result = await service.findOneForAdmin('payout-1');
-      const commission = (result as any).commissions[0];
+      const commission = result.commissions[0];
 
       expect(commission.invoice_hubspot_id).toBeNull();
       expect(commission.invoice_currency).toBeNull();
@@ -1257,8 +1257,8 @@ describe('PayoutRequestsService', () => {
       );
 
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-      expect((result as any).status).toBe('cancelled');
-      expect((result as any).id).toBe('payout-1');
+      expect(result.status).toBe('cancelled');
+      expect(result.id).toBe('payout-1');
     });
 
     it('should throw BadRequestException when status is "approved"', async () => {
@@ -1455,8 +1455,8 @@ describe('PayoutRequestsService', () => {
         mockAdminUser,
       );
 
-      expect((result as any).status).toBe('cancelled');
-      expect((result as any).id).toBe('payout-1');
+      expect(result.status).toBe('cancelled');
+      expect(result.id).toBe('payout-1');
     });
   });
 
@@ -1864,7 +1864,8 @@ describe('PayoutRequestsService', () => {
 
       await service.findAllForAdmin({ search: 'INV-1234' });
 
-      const { where } = mockPrisma.affiliatePayoutRequest.findMany.mock.calls[0][0];
+      const { where } =
+        mockPrisma.affiliatePayoutRequest.findMany.mock.calls[0][0];
       expect(where.OR).toEqual(
         expect.arrayContaining([
           {
@@ -2532,9 +2533,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].decision).toBe(
-        'approved_for_payout',
-      );
+      expect(result.commissions[0].decision).toBe('approved_for_payout');
     });
 
     it('should map "requested" commission status to "pending_review"', async () => {
@@ -2544,7 +2543,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].decision).toBe('pending_review');
+      expect(result.commissions[0].decision).toBe('pending_review');
     });
 
     it('should map "eligible" commission status to "pending_review"', async () => {
@@ -2554,7 +2553,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].decision).toBe('pending_review');
+      expect(result.commissions[0].decision).toBe('pending_review');
     });
 
     it('should map "rejected" commission status to "rejected_for_payout"', async () => {
@@ -2564,9 +2563,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].decision).toBe(
-        'rejected_for_payout',
-      );
+      expect(result.commissions[0].decision).toBe('rejected_for_payout');
     });
 
     it('should map unknown commission status to "pending_review"', async () => {
@@ -2576,7 +2573,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].decision).toBe('pending_review');
+      expect(result.commissions[0].decision).toBe('pending_review');
     });
   });
 
@@ -2630,9 +2627,7 @@ describe('PayoutRequestsService', () => {
 
       const result = await service.findOneForAdmin('payout-1');
 
-      expect((result as any).commissions[0].created_at).toBe(
-        commissionCreatedAt,
-      );
+      expect(result.commissions[0].created_at).toBe(commissionCreatedAt);
     });
   });
 });

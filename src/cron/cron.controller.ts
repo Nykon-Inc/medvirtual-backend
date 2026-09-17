@@ -194,22 +194,33 @@ export class CronController {
     };
   }
 
+  // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+  // spec doc §4.6): this route drove automatic day-count expiry of med_alliance_referral_status
+  // with zero admin involvement — exactly the automatic status transition the plan removes.
+  // Company eligibility status is now exclusively a manual admin decision via the
+  // Confirm/Block endpoints. Kept as a 410 (not silently 404) so the external scheduler
+  // hitting this route gets a clear, permanent signal rather than a routing ambiguity.
   @Get('expire-stale-eligibility')
   @ApiOperation({
     summary:
-      'Expire referred companies whose deployment_date passed 365 days, regardless of their current eligibility decision',
+      'DISABLED — company eligibility status is now exclusively a manual admin decision (spec doc §4.6). This route no longer performs any automatic expiry.',
   })
   @ApiResponse({
-    status: 200,
-    description: 'Stale eligibility expiry sweep completed',
+    status: 410,
+    description: 'Disabled — automatic eligibility expiry has been removed',
   })
   async expireStaleEligibility() {
-    const result = await this.cron.expireStaleEligibility();
     return {
-      status: 200,
-      message: 'Stale eligibility expiry sweep completed',
-      data: result,
+      status: 410,
+      message:
+        'This automatic expiry sweep has been disabled — company eligibility status is now exclusively a manual admin decision (Confirm/Block). See spec doc §4.6.',
     };
+    // const result = await this.cron.expireStaleEligibility();
+    // return {
+    //   status: 200,
+    //   message: 'Stale eligibility expiry sweep completed',
+    //   data: result,
+    // };
   }
 
   @Get('daily-commission-summary')
@@ -232,7 +243,6 @@ export class CronController {
     };
   }
 
-  
   @Get('weekly-offer-panel-report')
   @ApiOperation({
     summary:

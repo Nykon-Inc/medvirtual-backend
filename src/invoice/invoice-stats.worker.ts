@@ -29,7 +29,9 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
 
   async onModuleInit() {
     if (!queuesEnabled(this.configService)) {
-      this.logger.warn('LOCAL mode — invoice stats recurring job NOT scheduled.');
+      this.logger.warn(
+        'LOCAL mode — invoice stats recurring job NOT scheduled.',
+      );
       return;
     }
     // Schedule the stats computation to run every 2 hours. jobId pins this to a single
@@ -68,7 +70,10 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
       this.logger.log(`Found ${cycles.length} billing cycles to process`);
 
       for (const cycle of cycles) {
-        await this.processCycle(cycle.billing_start_date, cycle.billing_end_date);
+        await this.processCycle(
+          cycle.billing_start_date,
+          cycle.billing_end_date,
+        );
       }
 
       this.logger.log('Invoice stats computation completed successfully');
@@ -82,7 +87,9 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
   /** Loads every invoice for one (start, end) billing cycle and fans out to
    * computeCycleStats once per currency present in that cycle (see below). */
   private async processCycle(start: Date, end: Date) {
-    this.logger.log(`Processing stats for cycle ${start.toISOString()} - ${end.toISOString()}`);
+    this.logger.log(
+      `Processing stats for cycle ${start.toISOString()} - ${end.toISOString()}`,
+    );
 
     // Fetch all invoices for this cycle with their current version and line items
     const invoices = await this.prisma.invoice.findMany({
@@ -102,12 +109,16 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
 
     if (invoices.length === 0) return;
 
-    // Currency is assumed to be the one from the first organization/version for simplicity, 
+    // Currency is assumed to be the one from the first organization/version for simplicity,
     // or we can group by currency as well. Let's group by currency too.
-    const currencies = Array.from(new Set(invoices.map(inv => inv.currentVersion?.currency || 'USD')));
+    const currencies = Array.from(
+      new Set(invoices.map((inv) => inv.currentVersion?.currency || 'USD')),
+    );
 
     for (const currency of currencies) {
-      const currencyInvoices = invoices.filter(inv => (inv.currentVersion?.currency || 'USD') === currency);
+      const currencyInvoices = invoices.filter(
+        (inv) => (inv.currentVersion?.currency || 'USD') === currency,
+      );
       await this.computeCycleStats(start, end, currency, currencyInvoices);
     }
   }
@@ -120,9 +131,14 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
    * explicit delete-then-create per entity instead of a true upsert (see the
    * "Refactored" loops below).
    */
-  private async computeCycleStats(start: Date, end: Date, currency: string, invoices: any[]) {
+  private async computeCycleStats(
+    start: Date,
+    end: Date,
+    currency: string,
+    invoices: any[],
+  ) {
     // 1. BillingCycleStats Aggregations
-    let invoice_count = invoices.length;
+    const invoice_count = invoices.length;
     let published_invoice_count = 0;
     let paid_invoice_count = 0;
     let overdue_invoice_count = 0;
@@ -149,19 +165,32 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
       orgIds.add(inv.organization_id);
 
       if (inv.status === InvoiceStatus.published) published_invoice_count++;
-      if (inv.status === InvoiceStatus.paid || inv.status === InvoiceStatus.partially_paid) paid_invoice_count++;
+      if (
+        inv.status === InvoiceStatus.paid ||
+        inv.status === InvoiceStatus.partially_paid
+      )
+        paid_invoice_count++;
       if (inv.status === InvoiceStatus.voided) voided_invoice_count++;
-      
+
       // Overdue: Published and past due date
-      if (inv.status === InvoiceStatus.published && inv.currentVersion?.due_date && inv.currentVersion.due_date < now) {
-         // Check if still has balance
-         const totalPaid = inv.payments.reduce((sum, p) => sum.add(p.amount), new Decimal(0));
-         if (totalPaid.lt(inv.currentVersion.total)) {
-            overdue_invoice_count++;
-         }
+      if (
+        inv.status === InvoiceStatus.published &&
+        inv.currentVersion?.due_date &&
+        inv.currentVersion.due_date < now
+      ) {
+        // Check if still has balance
+        const totalPaid = inv.payments.reduce(
+          (sum, p) => sum.add(p.amount),
+          new Decimal(0),
+        );
+        if (totalPaid.lt(inv.currentVersion.total)) {
+          overdue_invoice_count++;
+        }
       }
 
-      payments_received = payments_received.add(inv.payments.reduce((sum, p) => sum.add(p.amount), new Decimal(0)));
+      payments_received = payments_received.add(
+        inv.payments.reduce((sum, p) => sum.add(p.amount), new Decimal(0)),
+      );
 
       if (inv.currentVersion) {
         invoice_total = invoice_total.add(inv.currentVersion.total);
@@ -177,17 +206,31 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
           });
         }
         const oStats = orgStatsMap.get(inv.organization_id);
-        oStats.invoice_total = oStats.invoice_total.add(inv.currentVersion.total);
-        oStats.paid_total = oStats.paid_total.add(inv.payments.reduce((sum, p) => sum.add(p.amount), new Decimal(0)));
+        oStats.invoice_total = oStats.invoice_total.add(
+          inv.currentVersion.total,
+        );
+        oStats.paid_total = oStats.paid_total.add(
+          inv.payments.reduce((sum, p) => sum.add(p.amount), new Decimal(0)),
+        );
 
         for (const line of inv.currentVersion.line_items) {
-          gross_service_amount = gross_service_amount.add(line.service_amount || 0);
-          total_operations_cost = total_operations_cost.add(line.operations_cost || 0);
-          total_medvirtual_fees = total_medvirtual_fees.add(line.medvirtual_fees || 0);
-          total_adjustments = total_adjustments.add(line.adjustment_amount || 0);
+          gross_service_amount = gross_service_amount.add(
+            line.service_amount || 0,
+          );
+          total_operations_cost = total_operations_cost.add(
+            line.operations_cost || 0,
+          );
+          total_medvirtual_fees = total_medvirtual_fees.add(
+            line.medvirtual_fees || 0,
+          );
+          total_adjustments = total_adjustments.add(
+            line.adjustment_amount || 0,
+          );
 
           oStats.fees_total = oStats.fees_total.add(line.medvirtual_fees || 0);
-          oStats.adjustments_total = oStats.adjustments_total.add(line.adjustment_amount || 0);
+          oStats.adjustments_total = oStats.adjustments_total.add(
+            line.adjustment_amount || 0,
+          );
 
           if (line.worker_id) {
             workerIds.add(line.worker_id);
@@ -205,12 +248,22 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
               });
             }
             const wStats = workerStatsMap.get(line.worker_id);
-            wStats.hours_worked = wStats.hours_worked.add(line.total_hours_worked || 0);
+            wStats.hours_worked = wStats.hours_worked.add(
+              line.total_hours_worked || 0,
+            );
             wStats.pto_hours = wStats.pto_hours.add(line.total_pto_hours || 0);
-            wStats.holiday_hours = wStats.holiday_hours.add(line.total_holiday_hours || 0);
-            wStats.payable_hours = wStats.payable_hours.add(line.total_hours_payable || 0);
-            wStats.revenue_generated = wStats.revenue_generated.add(line.service_amount || 0);
-            wStats.fees_generated = wStats.fees_generated.add(line.medvirtual_fees || 0);
+            wStats.holiday_hours = wStats.holiday_hours.add(
+              line.total_holiday_hours || 0,
+            );
+            wStats.payable_hours = wStats.payable_hours.add(
+              line.total_hours_payable || 0,
+            );
+            wStats.revenue_generated = wStats.revenue_generated.add(
+              line.service_amount || 0,
+            );
+            wStats.fees_generated = wStats.fees_generated.add(
+              line.medvirtual_fees || 0,
+            );
           }
         }
       }
@@ -281,67 +334,67 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
         },
       });
       // Note: For simplicity using create here, but ideally we should clear old ones for same cycle or use unique constraint
-      // The user schema didn't have a unique constraint on (org, start, end) for OrganizationBillingStats, 
+      // The user schema didn't have a unique constraint on (org, start, end) for OrganizationBillingStats,
       // but I should probably delete existing ones for the same cycle first.
       await this.prisma.organizationBillingStats.deleteMany({
         where: {
-            organization_id: orgId,
-            billing_start_date: start,
-            billing_end_date: end,
-            generated_at: { lt: new Date() } // This is tricky, better delete first.
-        }
+          organization_id: orgId,
+          billing_start_date: start,
+          billing_end_date: end,
+          generated_at: { lt: new Date() }, // This is tricky, better delete first.
+        },
       });
     }
 
     // Refactored Upsert for OrgStats
     for (const [orgId, stats] of orgStatsMap.entries()) {
-        // Delete existing for this cycle before inserting new one to avoid duplication
-        await this.prisma.organizationBillingStats.deleteMany({
-            where: {
-                organization_id: orgId,
-                billing_start_date: start,
-                billing_end_date: end,
-            }
-        });
+      // Delete existing for this cycle before inserting new one to avoid duplication
+      await this.prisma.organizationBillingStats.deleteMany({
+        where: {
+          organization_id: orgId,
+          billing_start_date: start,
+          billing_end_date: end,
+        },
+      });
 
-        await this.prisma.organizationBillingStats.create({
-            data: {
-              organization_id: orgId,
-              billing_start_date: start,
-              billing_end_date: end,
-              invoice_total: stats.invoice_total,
-              paid_total: stats.paid_total,
-              outstanding_total: stats.invoice_total.minus(stats.paid_total),
-              worker_count: stats.worker_count.size,
-              fees_total: stats.fees_total,
-              adjustments_total: stats.adjustments_total,
-            },
-        });
+      await this.prisma.organizationBillingStats.create({
+        data: {
+          organization_id: orgId,
+          billing_start_date: start,
+          billing_end_date: end,
+          invoice_total: stats.invoice_total,
+          paid_total: stats.paid_total,
+          outstanding_total: stats.invoice_total.minus(stats.paid_total),
+          worker_count: stats.worker_count.size,
+          fees_total: stats.fees_total,
+          adjustments_total: stats.adjustments_total,
+        },
+      });
     }
 
     // 4. Upsert WorkerBillingStats
     for (const [workerId, stats] of workerStatsMap.entries()) {
-        await this.prisma.workerBillingStats.deleteMany({
-            where: {
-                worker_id: workerId,
-                billing_start_date: start,
-                billing_end_date: end,
-            }
-        });
+      await this.prisma.workerBillingStats.deleteMany({
+        where: {
+          worker_id: workerId,
+          billing_start_date: start,
+          billing_end_date: end,
+        },
+      });
 
-        await this.prisma.workerBillingStats.create({
-            data: {
-              worker_id: workerId,
-              billing_start_date: start,
-              billing_end_date: end,
-              hours_worked: stats.hours_worked,
-              pto_hours: stats.pto_hours,
-              holiday_hours: stats.holiday_hours,
-              payable_hours: stats.payable_hours,
-              revenue_generated: stats.revenue_generated,
-              fees_generated: stats.fees_generated,
-            },
-        });
+      await this.prisma.workerBillingStats.create({
+        data: {
+          worker_id: workerId,
+          billing_start_date: start,
+          billing_end_date: end,
+          hours_worked: stats.hours_worked,
+          pto_hours: stats.pto_hours,
+          holiday_hours: stats.holiday_hours,
+          payable_hours: stats.payable_hours,
+          revenue_generated: stats.revenue_generated,
+          fees_generated: stats.fees_generated,
+        },
+      });
     }
   }
 }

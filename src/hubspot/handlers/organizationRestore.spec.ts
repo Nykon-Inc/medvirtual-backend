@@ -40,7 +40,9 @@ describe('HandlerOrganizationRestore', () => {
       ],
     }).compile();
 
-    handler = module.get<HandlerOrganizationRestore>(HandlerOrganizationRestore);
+    handler = module.get<HandlerOrganizationRestore>(
+      HandlerOrganizationRestore,
+    );
     jest.clearAllMocks();
   });
 
@@ -65,7 +67,9 @@ describe('HandlerOrganizationRestore', () => {
       },
     });
     expect(organizationCreationMock.execute).not.toHaveBeenCalled();
-    expect(orgDeletionMock.onOrganizationRestored).toHaveBeenCalledWith('org-1');
+    expect(orgDeletionMock.onOrganizationRestored).toHaveBeenCalledWith(
+      'org-1',
+    );
   });
 
   it('should delegate to the creation handler when the organization was never synced', async () => {

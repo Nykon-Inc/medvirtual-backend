@@ -56,7 +56,7 @@ const mockPrismaService = {
   mail_Settings: {
     findFirst: jest.fn(),
     create: jest.fn(),
-  }
+  },
 };
 
 describe('OpenaiService', () => {
@@ -89,20 +89,24 @@ describe('OpenaiService', () => {
       bio: 'Test Bio',
       experience: [],
       education: [],
-      skills: []
+      skills: [],
     };
 
     beforeEach(() => {
-      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from('mock-image-data'));
+      (fs.readFileSync as jest.Mock).mockReturnValue(
+        Buffer.from('mock-image-data'),
+      );
     });
 
     it('should successfully extract data from images', async () => {
       mockChatCreate.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify(mockExtractedData)
-          }
-        }]
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(mockExtractedData),
+            },
+          },
+        ],
       });
 
       const result = await service.extractDataFromResumeImages(mockImagePaths);
@@ -120,17 +124,19 @@ describe('OpenaiService', () => {
       mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
       mockMailService.sendMail.mockResolvedValue(true);
 
-      await expect(service.extractDataFromResumeImages(mockImagePaths))
-        .rejects
-        .toThrow('You dont have credits. Check your plan/billing.');
+      await expect(
+        service.extractDataFromResumeImages(mockImagePaths),
+      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
 
       expect(mockPrismaService.mail_Settings.findFirst).toHaveBeenCalled();
-      expect(mockMailService.sendMail).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'shayan@regenta.ai',
-        subject: 'Insufficient Quota from OpenAI'
-      }));
+      expect(mockMailService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'shayan@regenta.ai',
+          subject: 'Insufficient Quota from OpenAI',
+        }),
+      );
       expect(mockPrismaService.mail_Settings.create).toHaveBeenCalledWith({
-        data: { title: 'insufficient_quota' }
+        data: { title: 'insufficient_quota' },
       });
     });
 
@@ -141,9 +147,9 @@ describe('OpenaiService', () => {
       // Mock email already sent
       mockPrismaService.mail_Settings.findFirst.mockResolvedValue({ id: '1' });
 
-      await expect(service.extractDataFromResumeImages(mockImagePaths))
-        .rejects
-        .toThrow('You dont have credits. Check your plan/billing.');
+      await expect(
+        service.extractDataFromResumeImages(mockImagePaths),
+      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
 
       expect(mockPrismaService.mail_Settings.findFirst).toHaveBeenCalled();
       expect(mockMailService.sendMail).not.toHaveBeenCalled();
@@ -156,18 +162,20 @@ describe('OpenaiService', () => {
         code: 'rate_limit_exceeded',
       });
 
-      await expect(service.extractDataFromResumeImages(mockImagePaths))
-        .rejects
-        .toThrow('Rate limit exceeded. Please try again later.');
+      await expect(
+        service.extractDataFromResumeImages(mockImagePaths),
+      ).rejects.toThrow('Rate limit exceeded. Please try again later.');
       expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
     });
 
     it('should handle unexpected errors without falling back', async () => {
       mockChatCreate.mockRejectedValue(new Error('Unexpected error'));
 
-      await expect(service.extractDataFromResumeImages(mockImagePaths))
-        .rejects
-        .toThrow('Unexpected error requesting OpenAI on extractDataFromResumeImages.');
+      await expect(
+        service.extractDataFromResumeImages(mockImagePaths),
+      ).rejects.toThrow(
+        'Unexpected error requesting OpenAI on extractDataFromResumeImages.',
+      );
       expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
     });
 
@@ -358,17 +366,26 @@ describe('OpenaiService', () => {
 
   describe('organizeText', () => {
     const mockText = 'Resume plain text content';
-    const mockCandidate = { name: 'John Doe', specialization: 'Medical Assistant' };
+    const mockCandidate = {
+      name: 'John Doe',
+      specialization: 'Medical Assistant',
+    };
 
     it('should throw BadRequestException if OPENAI_API_KEY is not set', async () => {
       delete process.env.OPENAI_API_KEY;
-      await expect(service.organizeText(mockText, mockCandidate)).rejects.toThrow(
+      await expect(
+        service.organizeText(mockText, mockCandidate),
+      ).rejects.toThrow(
         'OPENAI_API_KEY is not defined in environment variables',
       );
     });
 
     it('should return organized text when OpenAI responds with valid JSON', async () => {
-      const mockData = { bio: 'Professional bio', experience: [], education: [] };
+      const mockData = {
+        bio: 'Professional bio',
+        experience: [],
+        education: [],
+      };
       mockChatCreate.mockResolvedValueOnce({
         choices: [{ message: { content: JSON.stringify(mockData) } }],
         usage: { prompt_tokens: 100, completion_tokens: 50 },
@@ -383,7 +400,9 @@ describe('OpenaiService', () => {
 
     it('should throw if OpenAI returns empty choices', async () => {
       mockChatCreate.mockResolvedValueOnce({ choices: [] });
-      await expect(service.organizeText(mockText, mockCandidate)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.organizeText(mockText, mockCandidate),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw on insufficient_quota error', async () => {
@@ -391,25 +410,28 @@ describe('OpenaiService', () => {
       mockPrismaService.mail_Settings.findFirst.mockResolvedValueOnce(null);
       mockMailService.sendMail.mockResolvedValueOnce(true);
 
-      await expect(service.organizeText(mockText, mockCandidate)).rejects.toThrow(
-        'You dont have credits. Check your plan/billing.',
-      );
+      await expect(
+        service.organizeText(mockText, mockCandidate),
+      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
     });
 
     it('should throw on rate_limit_error', async () => {
       mockChatCreate.mockRejectedValueOnce({ type: 'rate_limit_error' });
-      await expect(service.organizeText(mockText, mockCandidate)).rejects.toThrow(
-        'Rate limit exceeded. Please try again later.',
-      );
+      await expect(
+        service.organizeText(mockText, mockCandidate),
+      ).rejects.toThrow('Rate limit exceeded. Please try again later.');
     });
   });
 
   describe('generateTextSummary', () => {
-    const mockDescription = 'Looking for a senior medical assistant for a busy clinic.';
+    const mockDescription =
+      'Looking for a senior medical assistant for a busy clinic.';
 
     it('should throw BadRequestException if OPENAI_API_KEY is not set', async () => {
       delete process.env.OPENAI_API_KEY;
-      await expect(service.generateTextSummary(mockDescription)).rejects.toThrow(
+      await expect(
+        service.generateTextSummary(mockDescription),
+      ).rejects.toThrow(
         'OPENAI_API_KEY is not defined in environment variables',
       );
     });
@@ -425,9 +447,9 @@ describe('OpenaiService', () => {
 
     it('should throw on insufficient_quota error', async () => {
       mockChatCreate.mockRejectedValueOnce({ type: 'insufficient_quota' });
-      await expect(service.generateTextSummary(mockDescription)).rejects.toThrow(
-        'You dont have credits. Check your plan/billing.',
-      );
+      await expect(
+        service.generateTextSummary(mockDescription),
+      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
     });
 
     it('should throw on a rate limit without falling back', async () => {
@@ -435,15 +457,17 @@ describe('OpenaiService', () => {
         status: 429,
         code: 'rate_limit_exceeded',
       });
-      await expect(service.generateTextSummary(mockDescription)).rejects.toThrow(
-        'Rate limit exceeded. Please try again later.',
-      );
+      await expect(
+        service.generateTextSummary(mockDescription),
+      ).rejects.toThrow('Rate limit exceeded. Please try again later.');
       expect(mockOpenrouterService.chatText).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException on unexpected error', async () => {
       mockChatCreate.mockRejectedValueOnce(new Error('Network failure'));
-      await expect(service.generateTextSummary(mockDescription)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.generateTextSummary(mockDescription),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should fall back to OpenRouter on insufficient quota', async () => {
@@ -491,7 +515,10 @@ describe('OpenaiService', () => {
       mockImagesEdit.mockResolvedValueOnce({ data: [] });
 
       await expect(
-        service.generateAvatarWithScreenshoot(mockCandidate, '/tmp/screenshot.png'),
+        service.generateAvatarWithScreenshoot(
+          mockCandidate,
+          '/tmp/screenshot.png',
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 

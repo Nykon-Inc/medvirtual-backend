@@ -51,23 +51,39 @@ describe('ContactService', () => {
       contact_email: 'john@acme.com',
       phone: '555-1234',
       business_unit: 'MedVirtual',
-      owner: { id: 'owner-1', first_name: 'Owner', last_name: 'User', email: 'owner@acme.com', phone: '555-5678', job_title: 'CEO' },
+      owner: {
+        id: 'owner-1',
+        first_name: 'Owner',
+        last_name: 'User',
+        email: 'owner@acme.com',
+        phone: '555-5678',
+        job_title: 'CEO',
+      },
       admin: { hubspot_id: 'hs-admin-1' },
     };
 
     it('should throw NotFoundException when organization does not exist', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(null);
 
-      await expect(service.createForOrganization('org-99')).rejects.toThrow(NotFoundException);
+      await expect(service.createForOrganization('org-99')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should create contact and sync to HubSpot successfully', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(mockOrg);
-      const createdContact = { id: 'contact-1', hubspot_id: null, organization_id: 'org-1' };
+      const createdContact = {
+        id: 'contact-1',
+        hubspot_id: null,
+        organization_id: 'org-1',
+      };
       mockPrisma.contact.create.mockResolvedValue(createdContact);
-      mockPrisma.contact.update.mockResolvedValue({ ...createdContact, hubspot_id: 'hs-c-1' });
+      mockPrisma.contact.update.mockResolvedValue({
+        ...createdContact,
+        hubspot_id: 'hs-c-1',
+      });
 
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockResolvedValue({ data: { id: 'hs-c-1' } });
 
       const result = await service.createForOrganization('org-1');
@@ -91,7 +107,7 @@ describe('ContactService', () => {
       const createdContact = { id: 'contact-1', hubspot_id: null };
       mockPrisma.contact.create.mockResolvedValue(createdContact);
 
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockRejectedValue(new Error('HubSpot error'));
 
       const result = await service.createForOrganization('org-1');
@@ -103,7 +119,10 @@ describe('ContactService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue(mockOrg);
       const createdContact = { id: 'contact-1', hubspot_id: null };
       mockPrisma.contact.create.mockResolvedValue(createdContact);
-      mockPrisma.contact.update.mockResolvedValue({ ...createdContact, hubspot_id: '99999' });
+      mockPrisma.contact.update.mockResolvedValue({
+        ...createdContact,
+        hubspot_id: '99999',
+      });
 
       const conflictError: any = new Error('CONFLICT');
       conflictError.response = {
@@ -113,7 +132,7 @@ describe('ContactService', () => {
         },
       };
 
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockRejectedValue(conflictError);
       axiosMock.put.mockResolvedValue({});
 
@@ -131,7 +150,9 @@ describe('ContactService', () => {
       mockPrisma.organization.findUnique.mockResolvedValue(mockOrg);
       mockPrisma.contact.create.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.createForOrganization('org-1')).rejects.toThrow(BadRequestException);
+      await expect(service.createForOrganization('org-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -169,9 +190,12 @@ describe('ContactService', () => {
     it('should create contact in DB and sync to HubSpot', async () => {
       const createdContact = { id: 'contact-1', hubspot_id: null };
       mockPrisma.contact.create.mockResolvedValue(createdContact);
-      mockPrisma.contact.update.mockResolvedValue({ ...createdContact, hubspot_id: 'hs-c-1' });
+      mockPrisma.contact.update.mockResolvedValue({
+        ...createdContact,
+        hubspot_id: 'hs-c-1',
+      });
 
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockResolvedValue({ data: { id: 'hs-c-1' } });
 
       const result = await service.createForReferredCompany(mockOrgData);
@@ -183,7 +207,7 @@ describe('ContactService', () => {
 
     it('should skip DB contact creation when org has no owner_id', async () => {
       const orgNoOwner = { ...mockOrgData, owner_id: null };
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockResolvedValue({ data: { id: 'hs-c-2' } });
 
       const result = await service.createForReferredCompany(orgNoOwner);
@@ -197,11 +221,15 @@ describe('ContactService', () => {
       mockPrisma.contact.create.mockResolvedValue(createdContact);
       mockPrisma.contact.delete.mockResolvedValue({});
 
-      const axiosMock = jest.requireMock('axios') as jest.Mocked<any>;
+      const axiosMock = jest.requireMock('axios');
       axiosMock.post.mockRejectedValue(new Error('HubSpot down'));
 
-      await expect(service.createForReferredCompany(mockOrgData)).rejects.toThrow('HubSpot down');
-      expect(mockPrisma.contact.delete).toHaveBeenCalledWith({ where: { id: 'contact-1' } });
+      await expect(
+        service.createForReferredCompany(mockOrgData),
+      ).rejects.toThrow('HubSpot down');
+      expect(mockPrisma.contact.delete).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+      });
     });
   });
 
@@ -214,7 +242,9 @@ describe('ContactService', () => {
 
       await service.deleteById('contact-1');
 
-      expect(mockPrisma.contact.delete).toHaveBeenCalledWith({ where: { id: 'contact-1' } });
+      expect(mockPrisma.contact.delete).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+      });
     });
 
     it('should silently ignore errors when delete fails', async () => {

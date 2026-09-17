@@ -48,7 +48,7 @@ const txMock = {
   },
   medAllianceAdminReviewCase: {
     findMany: jest.fn(),
-    findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
   invoiceConfiguration: {
@@ -66,7 +66,7 @@ function resetAllMocks() {
   prismaMock.$transaction.mockClear();
   for (const model of Object.values(txMock)) {
     for (const fn of Object.values(model)) {
-      (fn as jest.Mock).mockReset();
+      fn.mockReset();
     }
   }
 }
@@ -264,9 +264,14 @@ describe('HandlerOrganizationMerge', () => {
       { id: 'org-loser', hubspot_id: 'hs-loser', name: 'Loser Org' },
     ]);
     txMock.medAllianceAdminReviewCase.findMany.mockResolvedValue([
-      { id: 'case-1', reason_code: 'multiple_hubspot_matches', status: 'open' },
+      {
+        id: 'case-1',
+        reason_code: 'multiple_hubspot_matches',
+        status: 'open',
+        hubspot_line_item_snapshot_id: null,
+      },
     ]);
-    txMock.medAllianceAdminReviewCase.findUnique.mockResolvedValue({
+    txMock.medAllianceAdminReviewCase.findFirst.mockResolvedValue({
       id: 'case-existing-on-primary',
     });
 
@@ -276,13 +281,12 @@ describe('HandlerOrganizationMerge', () => {
       newObjectId: 'hs-new',
     });
 
-    expect(txMock.medAllianceAdminReviewCase.findUnique).toHaveBeenCalledWith({
+    expect(txMock.medAllianceAdminReviewCase.findFirst).toHaveBeenCalledWith({
       where: {
-        uq_open_review_case: {
-          organization_id: 'org-primary',
-          reason_code: 'multiple_hubspot_matches',
-          status: 'open',
-        },
+        organization_id: 'org-primary',
+        reason_code: 'multiple_hubspot_matches',
+        status: 'open',
+        hubspot_line_item_snapshot_id: null,
       },
     });
     expect(txMock.medAllianceAdminReviewCase.update).not.toHaveBeenCalled();
@@ -299,9 +303,14 @@ describe('HandlerOrganizationMerge', () => {
       { id: 'org-loser', hubspot_id: 'hs-loser', name: 'Loser Org' },
     ]);
     txMock.medAllianceAdminReviewCase.findMany.mockResolvedValue([
-      { id: 'case-1', reason_code: 'soft_duplicate', status: 'open' },
+      {
+        id: 'case-1',
+        reason_code: 'soft_duplicate',
+        status: 'open',
+        hubspot_line_item_snapshot_id: null,
+      },
     ]);
-    txMock.medAllianceAdminReviewCase.findUnique.mockResolvedValue(null);
+    txMock.medAllianceAdminReviewCase.findFirst.mockResolvedValue(null);
 
     await handler.execute({
       primaryObjectId: 'hs-primary',

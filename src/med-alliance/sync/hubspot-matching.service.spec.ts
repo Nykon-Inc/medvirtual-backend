@@ -140,7 +140,7 @@ describe('HubspotMatchingService', () => {
   // synced (1 match)
   // -------------------------------------------------------------------------
   describe('synced — single match', () => {
-    it('should store hubspot_id and re-run MA-004 when exactly 1 match is found', async () => {
+    it('should store hubspot_id and NOT re-run MA-004 automatically (disabled — §4.6, sync-triggered eligibility checks are no longer automatic)', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockedAxios.post.mockResolvedValue(
         hubspotSearchResponse([{ id: 'hs-company-1' }]),
@@ -163,12 +163,10 @@ describe('HubspotMatchingService', () => {
         }),
       );
 
-      // MA-004 must be re-run after hubspot_id is set
-      expect(mockEligibilityCheck.runAndPersist).toHaveBeenCalledWith(
-        'org-1',
-        'system',
-        'sync',
-      );
+      // MA-004 sync-triggered auto re-run is disabled (§4.6) — it remains available via
+      // the admin-triggered recheck endpoint and the user-triggered submission-time check,
+      // just not from this automatic sync path.
+      expect(mockEligibilityCheck.runAndPersist).not.toHaveBeenCalled();
     });
 
     it('should include domain from website_url in HubSpot search filters', async () => {
@@ -219,7 +217,7 @@ describe('HubspotMatchingService', () => {
   // multiple_matches
   // -------------------------------------------------------------------------
   describe('multiple_matches', () => {
-    it('should set not_eligible and send email when 2+ matches are found', async () => {
+    it('should NOT set med_alliance_referral_status (manual-only per §4.6) and send email when 2+ matches are found', async () => {
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockedAxios.post.mockResolvedValue(
         hubspotSearchResponse([{ id: 'hs-1' }, { id: 'hs-2' }]),
@@ -234,11 +232,14 @@ describe('HubspotMatchingService', () => {
       expect(mockPrisma.organization.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            med_alliance_referral_status: 'not_eligible',
             hubspot_sync_status: 'multiple_matches',
           }),
         }),
       );
+      expect(
+        mockPrisma.organization.update.mock.calls[0][0].data
+          .med_alliance_referral_status,
+      ).toBeUndefined();
 
       expect(mockMailService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({

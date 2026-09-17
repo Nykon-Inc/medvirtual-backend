@@ -582,7 +582,7 @@ export class OrganizationService {
             hubspot_id: true,
           },
         },
-        invoiceConfiguration: true
+        invoiceConfiguration: true,
       },
     });
 
@@ -766,6 +766,7 @@ export class OrganizationService {
       where: { organization_id: orgId },
       select: {
         id: true,
+        user_id: true,
         hubspot_id: true,
         first_name: true,
         last_name: true,
@@ -1153,6 +1154,7 @@ export class OrganizationService {
   async updateInvoiceConfiguration(
     organizationId: string,
     data: UpdateInvoiceConfigurationDto,
+    actorUserId?: string,
   ): Promise<any> {
     try {
       // Check if organization exists
@@ -1163,6 +1165,15 @@ export class OrganizationService {
       if (!organization) {
         throw new NotFoundException('Organization not found');
       }
+
+      const currentConfig = await this.prisma.invoiceConfiguration.findUnique({
+        where: { organization_id: organizationId },
+        select: { hubstaff_id: true },
+      });
+
+      const hubstaffChanged =
+        data.hubstaff_id !== undefined &&
+        data.hubstaff_id !== (currentConfig?.hubstaff_id ?? undefined);
 
       // Filter out undefined fields to only update what's provided
       const filteredData = Object.entries(data).reduce((acc, [key, value]) => {
@@ -1182,6 +1193,26 @@ export class OrganizationService {
         },
       });
 
+      // Mirror the change onto the HubSpot company so the webhook that syncs
+      // hubspot_project_id back into this column cannot overwrite the edit.
+      if (hubstaffChanged) {
+        // Fire-and-forget: a HubSpot outage must not fail the save. The catch is
+        // required because an unhandled rejection here would crash the process.
+        this.hubspot
+          .setCompanyHubstaffProjectId(
+            organizationId,
+            updatedConfig.hubstaff_id,
+            actorUserId,
+            'Hubstaff ID updated from organization profile',
+          )
+          .catch((error) =>
+            console.error(
+              'Failed to sync hubstaff_id to HubSpot:',
+              error?.message ?? error,
+            ),
+          );
+      }
+
       return {
         status: 200,
         message: 'Invoice configuration updated successfully',
@@ -1196,10 +1227,7 @@ export class OrganizationService {
     }
   }
 
-  async convertToClient(
-    id: string,
-    data: ConvertToClientDto,
-  ): Promise<any> {
+  async convertToClient(id: string, data: ConvertToClientDto): Promise<any> {
     try {
       const organization = await this.prisma.organization.findUnique({
         where: { id },

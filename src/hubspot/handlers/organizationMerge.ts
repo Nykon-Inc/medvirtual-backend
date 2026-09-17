@@ -180,20 +180,23 @@ export class HandlerOrganizationMerge {
               data: { organization_id: primaryOrganization.id },
             });
 
-            // MedAllianceAdminReviewCase has @@unique([organization_id, reason_code, status]) —
-            // reassigning could collide if both orgs have an open case with the same reason_code.
+            // MedAllianceAdminReviewCase has @@unique([organization_id, reason_code, status, hubspot_line_item_snapshot_id]) —
+            // reassigning could collide if both orgs have an open case with the same reason_code
+            // (and, for line-item-scoped cases, the same line item).
             // Case-by-case update lets us skip only the colliding rows instead of failing the merge.
+            // findFirst (not findUnique) because Postgres treats NULLs in the compound unique as
+            // distinct, so Prisma's compound-unique input can't be queried with a null line item.
             const reviewCases = await tx.medAllianceAdminReviewCase.findMany({
               where: { organization_id: merged.id },
             });
             for (const reviewCase of reviewCases) {
-              const collision = await tx.medAllianceAdminReviewCase.findUnique({
+              const collision = await tx.medAllianceAdminReviewCase.findFirst({
                 where: {
-                  uq_open_review_case: {
-                    organization_id: primaryOrganization.id,
-                    reason_code: reviewCase.reason_code,
-                    status: reviewCase.status,
-                  },
+                  organization_id: primaryOrganization.id,
+                  reason_code: reviewCase.reason_code,
+                  status: reviewCase.status,
+                  hubspot_line_item_snapshot_id:
+                    reviewCase.hubspot_line_item_snapshot_id,
                 },
               });
               if (!collision) {

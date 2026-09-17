@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HubspotMatchingService } from './hubspot-matching.service';
 import { InvoiceIngestionService } from './invoice-ingestion.service';
+import { StaffMatchingService } from './staff-matching.service';
 import { CommissionDetectionService } from './commission-detection.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -13,6 +14,12 @@ export interface SyncResult {
   };
   phaseB?: {
     invoices: { created: number; updated: number; skipped: number };
+    lineItems: {
+      created: number;
+      matched: number;
+      unmatched: number;
+      ambiguous: number;
+    };
     commissions: { created: number; skipped: number };
   };
 }
@@ -25,6 +32,7 @@ export class ReferralSyncService {
     private readonly prisma: PrismaService,
     private readonly hubspotMatching: HubspotMatchingService,
     private readonly invoiceIngestion: InvoiceIngestionService,
+    private readonly staffMatching: StaffMatchingService,
     private readonly commissionDetection: CommissionDetectionService,
   ) {}
 
@@ -119,6 +127,7 @@ export class ReferralSyncService {
         ...result,
         phaseB: {
           invoices: { created: 0, updated: 0, skipped: 0 },
+          lineItems: { created: 0, matched: 0, unmatched: 0, ambiguous: 0 },
           commissions: { created: 0, skipped: 0 },
         },
       };
@@ -129,18 +138,29 @@ export class ReferralSyncService {
       org.hubspot_id,
     );
 
+    // Phase B Step 1.5: match newly-ingested line items to Staff before commission
+    // detection runs, so it can query by match_status='matched' this same pass.
+    const staffMatchStats = await this.staffMatching.run(organizationId);
+
     //commented only for populate databse
     const commissionStats = await this.commissionDetection.run(organizationId);
     //const commissionStats = { created: 0, skipped: 0 };
 
     result.phaseB = {
       invoices: invoiceStats,
+      lineItems: {
+        created: invoiceStats.lineItems.created,
+        matched: staffMatchStats.matched,
+        unmatched: staffMatchStats.unmatched,
+        ambiguous: staffMatchStats.ambiguous,
+      },
       commissions: commissionStats,
     };
 
     this.logger.log(
       `Sync complete for org ${organizationId} — ` +
         `invoices: +${invoiceStats.created} ~${invoiceStats.updated} =${invoiceStats.skipped} | ` +
+        `line items: +${invoiceStats.lineItems.created} matched=${staffMatchStats.matched} unmatched=${staffMatchStats.unmatched} ambiguous=${staffMatchStats.ambiguous} | ` +
         `commissions: +${commissionStats.created} =${commissionStats.skipped}`,
     );
 

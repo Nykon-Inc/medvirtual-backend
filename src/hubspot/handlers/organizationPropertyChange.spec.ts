@@ -33,8 +33,14 @@ describe('HandlerOrganizationPropertyChange', () => {
       providers: [
         HandlerOrganizationPropertyChange,
         { provide: PrismaService, useValue: prismaMock },
-        { provide: HandlerOrganizationCreation, useValue: organizationCreationMock },
-        { provide: HandlerOrganizationDeletion, useValue: organizationDeletionMock },
+        {
+          provide: HandlerOrganizationCreation,
+          useValue: organizationCreationMock,
+        },
+        {
+          provide: HandlerOrganizationDeletion,
+          useValue: organizationDeletionMock,
+        },
         {
           provide: HandlerOrganizationReactivation,
           useValue: organizationReactivationMock,
@@ -59,7 +65,8 @@ describe('HandlerOrganizationPropertyChange', () => {
     // Default: MedVirtual/Berry Virtual allowed, anything else not — individual
     // tests override this via mockResolvedValueOnce/mockImplementation as needed.
     businessUnitContextMock.isAllowedHubspotValue.mockImplementation(
-      (v: string) => Promise.resolve(v === 'MedVirtual' || v === 'Berry Virtual'),
+      (v: string) =>
+        Promise.resolve(v === 'MedVirtual' || v === 'Berry Virtual'),
     );
   });
 
@@ -408,7 +415,7 @@ describe('HandlerOrganizationPropertyChange', () => {
     });
   });
 
-  it('should reset to in_negotiation + pending_confirmation when deployment_date is cleared for a referred org', async () => {
+  it('should reset stage to in_negotiation when deployment_date is cleared for a referred org (status is manual-only, no longer auto-set — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -430,12 +437,12 @@ describe('HandlerOrganizationPropertyChange', () => {
       where: { id: 'org-1' },
       data: { deployment_date: null },
     });
-    // Second update: revert referral stage/eligibility to the resting pending state.
+    // Second update: reverts referral_stage/eligibility_start_at (the automatic, stage-only
+    // signal) — med_alliance_referral_status is NOT touched, per §4.6 (manual-only now).
     expect(prismaMock.organization.update).toHaveBeenNthCalledWith(2, {
       where: { id: 'org-1' },
       data: {
         referral_stage: 'in_negotiation',
-        med_alliance_referral_status: 'pending_confirmation',
         eligibility_start_at: null,
         med_alliance_block_reason: null,
       },
@@ -445,7 +452,6 @@ describe('HandlerOrganizationPropertyChange', () => {
         data: expect.objectContaining({
           event: 'deployment_date_cleared',
           old_status: 'eligible',
-          new_status: 'pending_confirmation',
         }),
       }),
     );
@@ -523,7 +529,7 @@ describe('HandlerOrganizationPropertyChange', () => {
     });
   });
 
-  it('should mark deployed + pending_confirmation when deployment_date is set to a future date for a referred org', async () => {
+  it('should mark deployed when deployment_date is set to a future date for a referred org (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -542,27 +548,33 @@ describe('HandlerOrganizationPropertyChange', () => {
       propertyValue: String(futureMs),
     });
 
-    // Future dates now land on deployed + pending_confirmation, same as recent-past dates —
-    // the deployment_date guard rejecting future dates lives in approveEligibility, not here.
+    // Future dates now land on deployed (stage only), same as recent-past dates — the
+    // deployment_date guard rejecting future dates lives in approveEligibility, not here.
+    // med_alliance_referral_status is never touched (§4.6, manual-only).
     expect(prismaMock.organization.update).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         where: { id: 'org-1' },
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ event: 'eligibility_pending_confirmation' }),
+        data: expect.objectContaining({
+          event: 'deployed_stage_detected',
+        }),
       }),
     );
     expect(result).toBe(true);
   });
 
-  it('should mark deployed + expired and audit-log "eligibility_expired" when deployment_date is more than 365 days ago', async () => {
+  it('should mark deployed (stage only) and audit-log "deployed_stage_detected_over_365_days" when deployment_date is more than 365 days ago (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -587,23 +599,26 @@ describe('HandlerOrganizationPropertyChange', () => {
         where: { id: 'org-1' },
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'expired',
           med_alliance_block_reason: null,
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          event: 'eligibility_expired',
-          new_status: 'expired',
+          event: 'deployed_stage_detected_over_365_days',
+          new_status: null,
         }),
       }),
     );
     expect(result).toBe(true);
   });
 
-  it('should mark deployed + pending_confirmation and audit-log when deployment_date is 30+ days ago', async () => {
+  it('should mark deployed (stage only) and audit-log when deployment_date is 30+ days ago (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -628,19 +643,22 @@ describe('HandlerOrganizationPropertyChange', () => {
         where: { id: 'org-1' },
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ event: 'eligibility_pending_confirmation' }),
+        data: expect.objectContaining({ event: 'deployed_stage_detected' }),
       }),
     );
     expect(result).toBe(true);
   });
 
-  it('should mark deployed + pending_confirmation when deployment_date is within the last 30 days', async () => {
+  it('should mark deployed (stage only) when deployment_date is within the last 30 days (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -659,22 +677,26 @@ describe('HandlerOrganizationPropertyChange', () => {
       propertyValue: String(tenDaysAgoMs),
     });
 
-    // The 30-day stabilization window is gone — decisions are available immediately.
+    // The 30-day stabilization window is gone — the deployed stage is detected immediately.
+    // med_alliance_referral_status is never touched (§4.6, manual-only).
     expect(prismaMock.organization.update).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         where: { id: 'org-1' },
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledTimes(1);
     expect(result).toBe(true);
   });
 
-  it('should re-open from canceled following the 365-day rule and record prior_stage in the audit metadata', async () => {
+  it('should re-open stage from canceled following the 365-day rule and record prior_stage in the audit metadata (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -694,22 +716,26 @@ describe('HandlerOrganizationPropertyChange', () => {
       propertyValue: String(overAYearAgoMs),
     });
 
-    // >365 days ago → expired, per the same rule as any other re-derivation.
+    // >365 days ago → stage still re-derives to deployed, per the same rule as any other
+    // re-derivation. Status is left for the admin to decide (§4.6).
     expect(prismaMock.organization.update).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         where: { id: 'org-1' },
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'expired',
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          event: 'eligibility_expired',
-          new_status: 'expired',
+          event: 'deployed_stage_detected_over_365_days',
+          new_status: null,
           metadata: expect.objectContaining({ prior_stage: 'canceled' }),
         }),
       }),
@@ -717,7 +743,7 @@ describe('HandlerOrganizationPropertyChange', () => {
     expect(result).toBe(true);
   });
 
-  it('should record prior_stage in the audit metadata when a canceled company re-opens within the 365-day window', async () => {
+  it('should record prior_stage in the audit metadata when a canceled company re-opens within the 365-day window (status untouched — §4.6)', async () => {
     prismaMock.organization.findUnique
       .mockResolvedValueOnce({ id: 'org-1', status: OrganizationStatus.active })
       .mockResolvedValueOnce({
@@ -742,14 +768,18 @@ describe('HandlerOrganizationPropertyChange', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           referral_stage: 'deployed',
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       }),
     );
+    expect(
+      prismaMock.organization.update.mock.calls[1][0].data
+        .med_alliance_referral_status,
+    ).toBeUndefined();
     expect(prismaMock.medAllianceAuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          event: 'eligibility_pending_confirmation',
+          event: 'deployed_stage_detected',
+          new_status: null,
           metadata: expect.objectContaining({ prior_stage: 'canceled' }),
         }),
       }),

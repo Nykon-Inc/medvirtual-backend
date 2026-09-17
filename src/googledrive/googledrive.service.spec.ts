@@ -92,7 +92,7 @@ describe('GoogledriveService', () => {
 
       jest
         .spyOn(OAuth2Client.prototype, 'getToken')
-        .mockImplementation(async () => ({ tokens: fakeTokens } as any));
+        .mockImplementation(async () => ({ tokens: fakeTokens }) as any);
 
       prismaMock.googleToken.create.mockResolvedValue({ id: 1 });
 
@@ -125,7 +125,9 @@ describe('GoogledriveService', () => {
       MailServiceMock.sendMail.mockResolvedValue(true);
       prismaMock.mail_Settings.create.mockResolvedValue({});
 
-      await expect(service.getValidAccessToken()).rejects.toThrow(BadRequestException);
+      await expect(service.getValidAccessToken()).rejects.toThrow(
+        BadRequestException,
+      );
       expect(MailServiceMock.sendMail).toHaveBeenCalled();
       expect(prismaMock.mail_Settings.create).toHaveBeenCalledWith({
         data: { title: 'google_token_expired' },
@@ -137,7 +139,9 @@ describe('GoogledriveService', () => {
       MailServiceMock.sendMail.mockResolvedValue(false); // sendMail returns falsy
       prismaMock.mail_Settings.create.mockResolvedValue({});
 
-      await expect(service.getValidAccessToken()).rejects.toThrow(BadRequestException);
+      await expect(service.getValidAccessToken()).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should return token directly when not yet expired (> 60s remaining)', async () => {
@@ -187,19 +191,28 @@ describe('GoogledriveService', () => {
       MailServiceMock.sendMail.mockResolvedValue(true);
       prismaMock.mail_Settings.create.mockResolvedValue({});
 
-      await expect(service.getValidAccessToken()).rejects.toThrow(BadRequestException);
+      await expect(service.getValidAccessToken()).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('listFilesInFolder', () => {
     beforeEach(() => {
-      jest.spyOn(service, 'getValidAccessToken').mockResolvedValue('mock-token');
+      jest
+        .spyOn(service, 'getValidAccessToken')
+        .mockResolvedValue('mock-token');
     });
 
     it('should return list of files in the folder', async () => {
       const mockFiles = [
         { id: 'file-1', name: 'resume.pdf', mimeType: 'application/pdf' },
-        { id: 'file-2', name: 'cover.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+        {
+          id: 'file-2',
+          name: 'cover.docx',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        },
       ];
       mockDriveFilesList.mockResolvedValueOnce({ data: { files: mockFiles } });
 
@@ -222,13 +235,19 @@ describe('GoogledriveService', () => {
 
   describe('downloadFile', () => {
     beforeEach(() => {
-      jest.spyOn(service, 'getValidAccessToken').mockResolvedValue('mock-token');
+      jest
+        .spyOn(service, 'getValidAccessToken')
+        .mockResolvedValue('mock-token');
     });
 
     it('should return error message when drive.files.get throws', async () => {
       mockDriveFilesGet.mockRejectedValueOnce(new Error('File not found'));
 
-      const result = await service.downloadFile('fileId', 'file.pdf', '/downloads');
+      const result = await service.downloadFile(
+        'fileId',
+        'file.pdf',
+        '/downloads',
+      );
 
       expect(result).toBe('File not found');
     });
@@ -247,7 +266,11 @@ describe('GoogledriveService', () => {
         .mockResolvedValueOnce({ data: { mimeType: 'application/pdf' } }) // metadata
         .mockResolvedValueOnce(mockStream); // media stream
 
-      const result = await service.downloadFile('fileId', 'resume.pdf', '/downloads');
+      const result = await service.downloadFile(
+        'fileId',
+        'resume.pdf',
+        '/downloads',
+      );
 
       expect(result).toBe('Download successful');
       expect(mockDriveFilesGet).toHaveBeenCalledTimes(2);
@@ -257,11 +280,20 @@ describe('GoogledriveService', () => {
       mockDriveFilesGet.mockResolvedValueOnce({
         data: { mimeType: 'application/vnd.google-apps.document' },
       });
-      mockDriveFilesExport.mockImplementationOnce((params, options, callback) => {
-        if (callback) callback(null, { data: { on: jest.fn().mockReturnThis(), pipe: jest.fn() } });
-      });
+      mockDriveFilesExport.mockImplementationOnce(
+        (params, options, callback) => {
+          if (callback)
+            callback(null, {
+              data: { on: jest.fn().mockReturnThis(), pipe: jest.fn() },
+            });
+        },
+      );
 
-      const result = await service.downloadFile('fileId', 'doc.pdf', '/downloads');
+      const result = await service.downloadFile(
+        'fileId',
+        'doc.pdf',
+        '/downloads',
+      );
 
       expect(result).toBe('Download successful');
       expect(mockDriveFilesExport).toHaveBeenCalled();
@@ -270,15 +302,17 @@ describe('GoogledriveService', () => {
 
   describe('downloadImage', () => {
     beforeEach(() => {
-      jest.spyOn(service, 'getValidAccessToken').mockResolvedValue('mock-token');
+      jest
+        .spyOn(service, 'getValidAccessToken')
+        .mockResolvedValue('mock-token');
     });
 
     it('should throw error when drive.files.get throws', async () => {
       mockDriveFilesGet.mockRejectedValueOnce(new Error('Image not found'));
 
-      await expect(service.downloadImage('fileId', 'img.png', '/tmp')).rejects.toThrow(
-        'Image not found',
-      );
+      await expect(
+        service.downloadImage('fileId', 'img.png', '/tmp'),
+      ).rejects.toThrow('Image not found');
     });
 
     it('should return destPath when downloading a non-exportable image', async () => {
@@ -304,12 +338,20 @@ describe('GoogledriveService', () => {
       mockDriveFilesGet.mockResolvedValueOnce({
         data: { mimeType: 'application/vnd.google-apps.document' },
       });
-      mockDriveFilesExport.mockImplementationOnce((params, options, callback) => {
-        if (callback)
-          callback(null, {
-            data: { on: jest.fn().mockImplementation(function (ev, cb) { if (ev === 'end') cb(); return this; }), pipe: jest.fn() },
-          });
-      });
+      mockDriveFilesExport.mockImplementationOnce(
+        (params, options, callback) => {
+          if (callback)
+            callback(null, {
+              data: {
+                on: jest.fn().mockImplementation(function (ev, cb) {
+                  if (ev === 'end') cb();
+                  return this;
+                }),
+                pipe: jest.fn(),
+              },
+            });
+        },
+      );
 
       const result = await service.downloadImage('fileId', 'doc.pdf', '/tmp');
 

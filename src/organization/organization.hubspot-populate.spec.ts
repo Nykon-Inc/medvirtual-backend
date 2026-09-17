@@ -89,7 +89,9 @@ describe('OrganizationService — HubSpot BU-driven filterGroups', () => {
     it('builds one filterGroup per visible BU (derived from getVisibleHubspotValues)', async () => {
       await service.getAllFromHubspot();
 
-      expect(businessUnitContextMock.getVisibleHubspotValues).toHaveBeenCalled();
+      expect(
+        businessUnitContextMock.getVisibleHubspotValues,
+      ).toHaveBeenCalled();
       const body = mockedAxios.post.mock.calls[0][1] as any;
       const values = body.filterGroups.map(
         (g: any) =>
@@ -136,7 +138,9 @@ describe('OrganizationService — HubSpot BU-driven filterGroups', () => {
 
       await service.populateDbFromHubspotX();
 
-      expect(businessUnitContextMock.getVisibleHubspotValues).toHaveBeenCalled();
+      expect(
+        businessUnitContextMock.getVisibleHubspotValues,
+      ).toHaveBeenCalled();
       const body = mockedAxios.post.mock.calls[0][1] as any;
       const values = body.filterGroups.map(
         (g: any) =>
@@ -174,7 +178,9 @@ describe('OrganizationService — HubSpot BU-driven filterGroups', () => {
 
       await service.populateDbFromHubspot();
 
-      expect(businessUnitContextMock.getVisibleHubspotValues).toHaveBeenCalled();
+      expect(
+        businessUnitContextMock.getVisibleHubspotValues,
+      ).toHaveBeenCalled();
       const body = mockedAxios.post.mock.calls[0][1] as any;
       const values = body.filterGroups.map(
         (g: any) =>
