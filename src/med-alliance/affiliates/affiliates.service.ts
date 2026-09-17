@@ -1135,10 +1135,11 @@ export class AffiliatesService {
         lifetimeAgg: { _sum: { commission_amount: null } },
         payoutHistory: [],
         commsByOrg: [],
+        eligibleAgg: { _sum: { commission_amount: null }, _count: 0 },
       };
     }
 
-    const [pendingAgg, lifetimeAgg, payoutHistory, commsByOrg] =
+    const [pendingAgg, lifetimeAgg, payoutHistory, commsByOrg, eligibleAgg] =
       await Promise.all([
         this.prisma.affiliatePayoutRequest.aggregate({
           _sum: { requested_amount: true },
@@ -1175,6 +1176,14 @@ export class AffiliatesService {
           },
           _sum: { commission_amount: true },
         }),
+        // Counted over the whole table: `profile.commissions` is capped at the 50
+        // most recent of any status, so counting eligible rows there undercounts
+        // whenever pending commissions crowd that window.
+        this.prisma.affiliateCommission.aggregate({
+          where: { affiliate_id: userId, status: 'eligible' },
+          _sum: { commission_amount: true },
+          _count: true,
+        }),
       ]);
     return {
       profile,
@@ -1182,7 +1191,97 @@ export class AffiliatesService {
       lifetimeAgg,
       payoutHistory,
       commsByOrg,
+      eligibleAgg,
       user,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin: every eligible commission for an affiliate, with an authoritative total.
+  //
+  // `findOne` caps commissions at the 50 most recent across all statuses, so the
+  // eligible rows inside it are only the ones that happen to fall in that window —
+  // an affiliate with a large pending backlog has eligible commissions pushed out
+  // of it. Payout creation must never derive its commission set from that preview,
+  // so this returns the complete, unbounded eligible list.
+  // ---------------------------------------------------------------------------
+  async findEligibleCommissions(id: string): Promise<{
+    affiliate_profile_id: string;
+    affiliate_user_id: string | null;
+    eligible_count: number;
+    eligible_amount: number;
+    commissions: Array<{
+      id: string;
+      organization_id: string | null;
+      organization_name: string;
+      amount: number;
+      status: string;
+      date: string;
+      invoice_id: string | null;
+      name: string | null;
+    }>;
+  }> {
+    const profile = await this.prisma.affiliateProfile.findUnique({
+      where: { id },
+      select: { id: true, user_id: true },
+    });
+    if (!profile) throw new NotFoundException('Affiliate profile not found');
+
+    // Commissions key on the profile's user id, not the profile id. Without a
+    // connected user the affiliate cannot own commissions at all.
+    if (!profile.user_id) {
+      return {
+        affiliate_profile_id: profile.id,
+        affiliate_user_id: null,
+        eligible_count: 0,
+        eligible_amount: 0,
+        commissions: [],
+      };
+    }
+
+    const where = {
+      affiliate_id: profile.user_id,
+      status: 'eligible' as const,
+    };
+
+    const [commissions, agg] = await Promise.all([
+      this.prisma.affiliateCommission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' as const },
+        select: {
+          id: true,
+          status: true,
+          commission_amount: true,
+          createdAt: true,
+          organization_id: true,
+          organization: { select: { id: true, name: true } },
+          hubspotInvoiceSnapshot: {
+            select: { hubspot_id: true, invoice_number: true },
+          },
+        },
+      }),
+      this.prisma.affiliateCommission.aggregate({
+        where,
+        _sum: { commission_amount: true },
+        _count: true,
+      }),
+    ]);
+
+    return {
+      affiliate_profile_id: profile.id,
+      affiliate_user_id: profile.user_id,
+      eligible_count: agg._count,
+      eligible_amount: Number(agg._sum.commission_amount ?? 0),
+      commissions: commissions.map((c) => ({
+        id: c.id,
+        organization_id: c.organization_id ?? null,
+        organization_name: c.organization?.name ?? '',
+        amount: Number(c.commission_amount),
+        status: c.status,
+        date: c.createdAt.toISOString(),
+        invoice_id: c.hubspotInvoiceSnapshot?.hubspot_id ?? null,
+        name: c.hubspotInvoiceSnapshot?.invoice_number ?? null,
+      })),
     };
   }
 
