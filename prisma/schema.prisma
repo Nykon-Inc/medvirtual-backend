@@ -756,39 +756,40 @@ model GoogleToken {
 }
 
 model Staff {
-  id                      String        @id @default(uuid())
-  candidate_id            String?
-  hirerequest_id          String?
-  status                  String
-  salary                  Decimal?
-  start_date              DateTime?
-  created_at              DateTime      @default(now())
-  updated_at              DateTime      @updatedAt
-  created_by              String?
-  terminated_date         DateTime?
-  hubspot_client_name     String?
-  hubspot_close_date      DateTime?
-  hubspot_company_name    String?
-  hubspot_deal_name       String?
-  hubspot_dealstage       String?
-  hubspot_dealtype        String?
-  hubspot_deployment_type String?
-  hubspot_description     String?
-  hubspot_hs_acv          String?
-  hubspot_id              String?       @unique
-  hubspot_pipeline        String?
-  hubspot_business_unit   String?
-  hubspot_candidate_id    String?
-  hubspot_organization_id String?
-  organization_id         String?
-  bonus                   Bonus[]
-  candidate               Candidate?    @relation(fields: [candidate_id], references: [id])
-  hireRequest             HireRequest?  @relation(fields: [hirerequest_id], references: [id])
-  organization            Organization? @relation(fields: [organization_id], references: [id])
-  tickets                 Ticket[]
-  replaced_in_requests    HireRequest[] @relation("StaffToBeReplaced")
-  hubspotLineItemMatches  HubspotLineItemSnapshot[]
-  affiliateCommissions    AffiliateCommission[]
+  id                            String        @id @default(uuid())
+  candidate_id                  String?
+  hirerequest_id                String?
+  status                        String
+  salary                        Decimal?
+  start_date                    DateTime?
+  created_at                    DateTime      @default(now())
+  updated_at                    DateTime      @updatedAt
+  created_by                    String?
+  terminated_date               DateTime?
+  hubspot_client_name           String?
+  hubspot_close_date            DateTime?
+  hubspot_commission_start_date DateTime?
+  hubspot_company_name          String?
+  hubspot_deal_name             String?
+  hubspot_dealstage             String?
+  hubspot_dealtype              String?
+  hubspot_deployment_type       String?
+  hubspot_description           String?
+  hubspot_hs_acv                String?
+  hubspot_id                    String?       @unique
+  hubspot_pipeline              String?
+  hubspot_business_unit         String?
+  hubspot_candidate_id          String?
+  hubspot_organization_id       String?
+  organization_id               String?
+  bonus                         Bonus[]
+  candidate                     Candidate?    @relation(fields: [candidate_id], references: [id])
+  hireRequest                   HireRequest?  @relation(fields: [hirerequest_id], references: [id])
+  organization                  Organization? @relation(fields: [organization_id], references: [id])
+  tickets                       Ticket[]
+  replaced_in_requests          HireRequest[] @relation("StaffToBeReplaced")
+  hubspotLineItemMatches        HubspotLineItemSnapshot[]
+  affiliateCommissions          AffiliateCommission[]
 
   @@index([candidate_id], map: "idx_staff_candidate_id")
   @@index([hirerequest_id], map: "idx_staff_hirerequest_id")

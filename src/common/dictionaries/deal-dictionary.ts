@@ -6,6 +6,7 @@ export const dealToDbDictionary: Record<string, string> = {
   closedate: 'hubspot_close_date', //Date the deal was closed. This property is set automatically by HubSpot.
   company_name: 'hubspot_company_name',
   start_date: 'start_date',
+  alliance_commission_start_date: 'hubspot_commission_start_date',
   //conversion_date: 'start_date',
   dealname: 'hubspot_deal_name',
   pipeline: 'hubspot_pipeline', //The pipeline the deal is in. This determines which stages are options for the deal.
