@@ -128,6 +128,38 @@ export class HandlerInvoicePropertyChange {
         await this.staffMatching.run(invoiceWithOrg.organization.id);
       }
 
+      // HubSpot may not have finalized the real invoice number (hs_number) at invoice-
+      // creation time, leaving invoice_number stuck at their "INV-DRAFT" placeholder since
+      // the property-patch above only writes the single field the webhook event named. Re-fetch
+      // it here, before commission creation, so the commission is created against the real
+      // number when it's already available.
+      try {
+        const invoiceWithNumber = await axios.get(
+          `https://api.hubapi.com/crm/v3/objects/invoices/${event.objectId}?properties=hs_number`,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+        const freshInvoiceNumber =
+          invoiceWithNumber.data?.properties?.hs_number;
+        if (freshInvoiceNumber) {
+          await this.prisma.hubspotInvoiceSnapshot.update({
+            where: { hubspot_id: String(event.objectId) },
+            data: { invoice_number: freshInvoiceNumber },
+          });
+        }
+      } catch (err) {
+        // Non-fatal: commission creation must proceed even if HubSpot's number fetch fails;
+        // invoice_number self-heals on the next manual/periodic sync either way.
+        console.error(
+          `❌ Error fetching invoice number for invoice ${event.objectId}:`,
+          err.message,
+        );
+      }
+
       await this.comissionCreation.execute(event);
 
       console.log(

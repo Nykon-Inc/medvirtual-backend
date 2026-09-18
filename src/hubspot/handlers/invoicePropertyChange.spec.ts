@@ -136,4 +136,77 @@ describe('HandlerInvoicePropertyChange', () => {
 
     logSpy.mockRestore();
   });
+
+  it('fetches the finalized invoice number before creating the commission', async () => {
+    const callOrder: string[] = [];
+    mockPrisma.hubspotInvoiceSnapshot.update.mockImplementation((args) => {
+      if (args?.data?.invoice_number) {
+        callOrder.push('updateInvoiceNumber');
+      }
+      return Promise.resolve({});
+    });
+    mockComissionCreation.execute.mockImplementation(() => {
+      callOrder.push('comissionCreation');
+      return Promise.resolve();
+    });
+
+    mockPrisma.hubspotInvoiceSnapshot.findUnique
+      .mockResolvedValueOnce({ id: 'inv-1' })
+      .mockResolvedValueOnce({
+        paid_at: new Date('2026-01-01'),
+        organization: null,
+      });
+    mockedAxios.get
+      .mockResolvedValueOnce({
+        data: { properties: { hs_number: 'INV-00123' } },
+      }) // hs_number fetch
+      .mockResolvedValueOnce({ data: { properties: {} } }); // pdf link fetch
+
+    await handler.execute(baseEvent);
+
+    expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+      where: { hubspot_id: String(baseEvent.objectId) },
+      data: { invoice_number: 'INV-00123' },
+    });
+    expect(callOrder).toEqual(['updateInvoiceNumber', 'comissionCreation']);
+  });
+
+  it('still writes the invoice number even if HubSpot still reports the INV-DRAFT placeholder', async () => {
+    mockPrisma.hubspotInvoiceSnapshot.findUnique
+      .mockResolvedValueOnce({ id: 'inv-1' })
+      .mockResolvedValueOnce({
+        paid_at: new Date('2026-01-01'),
+        organization: null,
+      });
+    mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+    mockedAxios.get
+      .mockResolvedValueOnce({
+        data: { properties: { hs_number: 'INV-DRAFT' } },
+      })
+      .mockResolvedValueOnce({ data: { properties: {} } });
+
+    await handler.execute(baseEvent);
+
+    expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+      where: { hubspot_id: String(baseEvent.objectId) },
+      data: { invoice_number: 'INV-DRAFT' },
+    });
+    expect(mockComissionCreation.execute).toHaveBeenCalledWith(baseEvent);
+  });
+
+  it('does not fail commission creation when the invoice number fetch fails', async () => {
+    mockPrisma.hubspotInvoiceSnapshot.findUnique
+      .mockResolvedValueOnce({ id: 'inv-1' })
+      .mockResolvedValueOnce({
+        paid_at: new Date('2026-01-01'),
+        organization: null,
+      });
+    mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+    mockedAxios.get
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({ data: { properties: {} } });
+
+    await expect(handler.execute(baseEvent)).resolves.toBe(true);
+    expect(mockComissionCreation.execute).toHaveBeenCalledWith(baseEvent);
+  });
 });
