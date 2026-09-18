@@ -25,11 +25,15 @@ describe('HandlerComissionCreation', () => {
 
   const baseEvent = { objectId: 588407860315 };
 
-  const buildInvoice = (lineItems: any[]) => ({
+  const buildInvoice = (
+    lineItems: any[],
+    dueDate = new Date('2026-09-17'),
+  ) => ({
     id: 'inv-1',
     hubspot_id: '588407860315',
     invoice_amount: 3600,
     paid_at: new Date('2026-09-17'),
+    due_date: dueDate,
     lineItems,
     organization: {
       id: 'org-1',
@@ -116,5 +120,34 @@ describe('HandlerComissionCreation', () => {
     await expect(handler.execute(baseEvent)).resolves.toBe(true);
 
     expect(mockPrisma.affiliateCommission.upsert).toHaveBeenCalledTimes(2);
+  });
+
+  it('anchors the 365-day window on the invoice due_date, not on processing time', async () => {
+    // staff started 2026-01-01; due_date is only ~30 days later — still eligible,
+    // even though "now" (system clock at test run) may be much later than that.
+    const li = lineItem('li-1', 1500, 'staff-1');
+    mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+      buildInvoice([li], new Date('2026-01-31')),
+    );
+    mockPrisma.affiliateCommission.upsert.mockResolvedValue({
+      id: 'commission-1',
+    });
+
+    await expect(handler.execute(baseEvent)).resolves.toBe(true);
+
+    expect(mockPrisma.affiliateCommission.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a line item whose staff window had already expired by the invoice due_date', async () => {
+    // staff started 2026-01-01; due_date is 400 days later — expired by due_date,
+    // regardless of whether the real system clock is still within 365 days.
+    const li = lineItem('li-1', 1500, 'staff-1');
+    mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+      buildInvoice([li], new Date('2027-02-05')),
+    );
+
+    await expect(handler.execute(baseEvent)).resolves.toBe(true);
+
+    expect(mockPrisma.affiliateCommission.upsert).not.toHaveBeenCalled();
   });
 });

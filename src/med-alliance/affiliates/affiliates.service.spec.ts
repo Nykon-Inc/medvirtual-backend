@@ -1068,7 +1068,11 @@ describe('AffiliatesService', () => {
           amount: new Decimal('500.00'),
           invoice_id: snap.id,
           staff_id: 'staff-1',
-          invoice: { hubspot_id: snap.hubspot_id },
+          invoice: {
+            hubspot_id: snap.hubspot_id,
+            due_date: null,
+            paid_at: snap.paid_at,
+          },
           staff: { id: 'staff-1', start_date: daysAgo(30) },
         },
       ]);
@@ -1094,7 +1098,7 @@ describe('AffiliatesService', () => {
       );
     });
 
-    it('should skip a matched line item whose staff started more than 365 days ago (per-collaborator window — §4)', async () => {
+    it('should skip a matched line item whose staff started more than 365 days ago relative to the invoice due_date (per-collaborator window — §4)', async () => {
       const anchorDate = daysAgo(5);
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
@@ -1111,7 +1115,11 @@ describe('AffiliatesService', () => {
           amount: new Decimal('500.00'),
           invoice_id: snap.id,
           staff_id: 'staff-expired',
-          invoice: { hubspot_id: snap.hubspot_id },
+          invoice: {
+            hubspot_id: snap.hubspot_id,
+            due_date: null,
+            paid_at: snap.paid_at,
+          },
           staff: { id: 'staff-expired', start_date: daysAgo(400) },
         },
       ]);
@@ -1140,7 +1148,11 @@ describe('AffiliatesService', () => {
           amount: new Decimal('500.00'),
           invoice_id: snap.id,
           staff_id: 'staff-1',
-          invoice: { hubspot_id: snap.hubspot_id },
+          invoice: {
+            hubspot_id: snap.hubspot_id,
+            due_date: null,
+            paid_at: snap.paid_at,
+          },
           staff: { id: 'staff-1', start_date: daysAgo(10) },
         },
       ]);

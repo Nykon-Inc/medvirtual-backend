@@ -1060,6 +1060,7 @@ describe('CommissionsService', () => {
         invoice_amount: '1500.00',
         payment_status: null,
         paid_at: new Date('2026-02-10'),
+        due_date: new Date('2026-02-10'),
       },
       ...overrides,
     });
@@ -1234,9 +1235,13 @@ describe('CommissionsService', () => {
       expect(result).toEqual({ created: 0, skipped: 1 });
     });
 
-    it('should skip a matched line item whose staff started more than 365 days ago (per-collaborator window — §4)', async () => {
+    it('should skip a matched line item whose staff started more than 365 days ago relative to the invoice due_date (per-collaborator window — §4)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      const expiredStart = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+      // Anchored on the invoice's due_date (2026-02-10 per makeLineItem's default fixture),
+      // not on the real system clock — this must expire regardless of when the test runs.
+      const expiredStart = new Date(
+        makeLineItem().invoice.due_date.getTime() - 400 * 24 * 60 * 60 * 1000,
+      );
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
         makeLineItem({ staff: { id: 'staff-1', start_date: expiredStart } }),
       );

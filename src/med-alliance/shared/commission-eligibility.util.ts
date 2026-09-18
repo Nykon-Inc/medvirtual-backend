@@ -25,6 +25,11 @@ export interface LineItemCommissionEligibility {
  * Eligibility is per-collaborator: anchored on Staff.start_date, not Organization.deployment_date.
  * Company-level gates (active-client block, canceled stage, deleted org) are NOT this
  * function's concern — callers apply those before reaching a line item.
+ *
+ * `now` MUST be the invoice's due_date (via resolveCommissionAnchorDate below), never the
+ * wall-clock time the code happens to run at — two invoices with the same due_date must
+ * produce the same eligibility result regardless of when they're processed. Omitting `now`
+ * falls back to real wall-clock time and is a bug in the caller, not a valid usage.
  */
 export function computeLineItemCommissionEligibility(params: {
   lineItemAmount: Decimal | string | number;
@@ -56,4 +61,16 @@ export function computeLineItemCommissionEligibility(params: {
     .toDecimalPlaces(2);
 
   return { eligible: true, commissionAmount, daysSinceStart };
+}
+
+/**
+ * The commission-eligibility anchor date for an invoice: its due_date, since that's the
+ * business date the 365-day collaborator window is measured against — falling back to
+ * paid_at, then to wall-clock time, only when due_date hasn't been synced from HubSpot yet.
+ */
+export function resolveCommissionAnchorDate(invoice: {
+  due_date: Date | null;
+  paid_at: Date | null;
+}): Date {
+  return invoice.due_date ?? invoice.paid_at ?? new Date();
 }

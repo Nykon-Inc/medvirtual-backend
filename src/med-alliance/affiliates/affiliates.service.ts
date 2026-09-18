@@ -13,7 +13,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CommissionStatus, USER } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
-import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
+import {
+  computeLineItemCommissionEligibility,
+  resolveCommissionAnchorDate,
+} from '../shared/commission-eligibility.util';
 import { CreateAffiliateProfileDto } from './dto/create-affiliate-profile.dto';
 import {
   JoinProgramDto,
@@ -1705,7 +1708,9 @@ export class AffiliatesService {
           amount: true,
           invoice_id: true,
           staff_id: true,
-          invoice: { select: { hubspot_id: true } },
+          invoice: {
+            select: { hubspot_id: true, due_date: true, paid_at: true },
+          },
           staff: { select: { id: true, start_date: true } },
         },
       },
@@ -1716,6 +1721,7 @@ export class AffiliatesService {
         lineItemAmount: lineItem.amount ?? 0,
         staffStartDate: lineItem.staff?.start_date ?? null,
         commissionPercent: affiliateProfile.commission_percent_default,
+        now: resolveCommissionAnchorDate(lineItem.invoice),
       });
 
       if (!eligibility.eligible) continue;

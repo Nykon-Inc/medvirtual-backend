@@ -2,7 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CommissionStatus } from '@prisma/client';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
-import { computeLineItemCommissionEligibility } from '../../med-alliance/shared/commission-eligibility.util';
+import {
+  computeLineItemCommissionEligibility,
+  resolveCommissionAnchorDate,
+} from '../../med-alliance/shared/commission-eligibility.util';
 
 @Injectable()
 export class HandlerComissionCreation {
@@ -28,6 +31,7 @@ export class HandlerComissionCreation {
             hubspot_id: true,
             invoice_amount: true,
             paid_at: true,
+            due_date: true,
             lineItems: {
               where: { match_status: 'matched', staff_id: { not: null } },
               select: {
@@ -109,11 +113,14 @@ export class HandlerComissionCreation {
         ? CommissionStatus.pending_admin_confirmation
         : CommissionStatus.detected;
 
+      const anchorDate = resolveCommissionAnchorDate(invoiceExists);
+
       for (const lineItem of invoiceExists.lineItems) {
         const eligibility = computeLineItemCommissionEligibility({
           lineItemAmount: lineItem.amount ?? 0,
           staffStartDate: lineItem.staff?.start_date ?? null,
           commissionPercent,
+          now: anchorDate,
         });
 
         if (!eligibility.eligible) {

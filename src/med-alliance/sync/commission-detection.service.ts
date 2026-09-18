@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
-import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
+import {
+  computeLineItemCommissionEligibility,
+  resolveCommissionAnchorDate,
+} from '../shared/commission-eligibility.util';
 
 // One year in milliseconds — the COMPANY-level deployment expiry backstop only
 // (see expireEligibility below). Per-collaborator eligibility windows are computed by
@@ -235,7 +238,9 @@ export class CommissionDetectionService {
           amount: true,
           invoice_id: true,
           staff_id: true,
-          invoice: { select: { hubspot_id: true } },
+          invoice: {
+            select: { hubspot_id: true, due_date: true, paid_at: true },
+          },
           staff: { select: { id: true, start_date: true } },
         },
       },
@@ -245,11 +250,12 @@ export class CommissionDetectionService {
     let skipped = 0;
 
     for (const lineItem of matchedLineItems) {
+      const anchorDate = resolveCommissionAnchorDate(lineItem.invoice);
       const eligibility = computeLineItemCommissionEligibility({
         lineItemAmount: lineItem.amount ?? 0,
         staffStartDate: lineItem.staff?.start_date ?? null,
         commissionPercent: profile.commission_percent_default,
-        now,
+        now: anchorDate,
       });
 
       if (!eligibility.eligible) {

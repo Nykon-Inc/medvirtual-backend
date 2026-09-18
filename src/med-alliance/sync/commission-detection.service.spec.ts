@@ -56,18 +56,25 @@ const makeSnapshot = (overrides: Partial<any> = {}) => ({
   invoice_amount: '1500.00',
   payment_status: null,
   paid_at: new Date('2026-02-10'),
+  due_date: new Date('2026-02-10'),
   ...overrides,
 });
 
-// A matched line item, joined with its parent invoice's hubspot_id and its Staff row —
-// exactly the shape CommissionDetectionService.run() selects from hubspotLineItemSnapshot.
+// A matched line item, joined with its parent invoice's hubspot_id/due_date/paid_at and its
+// Staff row — exactly the shape CommissionDetectionService.run() selects from
+// hubspotLineItemSnapshot. due_date (not the real system clock) is what anchors the
+// 365-day eligibility window, so it must match makeSnapshot()'s due_date by default.
 const makeLineItem = (overrides: Partial<any> = {}) => ({
   id: 'li-1',
   amount: '1500.00',
   invoice_id: 'snap-1',
   staff_id: 'staff-1',
-  invoice: { hubspot_id: 'inv-1' },
-  staff: { id: 'staff-1', start_date: new Date('2026-02-01') }, // 9 days before paid_at, well within window
+  invoice: {
+    hubspot_id: 'inv-1',
+    due_date: new Date('2026-02-10'),
+    paid_at: new Date('2026-02-10'),
+  },
+  staff: { id: 'staff-1', start_date: new Date('2026-02-01') }, // 9 days before due_date, well within window
   ...overrides,
 });
 

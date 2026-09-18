@@ -19,7 +19,10 @@ import {
 import { AFFILIATE_VISIBLE_STATUSES } from '../../common/constant/commissions';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
-import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
+import {
+  computeLineItemCommissionEligibility,
+  resolveCommissionAnchorDate,
+} from '../shared/commission-eligibility.util';
 
 // Terminal statuses — transitions out of these are not allowed.
 const TERMINAL_STATUSES = ['paid', 'void', 'rejected'];
@@ -675,6 +678,7 @@ export class CommissionsService {
               invoice_amount: true,
               payment_status: true,
               paid_at: true,
+              due_date: true,
             },
           },
         },
@@ -791,6 +795,7 @@ export class CommissionsService {
         lineItemAmount: lineItem.amount ?? 0,
         staffStartDate: lineItem.staff?.start_date ?? null,
         commissionPercent: profile.commission_percent_default,
+        now: resolveCommissionAnchorDate(snapshot),
       });
 
       if (!eligibility.eligible) {
