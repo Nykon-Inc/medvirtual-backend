@@ -26,6 +26,8 @@ import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { createHash } from 'crypto';
 
+export const STRIPE_CUSTOMER_NOT_CONFIGURED = 'STRIPE_CUSTOMER_NOT_CONFIGURED';
+
 /**
  * Stable, non-reversible short identifier for a signing secret, safe to log. Lets a
  * signature failure be diagnosed ("is the secret we hold the one in the dashboard?")
@@ -72,6 +74,14 @@ export class StripeService implements OnModuleInit {
     @Inject(forwardRef(() => InvoiceService))
     private readonly invoiceService: InvoiceService,
   ) {}
+
+  private stripeCustomerNotConfigured(): BadRequestException {
+    return new BadRequestException({
+      statusCode: 400,
+      code: STRIPE_CUSTOMER_NOT_CONFIGURED,
+      message: 'Stripe customer ID not found for this organization',
+    });
+  }
 
   async onModuleInit() {
     await this.initializeStripe();
@@ -1613,9 +1623,7 @@ export class StripeService implements OnModuleInit {
     });
 
     if (!invoiceConfig || !invoiceConfig.stripe_customer_id) {
-      throw new BadRequestException(
-        'Stripe customer ID not found for this organization',
-      );
+      throw this.stripeCustomerNotConfigured();
     }
 
     const stripeCustomerId = invoiceConfig.stripe_customer_id;
@@ -1658,9 +1666,7 @@ export class StripeService implements OnModuleInit {
     });
 
     if (!invoiceConfig || !invoiceConfig.stripe_customer_id) {
-      throw new BadRequestException(
-        'Stripe customer ID not found for this organization',
-      );
+      throw this.stripeCustomerNotConfigured();
     }
 
     return await this.safeStripeCall(() =>
@@ -1687,9 +1693,7 @@ export class StripeService implements OnModuleInit {
     });
 
     if (!invoiceConfig || !invoiceConfig.stripe_customer_id) {
-      throw new BadRequestException(
-        'Stripe customer ID not found for this organization',
-      );
+      throw this.stripeCustomerNotConfigured();
     }
 
     const pm = await this.safeStripeCall(() =>
@@ -1727,9 +1731,7 @@ export class StripeService implements OnModuleInit {
     });
 
     if (!invoiceConfig || !invoiceConfig.stripe_customer_id) {
-      throw new BadRequestException(
-        'Stripe customer ID not found for this organization',
-      );
+      throw this.stripeCustomerNotConfigured();
     }
 
     const paymentIntent = await this.safeStripeCall(() =>
