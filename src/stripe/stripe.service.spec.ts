@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { StripeService } from './stripe.service';
+import {
+  STRIPE_CUSTOMER_NOT_CONFIGURED,
+  StripeService,
+} from './stripe.service';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../secrets/secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -102,6 +105,41 @@ describe('StripeService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('missing Stripe customer configuration', () => {
+    beforeEach(() => {
+      (service as any).stripe = {};
+      (service as any).prisma = {
+        invoiceConfiguration: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+      };
+    });
+
+    it('returns a stable error code when loading payment methods', async () => {
+      await expect(
+        service.getCustomerPaymentMethods('org-without-stripe'),
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: STRIPE_CUSTOMER_NOT_CONFIGURED,
+          message: 'Stripe customer ID not found for this organization',
+        },
+      });
+    });
+
+    it('returns the same error code when initializing the payment form', async () => {
+      await expect(
+        service.createSetupIntent('org-without-stripe'),
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: STRIPE_CUSTOMER_NOT_CONFIGURED,
+          message: 'Stripe customer ID not found for this organization',
+        },
+      });
+    });
   });
 
   describe('getPublicKey', () => {
