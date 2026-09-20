@@ -361,11 +361,42 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       .toJSDate();
 
     // --- Staff / candidate records (for rates) ---
+    // Same VA-id widening the generator uses: a person's hubstaff_id and their live
+    // staff assignment can sit on different Candidate rows sharing one hubspot_vaid,
+    // so resolve the whole identity rather than the single row Hubstaff references.
+    // Kept identical to InvoiceWorker on purpose — if the two resolved differently,
+    // reconciliation would post deltas that are pure resolution mismatch.
+    const directCandidates: {
+      hubstaff_id: string | null;
+      hubspot_vaid: string | null;
+    }[] =
+      hubstaffUserIds.length > 0
+        ? await this.prisma.candidate.findMany({
+            where: { hubstaff_id: { in: hubstaffUserIds } },
+            select: { hubstaff_id: true, hubspot_vaid: true },
+          })
+        : [];
+
+    const vaIds = Array.from(
+      new Set(
+        directCandidates
+          .map((c) => c.hubspot_vaid)
+          .filter((v): v is string => !!v),
+      ),
+    );
+
     const staffRecords =
       hubstaffUserIds.length > 0
         ? await this.prisma.staff.findMany({
             where: {
-              candidate: { hubstaff_id: { in: hubstaffUserIds } },
+              candidate: {
+                OR: [
+                  { hubstaff_id: { in: hubstaffUserIds } },
+                  ...(vaIds.length > 0
+                    ? [{ hubspot_vaid: { in: vaIds } }]
+                    : []),
+                ],
+              },
               OR: [
                 { organization_id: organizationId },
                 ...(org.hubspot_id
@@ -394,6 +425,11 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       staffRecords.map((s) => ({
         business_unit: s.candidate?.business_unit ?? null,
       })),
+    );
+
+    const resolveStaffFor = this.invoiceWorker.buildStaffResolver(
+      directCandidates,
+      staffRecords,
     );
 
     // --- Actual Hubstaff activities ---
@@ -488,9 +524,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     ]);
 
     for (const userId of workerIdsToProcess) {
-      const staff =
-        staffRecords.find((s) => s.candidate?.hubstaff_id === String(userId)) ??
-        null;
+      const staff = resolveStaffFor(userId);
       const candidate = staff?.candidate ?? null;
 
       const deploymentType = (staff?.hubspot_deployment_type ?? '')

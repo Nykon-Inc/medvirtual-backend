@@ -40,6 +40,12 @@ describe('InvoiceWorker', () => {
       staff: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // Used to look up the VA ids behind the Hubstaff ids before the staff query —
+      // see InvoiceWorker.buildStaffResolver. Empty by default, so tests that don't
+      // care about VA-id widening fall back to plain hubstaff_id matching.
+      candidate: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     hubstaffMock = {
@@ -102,11 +108,20 @@ describe('InvoiceWorker', () => {
 
       await (worker as any).generateInvoiceRecord(org, payload);
 
+      // The staff lookup is an OR since it also widens by VA id (see
+      // buildStaffResolver); the hubstaff_id branch must still carry only the
+      // non-excluded member.
       expect(prismaMock.staff.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            candidate: { hubstaff_id: { in: ['123'] } },
+            candidate: { OR: [{ hubstaff_id: { in: ['123'] } }] },
           }),
+        }),
+      );
+      // And the VA-id lookup that precedes it is scoped the same way.
+      expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { hubstaff_id: { in: ['123'] } },
         }),
       );
     });
@@ -375,6 +390,157 @@ describe('InvoiceWorker', () => {
           }),
         }),
       });
+    });
+  });
+
+  describe('candidate resolution by VA id', () => {
+    const staffRow = (over: any = {}) => ({
+      id: 'staff_x',
+      status: 'active',
+      updated_at: new Date('2026-01-01'),
+      candidate: { hubstaff_id: null, hubspot_vaid: null },
+      ...over,
+    });
+
+    it('resolves through the VA id when the hubstaff_id sits on a different candidate row', () => {
+      // The real "Kristine Kraine Agno" shape: two candidate rows share vaid
+      // MV250071. The Hubstaff id is on the inactive Kansas Heart row; the live
+      // Evolve assignment hangs off a row with no hubstaff_id at all.
+      const withHubstaffId = staffRow({
+        id: 'staff_kansas',
+        status: 'inactive',
+        updated_at: new Date('2026-08-19'),
+        candidate: { hubstaff_id: '3165910', hubspot_vaid: 'MV250071' },
+      });
+      const activeSibling = staffRow({
+        id: 'staff_evolve',
+        status: 'active',
+        updated_at: new Date('2026-07-14'),
+        candidate: { hubstaff_id: null, hubspot_vaid: 'MV250071' },
+      });
+
+      const resolve = worker.buildStaffResolver(
+        [{ hubstaff_id: '3165910', hubspot_vaid: 'MV250071' }],
+        [withHubstaffId, activeSibling],
+      );
+
+      // Active wins even though the inactive row is the one Hubstaff points at and
+      // has the more recent updated_at.
+      expect(resolve(3165910)?.id).toBe('staff_evolve');
+    });
+
+    it('falls back to the most recently updated row when none is active', () => {
+      const older = staffRow({
+        id: 'staff_old',
+        status: 'terminated',
+        updated_at: new Date('2026-03-01'),
+        candidate: { hubstaff_id: '999', hubspot_vaid: 'MV1' },
+      });
+      const newer = staffRow({
+        id: 'staff_new',
+        status: 'inactive',
+        updated_at: new Date('2026-09-01'),
+        candidate: { hubstaff_id: null, hubspot_vaid: 'MV1' },
+      });
+
+      const resolve = worker.buildStaffResolver(
+        [{ hubstaff_id: '999', hubspot_vaid: 'MV1' }],
+        [older, newer],
+      );
+
+      expect(resolve('999')?.id).toBe('staff_new');
+    });
+
+    it('picks the most recently updated among several active rows', () => {
+      const resolve = worker.buildStaffResolver(
+        [{ hubstaff_id: '5', hubspot_vaid: 'MV2' }],
+        [
+          staffRow({
+            id: 'a',
+            updated_at: new Date('2026-02-01'),
+            candidate: { hubstaff_id: '5', hubspot_vaid: 'MV2' },
+          }),
+          staffRow({
+            id: 'b',
+            updated_at: new Date('2026-06-01'),
+            candidate: { hubstaff_id: null, hubspot_vaid: 'MV2' },
+          }),
+        ],
+      );
+
+      expect(resolve(5)?.id).toBe('b');
+    });
+
+    it('still matches on hubstaff_id alone when the candidate has no VA id', () => {
+      const resolve = worker.buildStaffResolver(
+        [{ hubstaff_id: '7', hubspot_vaid: null }],
+        [
+          staffRow({
+            id: 'only',
+            candidate: { hubstaff_id: '7', hubspot_vaid: null },
+          }),
+        ],
+      );
+
+      expect(resolve('7')?.id).toBe('only');
+    });
+
+    it('does not match an unrelated VA id, and returns null when nothing matches', () => {
+      const resolve = worker.buildStaffResolver(
+        [{ hubstaff_id: '7', hubspot_vaid: 'MV7' }],
+        [
+          staffRow({
+            id: 'other',
+            candidate: { hubstaff_id: '8', hubspot_vaid: 'MV8' },
+          }),
+        ],
+      );
+
+      expect(resolve('7')).toBeNull();
+    });
+
+    it('widens the staff query by VA id, scoped to the organization', async () => {
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 3165910, name: 'Kristine' },
+      ]);
+      prismaMock.candidate = {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { hubstaff_id: '3165910', hubspot_vaid: 'MV250071' },
+          ]),
+      };
+      prismaMock.staff.findMany.mockResolvedValue([]);
+
+      await (worker as any).generateInvoiceRecord(
+        {
+          id: 'org_id',
+          hubspot_id: 'hs_org_1',
+          invoiceConfiguration: {
+            hubstaff_id: 'hubstaff_project_id',
+            billing_currency: 'USD',
+          },
+        },
+        {
+          organization_id: 'org_id',
+          billing_start_date: '2026-09-16',
+          billing_end_date: '2026-09-30',
+          is_prebill: true,
+          created_by: 'user_1',
+        },
+      );
+
+      const where = prismaMock.staff.findMany.mock.calls[0][0].where;
+      expect(where.candidate.OR).toEqual([
+        { hubstaff_id: { in: ['3165910'] } },
+        { hubspot_vaid: { in: ['MV250071'] } },
+      ]);
+      // Org scoping must survive the widening, or another client's assignment could
+      // price this invoice.
+      expect(where.OR).toEqual([
+        { organization_id: 'org_id' },
+        { hubspot_organization_id: 'hs_org_1' },
+      ]);
     });
   });
 

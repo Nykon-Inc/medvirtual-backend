@@ -144,6 +144,68 @@ export class InvoiceWorker extends WorkerHost {
     );
   }
 
+  /**
+   * Resolves a Hubstaff user id → the staff assignment that should price their line.
+   *
+   * A single person can hold several Candidate rows sharing one `hubspot_vaid` (the
+   * stable VA identity), and the identity is frequently split across them: the
+   * Hubstaff id lands on one row while the live staff assignment hangs off another.
+   * Matching on `candidate.hubstaff_id` alone therefore misses the real assignment and
+   * the worker is either dropped or billed at a $0 rate.
+   *
+   * So the pool is widened by VA id before matching:
+   *   hubstaff id → candidate → hubspot_vaid → every candidate sharing that vaid.
+   *
+   * `staffRecords` must already be scoped to the invoice's organization — widening by
+   * vaid must NOT let another client's assignment price this invoice. Within that org
+   * the tiebreak is: prefer an `active` row, else fall back to the most recently
+   * updated one.
+   */
+  public buildStaffResolver<
+    S extends {
+      status: string;
+      updated_at: Date;
+      candidate?: {
+        hubstaff_id: string | null;
+        hubspot_vaid?: string | null;
+      } | null;
+    },
+  >(
+    directCandidates: {
+      hubstaff_id: string | null;
+      hubspot_vaid: string | null;
+    }[],
+    staffRecords: S[],
+  ): (hubstaffUserId: string | number) => S | null {
+    const vaIdByHubstaffId = new Map<string, string>();
+    for (const c of directCandidates) {
+      if (c.hubstaff_id && c.hubspot_vaid) {
+        vaIdByHubstaffId.set(c.hubstaff_id, c.hubspot_vaid);
+      }
+    }
+
+    return (hubstaffUserId: string | number) => {
+      const key = String(hubstaffUserId);
+      const vaId = vaIdByHubstaffId.get(key) ?? null;
+
+      const pool = staffRecords.filter(
+        (s) =>
+          s.candidate?.hubstaff_id === key ||
+          (!!vaId && s.candidate?.hubspot_vaid === vaId),
+      );
+      if (pool.length === 0) return null;
+      if (pool.length === 1) return pool[0];
+
+      // Prefer active assignments; if none is active, the most recently updated row
+      // is the best available record of what this person was last being paid.
+      const active = pool.filter((s) => s.status === 'active');
+      const shortlist = active.length > 0 ? active : pool;
+      return shortlist.reduce((best, s) =>
+        s.updated_at > best.updated_at ? s : best,
+      );
+    };
+  }
+
   /** Builds the position-rate config lookup used by fallbackHourlyRate — fetched once
    * per batch by callers (this worker's own generateInvoiceRecord, and
    * InvoicePrebillReconciliationWorker) rather than per-worker inside a loop. */
@@ -514,19 +576,47 @@ export class InvoiceWorker extends WorkerHost {
       ]),
     );
 
-    // Fetch all staff by candidate's hubstaff_id, matching this organization. The OR
+    // The candidate rows Hubstaff points at directly, and the VA ids behind them. A
+    // person can own several candidate rows sharing one hubspot_vaid, with the
+    // hubstaff_id on one and the live staff assignment on another — see
+    // buildStaffResolver. Collecting the vaids here lets the staff query below widen
+    // to the whole identity rather than just the row Hubstaff happens to reference.
+    const directCandidates: {
+      hubstaff_id: string | null;
+      hubspot_vaid: string | null;
+    }[] =
+      staffLookupIds.length > 0
+        ? await this.prisma.candidate.findMany({
+            where: { hubstaff_id: { in: staffLookupIds } },
+            select: { hubstaff_id: true, hubspot_vaid: true },
+          })
+        : [];
+
+    const vaIds = Array.from(
+      new Set(
+        directCandidates
+          .map((c) => c.hubspot_vaid)
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    // Fetch all staff for that identity pool, matching this organization. The outer OR
     // matches by either our own organization_id or the org's HubSpot company id, since
     // staff assignment records may be linked via either identifier depending on how
-    // they were created. Also sideloads resolved 'bonus'-type tickets from this exact
-    // billing period, which get turned into bonus line items further down.
+    // they were created — and it stays in place so widening by vaid can never pull in
+    // another client's assignment. Also sideloads resolved 'bonus'-type tickets from
+    // this exact billing period, which get turned into bonus line items further down.
     const staffRecords =
       staffLookupIds.length > 0
         ? await this.prisma.staff.findMany({
             where: {
               candidate: {
-                hubstaff_id: {
-                  in: staffLookupIds,
-                },
+                OR: [
+                  { hubstaff_id: { in: staffLookupIds } },
+                  ...(vaIds.length > 0
+                    ? [{ hubspot_vaid: { in: vaIds } }]
+                    : []),
+                ],
               },
               OR: [
                 { organization_id: organization_id },
@@ -572,6 +662,13 @@ export class InvoiceWorker extends WorkerHost {
       })),
     );
 
+    // hubstaff user id → the staff assignment that prices their line, resolved via VA
+    // id across duplicate candidate rows (see buildStaffResolver).
+    const resolveStaffFor = this.buildStaffResolver(
+      directCandidates,
+      staffRecords,
+    );
+
     // Aggregate per-worker total tracked seconds for the period — tracked/overall are
     // fed into userSummary either from a flat prebill assumption or real Hubstaff
     // activity records, depending on billing mode (see branches below). The day-by-day
@@ -608,9 +705,7 @@ export class InvoiceWorker extends WorkerHost {
       const skippedMembers: string[] = [];
 
       members.forEach((member: any) => {
-        const assignedStaff = staffRecords.find(
-          (s) => s.candidate?.hubstaff_id === String(member.user_id),
-        );
+        const assignedStaff = resolveStaffFor(member.user_id);
         // staffRecords is already scoped to this organization, so a miss here means
         // "not assigned to this client" — either no staff record at all or one that
         // belongs to a different org.
@@ -791,10 +886,7 @@ export class InvoiceWorker extends WorkerHost {
         // or was assumed to (prebill), plus nested overtime/bonus/reconciliation lines.
         for (const [userId, stats] of userSummary.entries()) {
           // Find Staff & Candidate
-          const staff =
-            staffRecords.find(
-              (s) => s.candidate?.hubstaff_id === String(userId),
-            ) || null;
+          const staff = resolveStaffFor(userId);
           const candidate = staff?.candidate || null;
 
           // Full-time workers have an 8hr/day baseline (salaried expectation); part-time
