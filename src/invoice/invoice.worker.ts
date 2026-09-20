@@ -28,6 +28,21 @@ import {
 } from '../common/utils/salary.util';
 
 /**
+ * Overtime pricing multipliers, applied to the worker's base hourly bill rate (see
+ * InvoiceWorker.resolveBillRate). Two different formulas depending on the kind of
+ * overtime:
+ *
+ * - Regular overtime — payable hours beyond the period's expected baseline are billed
+ *   at 1.5x the bill rate.
+ * - Holiday overtime — hours actually worked on an observed holiday are billed at only
+ *   an *additional* 0.5x. It's additive rather than a full rate because the client is
+ *   already being charged the standard baseline holiday hours on the primary line
+ *   whether or not the VA works that day, so the extra 0.5x is all that's owed on top.
+ */
+export const OVERTIME_RATE_MULTIPLIER = 1.5;
+export const HOLIDAY_OVERTIME_RATE_MULTIPLIER = 0.5;
+
+/**
  * BullMQ worker that does the actual heavy lifting of invoice generation — everything
  * InvoiceService.createInvoice/createBulkInvoices does is just enqueuing a job for this
  * class to process. This is where Hubstaff time-tracking data, staff pay
@@ -95,6 +110,139 @@ export class InvoiceWorker extends WorkerHost {
       candidatePoolMap.get(candidate.business_unit ?? '') ?? 'medical';
     return computeCandidateRates(candidate, positionConfigMap, pool)
       .bill_rate_hourly;
+  }
+
+  /**
+   * The worker's base hourly bill rate — the single number both overtime formulas are
+   * a multiple of (see OVERTIME_RATE_MULTIPLIER / HOLIDAY_OVERTIME_RATE_MULTIPLIER).
+   *
+   * Resolution order mirrors the primary-line pricing branches below so the overtime
+   * rate is always derived from the same source as the base charge: a salaried
+   * worker's hourly equivalent (monthly salary over the standard 176-hour full-time
+   * month), else the candidate's own hourly rate, else the position+business-unit
+   * floor price.
+   *
+   * Note this is deliberately the *hourly* rate even for full-month salaried workers
+   * billed a flat amount — their primary line stays the flat salary, and overtime is
+   * priced off this hourly equivalent on top of it.
+   */
+  public resolveBillRate(
+    staff: { salary?: Prisma.Decimal | number | string | null } | null,
+    candidate: (CandidateLike & { hourly_pay_rate?: any }) | null,
+    positionConfigMap: ReturnType<typeof buildConfigMap>,
+    candidatePoolMap: Map<string, CandidatePool>,
+  ): Decimal {
+    if (staff?.salary) {
+      const monthlySalary = Number(staff.salary);
+      return new Decimal(monthlySalary / 176);
+    }
+    if (candidate?.hourly_pay_rate) {
+      return new Decimal(Number(candidate.hourly_pay_rate));
+    }
+    return new Decimal(
+      this.fallbackHourlyRate(candidate, positionConfigMap, candidatePoolMap),
+    );
+  }
+
+  /**
+   * Resolves a Hubstaff user id → the staff assignment that should price their line.
+   *
+   * A single person can hold several Candidate rows sharing one `hubspot_vaid` (the
+   * stable VA identity), and the identity is frequently split across them: the
+   * Hubstaff id lands on one row while the live staff assignment hangs off another.
+   * Matching on `candidate.hubstaff_id` alone therefore misses the real assignment and
+   * the worker is either dropped or billed at a $0 rate.
+   *
+   * So the pool is widened by VA id before matching:
+   *   hubstaff id → candidate → hubspot_vaid → every candidate sharing that vaid.
+   *
+   * `staffRecords` spans organizations (it is NOT org-scoped), because a person's only
+   * usable pay record may sit under a different client. Preference order:
+   *
+   *   1. a row for THIS organization, active or not — this client's own record of the
+   *      arrangement always wins, even if stale;
+   *   2. otherwise any active row, wherever it lives — an active assignment elsewhere
+   *      is a better estimate of current pay than nothing;
+   *   3. otherwise the most recently updated row — the last known state.
+   *
+   * Ties inside each tier break on most-recently-updated, so resolution is
+   * deterministic rather than dependent on row order.
+   *
+   * NOTE: tiers 2 and 3 can return another client's assignment. That is deliberate for
+   * *pricing* (the alternative is billing $0), but it means this must NOT be used to
+   * decide whether someone belongs on an invoice at all. Pre-bill inclusion uses
+   * `poolFor` with an explicit same-org + active check instead — see
+   * generateInvoiceRecord.
+   *
+   * `staffRecords` must carry `candidate.hubstaff_id` and `candidate.hubspot_vaid` —
+   * both are what the pool is matched on. A narrowed `select` on the candidate
+   * relation silently empties every pool and makes this return null for everyone, so
+   * callers use a full `include`.
+   */
+  public buildStaffResolver<
+    S extends {
+      status: string;
+      updated_at: Date;
+      candidate?: {
+        hubstaff_id: string | null;
+        hubspot_vaid?: string | null;
+      } | null;
+    },
+  >(
+    directCandidates: {
+      hubstaff_id: string | null;
+      hubspot_vaid: string | null;
+    }[],
+    staffRecords: S[],
+    /**
+     * True when a staff row belongs to the organization being invoiced. `NoInfer` so
+     * S is inferred from `staffRecords` alone — otherwise a predicate written against
+     * a narrower shape collapses S to the constraint and strips the caller's fields.
+     */
+    isOrgStaff: (staff: NoInfer<S>) => boolean,
+  ): {
+    resolve: (hubstaffUserId: string | number) => S | null;
+    poolFor: (hubstaffUserId: string | number) => S[];
+  } {
+    const vaIdByHubstaffId = new Map<string, string>();
+    for (const c of directCandidates) {
+      if (c.hubstaff_id && c.hubspot_vaid) {
+        vaIdByHubstaffId.set(c.hubstaff_id, c.hubspot_vaid);
+      }
+    }
+
+    const poolFor = (hubstaffUserId: string | number) => {
+      const key = String(hubstaffUserId);
+      const vaId = vaIdByHubstaffId.get(key) ?? null;
+      return staffRecords.filter(
+        (s) =>
+          s.candidate?.hubstaff_id === key ||
+          (!!vaId && s.candidate?.hubspot_vaid === vaId),
+      );
+    };
+
+    const mostRecent = (rows: S[]) =>
+      rows.reduce((best, s) => (s.updated_at > best.updated_at ? s : best));
+
+    const resolve = (hubstaffUserId: string | number) => {
+      const pool = poolFor(hubstaffUserId);
+      if (pool.length === 0) return null;
+
+      const ownOrg = pool.filter(isOrgStaff);
+      if (ownOrg.length > 0) {
+        // This client's own record wins outright. Within it, an active row beats a
+        // stale one.
+        const active = ownOrg.filter((s) => s.status === 'active');
+        return mostRecent(active.length > 0 ? active : ownOrg);
+      }
+
+      const active = pool.filter((s) => s.status === 'active');
+      if (active.length > 0) return mostRecent(active);
+
+      return mostRecent(pool);
+    };
+
+    return { resolve, poolFor };
   }
 
   /** Builds the position-rate config lookup used by fallbackHourlyRate — fetched once
@@ -382,6 +530,21 @@ export class InvoiceWorker extends WorkerHost {
             data: { current_version_id: version.id },
           });
 
+          // 4. Create Audit Log
+          await tx.invoiceAuditLog.create({
+            data: {
+              invoice_id: invoice.id,
+              invoice_version_id: version.id,
+              actor_id: created_by,
+              event: 'invoice_created',
+              new_value: {
+                status: InvoiceStatus.draft,
+                is_custom: true,
+                is_prebill: is_prebill || false,
+              },
+            },
+          });
+
           return invoice;
         },
       );
@@ -418,26 +581,86 @@ export class InvoiceWorker extends WorkerHost {
       .endOf('day')
       .toJSDate();
 
-    // Fetch all staff by candidate's hubstaff_id, matching this organization. The OR
-    // matches by either our own organization_id or the org's HubSpot company id, since
-    // staff assignment records may be linked via either identifier depending on how
-    // they were created. Also sideloads resolved 'bonus'-type tickets from this exact
-    // billing period, which get turned into bonus line items further down.
+    // Real tracked time for the period. Fetched up front (before the staff lookup
+    // below) because on a post-bill invoice it — not current project membership —
+    // decides who gets billed, so the staff/candidate records needed to PRICE those
+    // people have to be fetched for them too. Pre-bill has no activity to fetch: the
+    // cycle hasn't happened yet.
+    let activities: any[] = [];
+    if (!is_prebill) {
+      activities = await this.hubstaff.getHubstaffDailyActivityForInvoice({
+        hubstaffId: Number(hubstaffId),
+        start_date: billing_start_date,
+        end_date: billing_end_date,
+      });
+
+      if (activities.length === 0) {
+        this.logger.warn(
+          `No activities found for org ${organization_id} in period ${billing_start_date} - ${billing_end_date}`,
+        );
+      }
+    }
+
+    // Union of current project members and anyone who logged time in the window — a
+    // worker removed from the Hubstaff project mid-cycle still needs their staff
+    // record loaded, or they'd be billed at a $0 rate.
+    const staffLookupIds = Array.from(
+      new Set([
+        ...hubstaffUserIds,
+        ...activities
+          .map((act: any) => String(act.user_id))
+          .filter(
+            (id: string) => !this.excludedHubstaffUserIds.has(Number(id)),
+          ),
+      ]),
+    );
+
+    // The candidate rows Hubstaff points at directly, and the VA ids behind them. A
+    // person can own several candidate rows sharing one hubspot_vaid, with the
+    // hubstaff_id on one and the live staff assignment on another — see
+    // buildStaffResolver. Collecting the vaids here lets the staff query below widen
+    // to the whole identity rather than just the row Hubstaff happens to reference.
+    const directCandidates: {
+      hubstaff_id: string | null;
+      hubspot_vaid: string | null;
+    }[] =
+      staffLookupIds.length > 0
+        ? await this.prisma.candidate.findMany({
+            where: { hubstaff_id: { in: staffLookupIds } },
+            select: { hubstaff_id: true, hubspot_vaid: true },
+          })
+        : [];
+
+    const vaIds = Array.from(
+      new Set(
+        directCandidates
+          .map((c) => c.hubspot_vaid)
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    // Fetch all staff for that identity pool, ACROSS organizations. This is
+    // deliberately not org-filtered: buildStaffResolver prefers a row for this
+    // organization but falls back to an active assignment elsewhere rather than
+    // pricing the line at $0, so it needs to see those rows. Org preference is
+    // applied when ranking, not when querying — and pre-bill inclusion re-checks
+    // same-org + active explicitly (see isOrgStaff below).
+    //
+    // Also sideloads resolved 'bonus'-type tickets from this exact billing period,
+    // which get turned into bonus line items further down; those stay scoped to this
+    // organization via the nested org_id filter.
     const staffRecords =
-      hubstaffUserIds.length > 0
+      staffLookupIds.length > 0
         ? await this.prisma.staff.findMany({
             where: {
               candidate: {
-                hubstaff_id: {
-                  in: hubstaffUserIds,
-                },
+                OR: [
+                  { hubstaff_id: { in: staffLookupIds } },
+                  ...(vaIds.length > 0
+                    ? [{ hubspot_vaid: { in: vaIds } }]
+                    : []),
+                ],
               },
-              OR: [
-                { organization_id: organization_id },
-                ...(org.hubspot_id
-                  ? [{ hubspot_organization_id: org.hubspot_id }]
-                  : []),
-              ],
             },
             include: {
               candidate: {
@@ -476,20 +699,43 @@ export class InvoiceWorker extends WorkerHost {
       })),
     );
 
+    // True when a staff row belongs to the organization being invoiced. Staff rows
+    // link by either identifier depending on how they were created.
+    const isOrgStaff = (s: {
+      organization_id: string | null;
+      hubspot_organization_id: string | null;
+    }) =>
+      s.organization_id === organization_id ||
+      (!!org.hubspot_id && s.hubspot_organization_id === org.hubspot_id);
+
+    // hubstaff user id → the staff assignment that prices their line, resolved via VA
+    // id across duplicate candidate rows (see buildStaffResolver). `poolFor` exposes
+    // the unranked identity pool so pre-bill can apply its own stricter same-org +
+    // active test rather than inheriting the resolver's cross-org fallbacks.
+    const { resolve: resolveStaffFor, poolFor: staffPoolFor } =
+      this.buildStaffResolver(directCandidates, staffRecords, isOrgStaff);
+
     // Aggregate per-worker total tracked seconds for the period — tracked/overall are
     // fed into userSummary either from a flat prebill assumption or real Hubstaff
     // activity records, depending on billing mode (see branches below). The day-by-day
     // breakdown into worked/pto/holiday buckets happens later in the main loop; this is
     // just the first pass to know which workers to build line items for at all.
     const userSummary = new Map<number, { tracked: number; overall: number }>();
-    let activities: any[] = [];
 
     if (is_prebill) {
       // Pre-bill logic: actual hours aren't known yet (billing happens BEFORE the cycle
-      // starts — see BillingMode.prebill), so assume every project member works a
-      // standard 8hrs/day baseline for the full period. The real numbers get
-      // reconciled afterward via InvoicePrebillReconciliationWorker, which compares
-      // this assumption against what Hubstaff actually recorded once the cycle closes.
+      // starts — see BillingMode.prebill), so assume a flat standard baseline for the
+      // full period. The real numbers get reconciled afterward via
+      // InvoicePrebillReconciliationWorker, which compares this assumption against what
+      // Hubstaff actually recorded once the cycle closes.
+      //
+      // Who gets billed is the Hubstaff project membership cross-checked against our
+      // own staff assignments: a member is only prebilled if they have an ACTIVE staff
+      // record for this organization. Hubstaff project membership drifts out of sync
+      // with reality (VAs get reassigned to another client, or terminated, without
+      // being removed from the project), and prebilling on membership alone produced
+      // phantom lines for people this client no longer has — billed at a $0 rate, since
+      // the org-scoped staff lookup that prices the line wouldn't match them either.
       const startDate = DateTime.fromISO(billing_start_date, {
         zone: 'utc',
       }).toJSDate();
@@ -502,33 +748,62 @@ export class InvoiceWorker extends WorkerHost {
         ) + 1;
       const secondsPerMember = days * 8 * 3600;
 
+      const skippedMembers: string[] = [];
+
       members.forEach((member: any) => {
+        // Who makes the list is decided here, and ONLY here: the member must hold an
+        // ACTIVE staff row for THIS organization. buildStaffResolver is deliberately
+        // not consulted — its cross-org fallbacks exist to price a line, and must
+        // never be what puts this client on the hook for someone who is no longer
+        // theirs. The identity pool is still VA-id-widened, because the active row
+        // for this org legitimately lives on a sibling candidate row.
+        const orgStaff = staffPoolFor(member.user_id).filter(isOrgStaff);
+        const activeOrgStaff = orgStaff.find((s) => s.status === 'active');
+
+        if (!activeOrgStaff) {
+          skippedMembers.push(
+            `${member.name || member.user?.name || member.user_id} (${
+              orgStaff.length > 0
+                ? `staff status '${orgStaff[0].status}'`
+                : 'no staff record for this org'
+            })`,
+          );
+          return;
+        }
         userSummary.set(member.user_id, {
           tracked: secondsPerMember,
           overall: secondsPerMember,
         });
       });
 
+      if (skippedMembers.length > 0) {
+        this.logger.warn(
+          `Pre-bill for org ${organization_id}: excluded ${skippedMembers.length} Hubstaff project member(s) with no active staff assignment — ${skippedMembers.join(', ')}`,
+        );
+      }
+
       if (members.length === 0) {
         this.logger.warn(
           `No members found for Hubstaff project ${hubstaffId} during pre-bill for org ${organization_id}`,
         );
-      }
-    } else {
-      // Regular logic: Fetch Hubstaff activities
-      activities = await this.hubstaff.getHubstaffDailyActivityForInvoice({
-        hubstaffId: Number(hubstaffId),
-        start_date: billing_start_date,
-        end_date: billing_end_date,
-      });
-
-      if (activities.length === 0) {
+      } else if (userSummary.size === 0) {
         this.logger.warn(
-          `No activities found for org ${organization_id} in period ${billing_start_date} - ${billing_end_date}`,
+          `No actively-assigned staff among the ${members.length} Hubstaff project member(s) for org ${organization_id} — pre-bill invoice will have no worker line items`,
         );
       }
+    } else {
+      // Post-bill logic: line items are driven by the unique set of people who actually
+      // logged time on this organization's Hubstaff project during the billing window
+      // (userSummary is keyed off the activity records below), NOT by current project
+      // membership — so someone who worked part of the cycle and was then removed from
+      // the project is still billed, and a member who logged nothing isn't.
+      // (`activities` was fetched above, before the staff lookup that prices them.)
 
       activities.forEach((act: any) => {
+        // Honour the same hardcoded-user exclusion applied to project members above —
+        // post-bill is driven by activity, so it has to be filtered here too.
+        if (this.excludedHubstaffUserIds.has(Number(act.user_id))) return;
+
         const current = userSummary.get(act.user_id) || {
           tracked: 0,
           overall: 0,
@@ -545,19 +820,15 @@ export class InvoiceWorker extends WorkerHost {
       });
     }
 
-    // Now collect all unique user IDs for fetching PTOs — union of project members and
-    // anyone who logged activity, in case someone tracked time without being a
-    // "current" project member (e.g. removed from the project mid-cycle).
-    const uniqueUserIdsForPto = Array.from(
-      new Set([
-        ...hubstaffUserIds,
-        ...activities.map((act: any) => String(act.user_id)),
-      ]),
-    );
-
     // Fetch and filter approved PTOs. Only `approved` requests count toward billing —
     // pending/denied PTO requests are ignored entirely (the worker is just treated as
     // not having worked those hours, same as any other untracked time).
+    //
+    // Skipped entirely for pre-bill: that path bills a flat baseline and ignores PTO
+    // by design (PTO is applied later by the reconciliation), so there is nothing to
+    // fetch. The id list is the same members ∪ logged-time union used for the staff
+    // lookup, covering anyone removed from the project mid-cycle.
+    const uniqueUserIdsForPto = is_prebill ? [] : staffLookupIds;
     const startDateISO =
       DateTime.fromISO(billing_start_date, { zone: 'utc' })
         .startOf('day')
@@ -666,10 +937,7 @@ export class InvoiceWorker extends WorkerHost {
         // or was assumed to (prebill), plus nested overtime/bonus/reconciliation lines.
         for (const [userId, stats] of userSummary.entries()) {
           // Find Staff & Candidate
-          const staff =
-            staffRecords.find(
-              (s) => s.candidate?.hubstaff_id === String(userId),
-            ) || null;
+          const staff = resolveStaffFor(userId);
           const candidate = staff?.candidate || null;
 
           // Full-time workers have an 8hr/day baseline (salaried expectation); part-time
@@ -692,7 +960,10 @@ export class InvoiceWorker extends WorkerHost {
           let totalWorkedHours = 0;
           let totalPtoHours = 0;
           let totalHolidayHours = 0;
-          let actualWorkedHoursOnHolidays = 0;
+          // Hours actually worked on observed holidays. Held separately from the
+          // buckets above because they aren't priced at the base rate — they get their
+          // own 50% holiday-overtime line further down.
+          let holidayWorkedHours = 0;
 
           for (const dayOfPeriod of allDaysList) {
             const dateStr = dayOfPeriod.toFormat('yyyy-MM-dd');
@@ -700,34 +971,54 @@ export class InvoiceWorker extends WorkerHost {
               dayOfPeriod.weekday >= 1 && dayOfPeriod.weekday <= 5;
             const isHoliday = isWeekday && holidayDates.has(dateStr);
 
-            // 1. Calculate worked hours for this day
-            let dailyWorked = 0;
             if (is_prebill) {
-              // Pre-bill assumes baseline hours on weekday non-holidays,
-              // and 0 worked hours on holidays (they just get standard holiday pay at 100%).
-              dailyWorked = isWeekday && !isHoliday ? dailyBaseline : 0;
-            } else {
-              const dayActs = activities.filter(
-                (act) => act.user_id === userId && act.day === dateStr,
-              );
-              const totalSeconds = dayActs.reduce(
-                (sum, act) => sum + act.total_time_logged,
-                0,
-              );
-              dailyWorked = totalSeconds / 3600;
+              // Pre-bill bills a FLAT BASELINE and nothing else: every weekday counts
+              // dailyBaseline hours, holidays included, and approved PTO is ignored
+              // entirely. Nothing here is known to be true yet — the cycle hasn't
+              // happened — so the estimate stays deliberately uniform, and every
+              // real-world adjustment (PTO taken, holidays observed, holiday work,
+              // overtime, hours short of baseline) is applied after the fact by
+              // InvoicePrebillReconciliationWorker, which recomputes the period from
+              // real Hubstaff data and posts the delta as a BillingLedgerEntry picked
+              // up on a later invoice.
+              //
+              // Folding PTO in here previously double-counted it: the baseline already
+              // assumes the VA works every weekday, so approved PTO stacked on top of
+              // an assumed-worked day (16h for one day) and pushed payable hours past
+              // the overtime threshold, manufacturing overtime nobody worked.
+              if (isWeekday) {
+                totalWorkedHours += dailyBaseline;
+              }
+              continue;
             }
+
+            // 1. Calculate worked hours for this day
+            const dayActs = activities.filter(
+              (act) => act.user_id === userId && act.day === dateStr,
+            );
+            const totalSeconds = dayActs.reduce(
+              (sum, act) => sum + act.total_time_logged,
+              0,
+            );
+            const dailyWorked = totalSeconds / 3600;
             totalWorkedHours += dailyWorked;
 
             if (isHoliday) {
               // Holiday billing logic:
-              // If VA does NOT work (dailyWorked is zero): You bill required hours (dailyBaseline)
-              // If VA DOES work (dailyWorked > zero): You bill required hours (dailyBaseline) + dailyWorked * 50%
-              let dailyHolidayPayable = dailyBaseline;
+              // The client is billed the standard baseline hours for an observed
+              // holiday whether or not the VA works it — that part goes on the primary
+              // line at the normal rate. If the VA DOES work, the extra 50% owed on
+              // those worked hours is accumulated here and billed on its own
+              // holiday-overtime line (see HOLIDAY_OVERTIME_RATE_MULTIPLIER), rather
+              // than folded in as extra hours at the base rate. Keeping it out of the
+              // primary line matters for two reasons: full-month salaried workers are
+              // billed a flat amount that would otherwise absorb the premium entirely,
+              // and premium hours mixed into payable hours would falsely trip the
+              // regular-overtime threshold below and get repriced at 1.5x.
+              totalHolidayHours += dailyBaseline;
               if (dailyWorked > 0) {
-                dailyHolidayPayable += dailyWorked * 0.5;
-                actualWorkedHoursOnHolidays += dailyWorked;
+                holidayWorkedHours += dailyWorked;
               }
-              totalHolidayHours += dailyHolidayPayable;
             } else {
               // 2. Calculate approved PTO hours for this day (only on non-holiday weekdays)
               // Note: If a day is a holiday, we ignore any approved PTO requests for it
@@ -754,12 +1045,13 @@ export class InvoiceWorker extends WorkerHost {
             }
           }
 
-          // totalPayableHours subtracts actualWorkedHoursOnHolidays from totalWorkedHours
-          // because those hours were already folded into totalHolidayHours above (at the
-          // 150% holiday rate) — without the subtraction they'd be double-counted.
+          // totalPayableHours subtracts holidayWorkedHours from totalWorkedHours because
+          // holiday days are already paid at their baseline via totalHolidayHours above —
+          // without the subtraction a worked holiday would be counted twice. The 50%
+          // premium on those worked hours is priced separately below.
           const totalPayableHours =
             totalWorkedHours -
-            actualWorkedHoursOnHolidays +
+            holidayWorkedHours +
             totalPtoHours +
             totalHolidayHours;
           const hours = new Decimal(totalPayableHours);
@@ -775,13 +1067,27 @@ export class InvoiceWorker extends WorkerHost {
           const actualHours = totalPayableHours;
           const hasOvertime = actualHours > requiredHours + 4;
 
-          let hourlyRate = new Decimal(
-            this.fallbackHourlyRate(
-              candidate,
-              positionConfigMap,
-              candidatePoolMap,
-            ),
-          ); // Default fallback — position+BU floor price, used when no salary/hourly_pay_rate applies below
+          // The base hourly bill rate, resolved once from the same precedence the
+          // primary-line branches below use. Both overtime formulas are a multiple of
+          // this number.
+          const billRate = this.resolveBillRate(
+            staff,
+            candidate,
+            positionConfigMap,
+            candidatePoolMap,
+          );
+
+          // Holiday overtime: an additional 50% of the bill rate on hours worked during
+          // an observed holiday. Independent of regular overtime — a VA can work a
+          // holiday without exceeding their monthly baseline at all.
+          const holidayOvertimeHourlyRate = billRate.mul(
+            HOLIDAY_OVERTIME_RATE_MULTIPLIER,
+          );
+          const holidayOvertimeTotal = new Decimal(holidayWorkedHours).mul(
+            holidayOvertimeHourlyRate,
+          );
+
+          let hourlyRate = billRate; // Overwritten per pricing branch below (salaried workers bill a flat amount)
           let lineTotal = hours.mul(hourlyRate);
           let primaryHours = actualHours;
 
@@ -796,13 +1102,18 @@ export class InvoiceWorker extends WorkerHost {
             overtimeHours = actualHours - requiredHours;
             primaryHours = requiredHours;
 
+            // Regular overtime is always 1.5x the bill rate, whatever the worker's pay
+            // arrangement — the branches below only decide how the *primary* line is
+            // priced.
+            overtimeHourlyRate = billRate.mul(OVERTIME_RATE_MULTIPLIER);
+            overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
+
             if (staff && staff.salary) {
-              // Salaried worker: derive an hourly-equivalent rate from their monthly
-              // salary (annualized, then divided across a standard 52-week/40hr year)
-              // purely to price the overtime hours — their primary/base pay is still the
-              // flat salary amount computed in the full/half-month branches below.
+              // Salaried worker: their hourly-equivalent rate (annualized salary over a
+              // standard 52-week/40hr year) is only used when the cycle isn't a standard
+              // full/half month — otherwise the primary line is the flat salary amount.
               const monthlySalary = Number(staff.salary);
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = monthlySalary / 176;
               overtimeHourlyRate = new Decimal(prorationRate);
               overtimeTotal = new Decimal(overtimeHours).mul(
                 overtimeHourlyRate,
@@ -857,31 +1168,13 @@ export class InvoiceWorker extends WorkerHost {
                 hourlyRate = new Decimal(prorationRate);
                 lineTotal = new Decimal(primaryHours).mul(hourlyRate);
               }
-            } else if (candidate && candidate.hourly_pay_rate) {
-              // No salary on file — fall back to the candidate's own hourly rate.
-              const rate = Number(candidate.hourly_pay_rate);
-              hourlyRate = new Decimal(rate);
-              lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-              overtimeHourlyRate = new Decimal(rate);
-              overtimeTotal = new Decimal(overtimeHours).mul(
-                overtimeHourlyRate,
-              );
             } else {
-              // No salary AND no candidate hourly rate on file — last-resort fallback using
-              // the position+business-unit floor price (same rate for base and overtime)
-              // rather than failing invoice generation entirely for a worker with
-              // incomplete pay-rate data.
-              const fallbackRate = this.fallbackHourlyRate(
-                candidate,
-                positionConfigMap,
-                candidatePoolMap,
-              );
-              hourlyRate = new Decimal(fallbackRate);
+              // No salary on file — the primary line bills straight hourly at the base
+              // rate (the candidate's own hourly_pay_rate, or the position+business-unit
+              // floor price as a last resort rather than failing generation outright for
+              // a worker with incomplete pay-rate data).
+              hourlyRate = billRate;
               lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-              overtimeHourlyRate = new Decimal(fallbackRate);
-              overtimeTotal = new Decimal(overtimeHours).mul(
-                overtimeHourlyRate,
-              );
             }
           } else {
             // No-overtime path: same salaried full/half-month billing shape as above, but
@@ -891,7 +1184,7 @@ export class InvoiceWorker extends WorkerHost {
             // not worked.
             if (staff && staff.salary) {
               const monthlySalary = Number(staff.salary);
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = monthlySalary / 176;
               const prorationHourlyDecimal = new Decimal(prorationRate);
 
               if (isFullTime) {
@@ -1015,7 +1308,7 @@ export class InvoiceWorker extends WorkerHost {
                 worker_name_snapshot: memberName,
                 type: InvoiceLineType.additional,
                 category: InvoiceLineCategory.overtime,
-                description: `Overtime: ${overtimeHours.toFixed(2)} hours`,
+                description: `Overtime: ${overtimeHours.toFixed(2)} hours at ${OVERTIME_RATE_MULTIPLIER}x bill rate`,
                 effective_worked_hours: new Decimal(overtimeHours),
                 total_hours_payable: new Decimal(overtimeHours),
                 hourly_rate: overtimeHourlyRate,
@@ -1025,6 +1318,33 @@ export class InvoiceWorker extends WorkerHost {
               },
             });
             subtotal = subtotal.add(overtimeTotal);
+          }
+
+          // Holiday overtime — the additional 50% owed on hours worked during an
+          // observed holiday. Separate from the regular overtime line above since the
+          // two can both apply in the same period, at different multipliers.
+          if (holidayWorkedHours > 0) {
+            await tx.invoiceLineItem.create({
+              data: {
+                invoice_version_id: version.id,
+                parent_line_item_id: primaryLineItem.id,
+                worker_id: userId.toString(),
+                worker_name_snapshot: memberName,
+                type: InvoiceLineType.additional,
+                category: InvoiceLineCategory.holiday,
+                description: `Holiday overtime: ${holidayWorkedHours.toFixed(2)} hours worked on a holiday at an additional ${HOLIDAY_OVERTIME_RATE_MULTIPLIER}x bill rate`,
+                // Only effective_worked_hours is set: this line is a rate premium on
+                // hours the primary line already reports, so repeating them in the
+                // total_hours_* snapshot fields would double-count them in
+                // InvoiceStatsWorker's per-worker hour rollups.
+                effective_worked_hours: new Decimal(holidayWorkedHours),
+                hourly_rate: holidayOvertimeHourlyRate,
+                final_total: holidayOvertimeTotal,
+                is_full_time: isFullTime,
+                created_by,
+              },
+            });
+            subtotal = subtotal.add(holidayOvertimeTotal);
           }
 
           // Bonus tickets: resolved support tickets of type 'bonus' created during this
@@ -1154,6 +1474,21 @@ export class InvoiceWorker extends WorkerHost {
         await tx.invoice.update({
           where: { id: invoice.id },
           data: { current_version_id: version.id },
+        });
+
+        // 7. Create Audit Log
+        await tx.invoiceAuditLog.create({
+          data: {
+            invoice_id: invoice.id,
+            invoice_version_id: version.id,
+            actor_id: created_by,
+            event: 'invoice_created',
+            new_value: {
+              status: InvoiceStatus.draft,
+              is_custom: false,
+              is_prebill: is_prebill || false,
+            },
+          },
         });
 
         return invoice;

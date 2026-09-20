@@ -9,6 +9,51 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
+// Provider-neutral receipt and processing log for inbound webhooks. Only Stripe is
+// wired into this table today; keeping the schema generic lets another provider be
+// added later without changing how that provider's webhook is currently handled.
+enum WebhookProvider {
+  stripe
+}
+
+enum WebhookStatus {
+  received
+  processing
+  processed
+  failed
+  ignored
+}
+
+model WebhookLog {
+  id                    String          @id @default(uuid())
+  provider              WebhookProvider
+  provider_event_id     String
+  event_type            String
+  provider_object_id    String?
+  provider_object_type  String?
+  api_version           String?
+  livemode              Boolean?
+  payload               Json
+
+  status                WebhookStatus   @default(received)
+  delivery_count        Int             @default(1)
+  replay_count          Int             @default(0)
+  error_message         String?
+
+  provider_created_at   DateTime?
+  processing_started_at DateTime?
+  processed_at          DateTime?
+  last_received_at      DateTime        @default(now())
+  last_replayed_at      DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([provider, provider_event_id])
+  @@index([provider, event_type, createdAt], map: "idx_webhook_log_provider_event_created")
+  @@index([status, createdAt], map: "idx_webhook_log_status_created")
+  @@index([provider_object_id], map: "idx_webhook_log_provider_object")
+}
+
 model USER {
   id                           String               @id @default(uuid())
   email                        String               @unique

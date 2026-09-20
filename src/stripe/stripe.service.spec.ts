@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { getQueueToken } from '@nestjs/bullmq';
+import { Prisma } from '@prisma/client';
 
 // Mock Stripe library
 const mockWebhookEndpointsList = jest.fn();
@@ -55,6 +56,7 @@ const REQUIRED_EVENTS = [
 describe('StripeService', () => {
   let service: StripeService;
   let redisMock: any;
+  let prismaMock: any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -80,13 +82,21 @@ describe('StripeService', () => {
       set: jest.fn(),
     };
 
+    prismaMock = {
+      webhookLog: {
+        create: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StripeService,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: SecretsService, useValue: mockSecretsService },
         { provide: 'REDIS_CLIENT', useValue: redisMock },
-        { provide: PrismaService, useValue: {} },
+        { provide: PrismaService, useValue: prismaMock },
         { provide: PusherService, useValue: {} },
         { provide: getQueueToken('invoice'), useValue: {} },
         {
@@ -108,6 +118,110 @@ describe('StripeService', () => {
     it('should return public key', async () => {
       await (service as any).initializeStripe();
       expect(service.getPublicKey()).toBe('pk_test_mock');
+    });
+  });
+
+  describe('Stripe webhook logging', () => {
+    const customerCreatedEvent = {
+      id: 'evt_customer_created',
+      type: 'customer.created',
+      api_version: '2026-08-27.basil',
+      livemode: false,
+      created: 1_788_800_000,
+      data: {
+        object: {
+          id: 'cus_123',
+          object: 'customer',
+        },
+      },
+    } as any;
+
+    it('records a verified Stripe event and marks a no-op event ignored', async () => {
+      prismaMock.webhookLog.create.mockResolvedValue({
+        id: 'log_1',
+        status: 'received',
+      });
+      prismaMock.webhookLog.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.webhookLog.update.mockResolvedValue({});
+
+      await (service as any).processVerifiedWebhook(customerCreatedEvent);
+
+      expect(prismaMock.webhookLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            provider: 'stripe',
+            provider_event_id: 'evt_customer_created',
+            event_type: 'customer.created',
+            provider_object_id: 'cus_123',
+            provider_object_type: 'customer',
+            payload: customerCreatedEvent,
+          }),
+        }),
+      );
+      expect(prismaMock.webhookLog.update).toHaveBeenLastCalledWith({
+        where: { id: 'log_1' },
+        data: expect.objectContaining({
+          status: 'ignored',
+          processed_at: expect.any(Date),
+        }),
+      });
+    });
+
+    it('does not dispatch a Stripe event that has already been processed', async () => {
+      prismaMock.webhookLog.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      prismaMock.webhookLog.update.mockResolvedValue({
+        id: 'log_1',
+        status: 'processed',
+      });
+      prismaMock.webhookLog.updateMany.mockResolvedValue({ count: 0 });
+      const dispatch = jest.spyOn(service, 'webhookHandler');
+
+      await (service as any).processVerifiedWebhook(customerCreatedEvent);
+
+      expect(prismaMock.webhookLog.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            delivery_count: { increment: 1 },
+          }),
+        }),
+      );
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('marks the log failed and rethrows when event processing fails', async () => {
+      const event = {
+        ...customerCreatedEvent,
+        id: 'evt_failed',
+        type: 'invoice.paid',
+        data: { object: { id: 'in_123', object: 'invoice' } },
+      } as any;
+      prismaMock.webhookLog.create.mockResolvedValue({
+        id: 'log_failed',
+        status: 'received',
+      });
+      prismaMock.webhookLog.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.webhookLog.update.mockResolvedValue({});
+      jest
+        .spyOn(service, 'webhookHandler')
+        .mockRejectedValue(new Error('processing failed'));
+
+      await expect(
+        (service as any).processVerifiedWebhook(event),
+      ).rejects.toThrow('processing failed');
+
+      expect(prismaMock.webhookLog.update).toHaveBeenLastCalledWith({
+        where: { id: 'log_failed' },
+        data: {
+          status: 'failed',
+          error_message: 'processing failed',
+          processing_started_at: null,
+        },
+      });
     });
   });
 

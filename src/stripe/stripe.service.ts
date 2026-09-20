@@ -25,6 +25,7 @@ import {
 import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 
 /**
  * Stable, non-reversible short identifier for a signing secret, safe to log. Lets a
@@ -381,8 +382,123 @@ export class StripeService implements OnModuleInit {
       throw new BadRequestException(`Webhook Error: ${err.message}`);
     }
 
-    await this.webhookHandler(event);
+    await this.processVerifiedWebhook(event);
     return { received: true };
+  }
+
+  /**
+   * Persists and atomically claims a verified Stripe event before dispatching it.
+   * Stripe delivers webhooks at least once, so the provider/event id pair is the
+   * idempotency boundary that prevents redeliveries from repeating side effects.
+   */
+  private async processVerifiedWebhook(event: StripeCore.Event): Promise<void> {
+    const stripeObject = event.data?.object as any;
+    const eventData = {
+      provider: 'stripe' as const,
+      provider_event_id: event.id,
+      event_type: event.type,
+      provider_object_id:
+        typeof stripeObject?.id === 'string' ? stripeObject.id : null,
+      provider_object_type:
+        typeof stripeObject?.object === 'string' ? stripeObject.object : null,
+      api_version: event.api_version ?? null,
+      livemode: event.livemode,
+      payload: event as unknown as Prisma.InputJsonValue,
+      provider_created_at: event.created
+        ? new Date(event.created * 1000)
+        : null,
+    };
+
+    let webhookLog: { id: string; status: string };
+
+    try {
+      webhookLog = await this.prisma.webhookLog.create({
+        data: eventData,
+        select: { id: true, status: true },
+      });
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+
+      // The event already exists, so this is a Stripe redelivery. Preserve the
+      // original verified payload but record that another delivery was received.
+      webhookLog = await this.prisma.webhookLog.update({
+        where: {
+          provider_provider_event_id: {
+            provider: 'stripe',
+            provider_event_id: event.id,
+          },
+        },
+        data: {
+          delivery_count: { increment: 1 },
+          last_received_at: new Date(),
+        },
+        select: { id: true, status: true },
+      });
+    }
+
+    // Only one delivery may move a new/failed event into processing. A concurrent
+    // delivery or an already-completed event receives HTTP 200 without dispatching.
+    const staleProcessingBefore = new Date(Date.now() - 5 * 60 * 1000);
+    const claim = await this.prisma.webhookLog.updateMany({
+      where: {
+        id: webhookLog.id,
+        OR: [
+          { status: { in: ['received', 'failed'] } },
+          {
+            status: 'processing',
+            processing_started_at: { lt: staleProcessingBefore },
+          },
+        ],
+      },
+      data: {
+        status: 'processing',
+        processing_started_at: new Date(),
+        processed_at: null,
+        error_message: null,
+      },
+    });
+
+    if (claim.count === 0) {
+      this.logger.log(
+        `Skipping duplicate Stripe event ${event.id} (status=${webhookLog.status})`,
+      );
+      return;
+    }
+
+    try {
+      const outcome = await this.webhookHandler(event);
+      await this.prisma.webhookLog.update({
+        where: { id: webhookLog.id },
+        data: {
+          status: outcome,
+          processed_at: new Date(),
+          processing_started_at: null,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? 'Unknown error');
+      try {
+        await this.prisma.webhookLog.update({
+          where: { id: webhookLog.id },
+          data: {
+            status: 'failed',
+            error_message: message.slice(0, 4000),
+            processing_started_at: null,
+          },
+        });
+      } catch (logError) {
+        this.logger.error(
+          `Failed to record processing failure for Stripe event ${event.id}: ${logError instanceof Error ? logError.message : String(logError)}`,
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -392,12 +508,16 @@ export class StripeService implements OnModuleInit {
    * webhooks are the *only* path by which async, client-side-initiated Stripe actions
    * (like the client paying an invoice on their own) become visible to our system.
    */
-  public async webhookHandler(event: StripeCore.Event) {
+  public async webhookHandler(
+    event: StripeCore.Event,
+  ): Promise<'processed' | 'ignored'> {
     this.logger.log(`Received Stripe event of type: ${event.type}`);
+    let outcome: 'processed' | 'ignored' = 'processed';
     if (event) {
       switch (event.type) {
         case 'customer.created':
           // leave blank for now
+          outcome = 'ignored';
           break;
         case 'payment_intent.succeeded': {
           // Special case: a $1 PaymentIntent tagged with metadata.refund is a card
@@ -539,6 +659,7 @@ export class StripeService implements OnModuleInit {
         }
         case 'invoice.overdue':
           // leave blank for now
+          outcome = 'ignored';
           break;
         case 'invoice.payment_failed': {
           // Mirrors the invoice.paid handler's shape, but records a failed InvoicePayment
@@ -634,8 +755,10 @@ export class StripeService implements OnModuleInit {
         }
         case 'payment_method.attached':
           // leave blank for now
+          outcome = 'ignored';
           break;
         case 'invoice.voided':
+          outcome = 'ignored';
           break;
         case 'invoice.finalized': {
           // Stripe finalizing an invoice is the trigger for OUR invoice to become
@@ -763,8 +886,10 @@ export class StripeService implements OnModuleInit {
           break;
         }
         case 'checkout.session.completed':
+          outcome = 'ignored';
           break;
         default:
+          outcome = 'ignored';
           break;
       }
 
@@ -801,6 +926,7 @@ export class StripeService implements OnModuleInit {
         }
       }
     }
+    return outcome;
   }
 
   /** Attempts to charge a Stripe invoice against a payment method (or the customer's
