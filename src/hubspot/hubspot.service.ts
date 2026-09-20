@@ -103,6 +103,32 @@ function resolveCandidateAuditEvent(after: Record<string, any>): {
   };
 }
 
+/**
+ * The properties on the VA custom object that hold an email address usable as
+ * an identity, in descending order of how well they identify the person
+ * Hubstaff knows. Measured against the 897 live Hubstaff members:
+ *
+ *   resume    labelled "Work E-mail" — the company address VAs sign in to
+ *             Hubstaff with. Resolves 474 members on its own.
+ *   va_email  labelled "VA Email". Adds 47 more.
+ *   email     labelled "Email Address-Personal" — the VA's own address, which
+ *             is usually NOT their Hubstaff login. Adds only 8, and matching
+ *             on it alone (the obvious reading of "the email property") finds
+ *             14 of 897.
+ *
+ * Deliberately excluded: `wise_e_mail` (Bank Account E-mail) resolves 41
+ * members but every one of them is already matched above, so it adds nothing
+ * while risking a match on a payout account shared between two people.
+ * `mailing_address` holds street addresses despite the name.
+ *
+ * Order matters: it decides which record claims an address when two carry it.
+ */
+export const CANDIDATE_EMAIL_PROPERTIES = [
+  'resume',
+  'va_email',
+  'email',
+] as const;
+
 @Injectable()
 export class HubspotService {
   private hubspotClient: Client;
@@ -1403,6 +1429,161 @@ export class HubspotService {
     return true;
   }
 
+  /** The custom object every candidate lookup below searches against. */
+  private requireCustomObject(): string {
+    const customObject = process.env.HUBSPOT_CUSTOM_OBJECT;
+    if (!customObject) {
+      throw new NotFoundException(
+        'Custom Object is not defined on the environment variables',
+      );
+    }
+    return customObject;
+  }
+
+  /** Default payload: the full candidate dictionary plus the VA ID. */
+  private defaultCandidateProperties(): string[] {
+    return [...Object.keys(candidadeToDbDictionary), 'vaid'];
+  }
+
+  /**
+   * Chunked, paginated `IN` search matching any of `propertyNames`. HubSpot
+   * caps an `IN` filter at 100 values and a search page at 100 results, so both
+   * have to be walked — doing either by hand at each call site is how the vaid
+   * lookup ended up being the only one that paginated correctly.
+   *
+   * Filters within a group are AND-ed and groups are OR-ed, so one property per
+   * group gives "any of these properties holds one of these values" in a single
+   * search. HubSpot allows at most 5 groups.
+   */
+  private async searchCandidatesByPropertyIn(
+    customObject: string,
+    propertyNames: string[],
+    values: string[],
+    requestedProperties: string[],
+  ): Promise<any[]> {
+    if (propertyNames.length > 5) {
+      throw new BadRequestException(
+        `HubSpot search allows at most 5 filter groups; got ${propertyNames.length} properties`,
+      );
+    }
+
+    const results: any[] = [];
+    const chunkSize = 100;
+
+    for (let i = 0; i < values.length; i += chunkSize) {
+      const chunk = values.slice(i, i + chunkSize);
+      let after: string | undefined = undefined;
+
+      do {
+        const apiResponse =
+          await this.hubspotClient.crm.objects.searchApi.doSearch(
+            customObject,
+            {
+              limit: 100,
+              after: after,
+              properties: requestedProperties,
+              filterGroups: propertyNames.map((propertyName) => ({
+                filters: [
+                  {
+                    propertyName,
+                    operator: FilterOperatorEnum.In,
+                    values: chunk,
+                  },
+                ],
+              })),
+            },
+          );
+
+        results.push(...apiResponse.results);
+        after = apiResponse.paging?.next?.after;
+      } while (after);
+    }
+
+    return results;
+  }
+
+  /**
+   * Looks up HubSpot candidate records by email address, across every property
+   * on the VA object that can hold one — in the order the Hubstaff sync trusts
+   * them (see CANDIDATE_EMAIL_PROPERTIES).
+   *
+   * Emails are lowercased before searching — HubSpot stores them lowercased,
+   * and Hubstaff does not normalise what a user typed at signup.
+   */
+  async fetchCandidatesByEmails(
+    emails: string[],
+    properties?: string[],
+  ): Promise<{ candidates: any[] }> {
+    const customObject = this.requireCustomObject();
+
+    const normalised = [
+      ...new Set(
+        emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0),
+      ),
+    ];
+    if (normalised.length === 0) {
+      return { candidates: [] };
+    }
+
+    try {
+      // The email properties themselves always come back, otherwise the caller
+      // cannot tell which of them matched.
+      const requested = new Set([
+        ...(properties ?? this.defaultCandidateProperties()),
+        ...CANDIDATE_EMAIL_PROPERTIES,
+      ]);
+
+      const candidates = await this.searchCandidatesByPropertyIn(
+        customObject,
+        [...CANDIDATE_EMAIL_PROPERTIES],
+        normalised,
+        [...requested],
+      );
+
+      console.log(
+        `Successfully fetched ${candidates.length} candidates from HubSpot by email`,
+      );
+      return { candidates };
+    } catch (error: any) {
+      console.error(
+        'Error fetching candidates from HubSpot by email:',
+        error.message,
+      );
+      throw new BadRequestException(
+        `Failed to fetch candidates from HubSpot by email: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Single-property variant of fetchCandidatesByEmails, for diagnostics that
+   * need to attribute a match to one specific property.
+   */
+  async searchCandidatesByEmailProperty(
+    propertyName: string,
+    emails: string[],
+    properties?: string[],
+  ): Promise<{ candidates: any[] }> {
+    const customObject = this.requireCustomObject();
+
+    const normalised = [
+      ...new Set(
+        emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0),
+      ),
+    ];
+    if (normalised.length === 0) {
+      return { candidates: [] };
+    }
+
+    const candidates = await this.searchCandidatesByPropertyIn(
+      customObject,
+      [propertyName],
+      normalised,
+      properties ?? this.defaultCandidateProperties(),
+    );
+    return { candidates };
+  }
+
   /**
    * Looks up HubSpot candidate records, optionally filtered to a set of VA IDs.
    *
@@ -1418,53 +1599,22 @@ export class HubspotService {
     vaIds?: string[],
     properties?: string[],
   ): Promise<{ candidates: any[] }> {
-    const customObject = process.env.HUBSPOT_CUSTOM_OBJECT;
-    if (!customObject) {
-      throw new NotFoundException(
-        'Custom Object is not defined on the environment variables',
-      );
-    }
+    const customObject = this.requireCustomObject();
 
     try {
-      const requestedProperties = properties ?? [
-        ...Object.keys(candidadeToDbDictionary),
-        'vaid',
-      ];
+      const requestedProperties =
+        properties ?? this.defaultCandidateProperties();
       const allCandidates: any[] = [];
 
       if (vaIds && vaIds.length > 0) {
-        // Chunk the vaIds list into batches of 100 to respect HubSpot limit
-        const chunkSize = 100;
-        for (let i = 0; i < vaIds.length; i += chunkSize) {
-          const chunk = vaIds.slice(i, i + chunkSize);
-          let after: string | undefined = undefined;
-
-          do {
-            const apiResponse =
-              await this.hubspotClient.crm.objects.searchApi.doSearch(
-                customObject,
-                {
-                  limit: 100,
-                  after: after,
-                  properties: requestedProperties,
-                  filterGroups: [
-                    {
-                      filters: [
-                        {
-                          propertyName: 'vaid',
-                          operator: FilterOperatorEnum.In,
-                          values: chunk,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              );
-
-            allCandidates.push(...apiResponse.results);
-            after = apiResponse.paging?.next?.after;
-          } while (after);
-        }
+        allCandidates.push(
+          ...(await this.searchCandidatesByPropertyIn(
+            customObject,
+            ['vaid'],
+            vaIds,
+            requestedProperties,
+          )),
+        );
       } else {
         // Fetch all candidate records using the properties list
         let after: string | undefined = undefined;
