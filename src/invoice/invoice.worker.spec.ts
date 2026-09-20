@@ -148,6 +148,7 @@ describe('InvoiceWorker', () => {
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
         },
       ]);
 
@@ -192,6 +193,7 @@ describe('InvoiceWorker', () => {
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
         },
       ]);
 
@@ -230,6 +232,7 @@ describe('InvoiceWorker', () => {
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
         },
       ]);
 
@@ -268,6 +271,7 @@ describe('InvoiceWorker', () => {
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
         },
       ]);
 
@@ -314,6 +318,7 @@ describe('InvoiceWorker', () => {
           salary: null,
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
         },
       ]);
 
@@ -394,89 +399,154 @@ describe('InvoiceWorker', () => {
   });
 
   describe('candidate resolution by VA id', () => {
+    const ORG = 'org_id';
+    const ORG_HS = 'hs_org_1';
+
     const staffRow = (over: any = {}) => ({
       id: 'staff_x',
       status: 'active',
       updated_at: new Date('2026-01-01'),
+      organization_id: null,
+      hubspot_organization_id: null,
       candidate: { hubstaff_id: null, hubspot_vaid: null },
       ...over,
     });
 
+    const isOrgStaff = (s: any) =>
+      s.organization_id === ORG || s.hubspot_organization_id === ORG_HS;
+
+    const resolverFor = (direct: any[], rows: any[]) =>
+      worker.buildStaffResolver(direct, rows, isOrgStaff);
+
     it('resolves through the VA id when the hubstaff_id sits on a different candidate row', () => {
       // The real "Kristine Kraine Agno" shape: two candidate rows share vaid
       // MV250071. The Hubstaff id is on the inactive Kansas Heart row; the live
-      // Evolve assignment hangs off a row with no hubstaff_id at all.
-      const withHubstaffId = staffRow({
+      // assignment for the org being invoiced hangs off a row with no hubstaff_id.
+      const otherOrgRow = staffRow({
         id: 'staff_kansas',
         status: 'inactive',
         updated_at: new Date('2026-08-19'),
+        organization_id: 'kansas',
         candidate: { hubstaff_id: '3165910', hubspot_vaid: 'MV250071' },
       });
-      const activeSibling = staffRow({
-        id: 'staff_evolve',
+      const ourOrgRow = staffRow({
+        id: 'staff_ours',
         status: 'active',
         updated_at: new Date('2026-07-14'),
+        organization_id: ORG,
         candidate: { hubstaff_id: null, hubspot_vaid: 'MV250071' },
       });
 
-      const resolve = worker.buildStaffResolver(
+      const { resolve } = resolverFor(
         [{ hubstaff_id: '3165910', hubspot_vaid: 'MV250071' }],
-        [withHubstaffId, activeSibling],
+        [otherOrgRow, ourOrgRow],
       );
 
-      // Active wins even though the inactive row is the one Hubstaff points at and
-      // has the more recent updated_at.
-      expect(resolve(3165910)?.id).toBe('staff_evolve');
+      expect(resolve(3165910)?.id).toBe('staff_ours');
     });
 
-    it('falls back to the most recently updated row when none is active', () => {
-      const older = staffRow({
-        id: 'staff_old',
-        status: 'terminated',
-        updated_at: new Date('2026-03-01'),
-        candidate: { hubstaff_id: '999', hubspot_vaid: 'MV1' },
-      });
-      const newer = staffRow({
-        id: 'staff_new',
-        status: 'inactive',
-        updated_at: new Date('2026-09-01'),
-        candidate: { hubstaff_id: null, hubspot_vaid: 'MV1' },
-      });
-
-      const resolve = worker.buildStaffResolver(
-        [{ hubstaff_id: '999', hubspot_vaid: 'MV1' }],
-        [older, newer],
-      );
-
-      expect(resolve('999')?.id).toBe('staff_new');
-    });
-
-    it('picks the most recently updated among several active rows', () => {
-      const resolve = worker.buildStaffResolver(
-        [{ hubstaff_id: '5', hubspot_vaid: 'MV2' }],
+    it('prefers this org even when its row is inactive and another org has an active one', () => {
+      // Tier 1 beats tier 2: this client's own record of the arrangement wins
+      // outright, stale or not.
+      const { resolve } = resolverFor(
+        [{ hubstaff_id: '1', hubspot_vaid: 'MV1' }],
         [
           staffRow({
-            id: 'a',
-            updated_at: new Date('2026-02-01'),
-            candidate: { hubstaff_id: '5', hubspot_vaid: 'MV2' },
+            id: 'ours_inactive',
+            status: 'inactive',
+            updated_at: new Date('2026-01-01'),
+            organization_id: ORG,
+            candidate: { hubstaff_id: '1', hubspot_vaid: 'MV1' },
           }),
           staffRow({
-            id: 'b',
-            updated_at: new Date('2026-06-01'),
+            id: 'theirs_active',
+            status: 'active',
+            updated_at: new Date('2026-09-01'),
+            organization_id: 'other',
+            candidate: { hubstaff_id: null, hubspot_vaid: 'MV1' },
+          }),
+        ],
+      );
+
+      expect(resolve('1')?.id).toBe('ours_inactive');
+    });
+
+    it('matches this org by hubspot_organization_id as well as organization_id', () => {
+      const { resolve } = resolverFor(
+        [{ hubstaff_id: '2', hubspot_vaid: 'MV2' }],
+        [
+          staffRow({
+            id: 'theirs_active',
+            organization_id: 'other',
+            candidate: { hubstaff_id: '2', hubspot_vaid: 'MV2' },
+          }),
+          staffRow({
+            id: 'ours_by_hubspot',
+            status: 'inactive',
+            hubspot_organization_id: ORG_HS,
             candidate: { hubstaff_id: null, hubspot_vaid: 'MV2' },
           }),
         ],
       );
 
-      expect(resolve(5)?.id).toBe('b');
+      expect(resolve('2')?.id).toBe('ours_by_hubspot');
+    });
+
+    it('falls back to an active row at another org when this org has none', () => {
+      const { resolve } = resolverFor(
+        [{ hubstaff_id: '3', hubspot_vaid: 'MV3' }],
+        [
+          staffRow({
+            id: 'other_terminated',
+            status: 'terminated',
+            updated_at: new Date('2026-09-01'),
+            organization_id: 'a',
+            candidate: { hubstaff_id: '3', hubspot_vaid: 'MV3' },
+          }),
+          staffRow({
+            id: 'other_active',
+            status: 'active',
+            updated_at: new Date('2026-02-01'),
+            organization_id: 'b',
+            candidate: { hubstaff_id: null, hubspot_vaid: 'MV3' },
+          }),
+        ],
+      );
+
+      expect(resolve('3')?.id).toBe('other_active');
+    });
+
+    it('falls back to the most recently updated row when nothing is active anywhere', () => {
+      const { resolve } = resolverFor(
+        [{ hubstaff_id: '4', hubspot_vaid: 'MV4' }],
+        [
+          staffRow({
+            id: 'old',
+            status: 'terminated',
+            updated_at: new Date('2026-03-01'),
+            organization_id: 'a',
+            candidate: { hubstaff_id: '4', hubspot_vaid: 'MV4' },
+          }),
+          staffRow({
+            id: 'new',
+            status: 'inactive',
+            updated_at: new Date('2026-09-01'),
+            organization_id: 'b',
+            candidate: { hubstaff_id: null, hubspot_vaid: 'MV4' },
+          }),
+        ],
+      );
+
+      expect(resolve('4')?.id).toBe('new');
     });
 
     it('still matches on hubstaff_id alone when the candidate has no VA id', () => {
-      const resolve = worker.buildStaffResolver(
+      const { resolve } = resolverFor(
         [{ hubstaff_id: '7', hubspot_vaid: null }],
         [
           staffRow({
             id: 'only',
+            organization_id: ORG,
             candidate: { hubstaff_id: '7', hubspot_vaid: null },
           }),
         ],
@@ -486,7 +556,7 @@ describe('InvoiceWorker', () => {
     });
 
     it('does not match an unrelated VA id, and returns null when nothing matches', () => {
-      const resolve = worker.buildStaffResolver(
+      const { resolve } = resolverFor(
         [{ hubstaff_id: '7', hubspot_vaid: 'MV7' }],
         [
           staffRow({
@@ -499,30 +569,26 @@ describe('InvoiceWorker', () => {
       expect(resolve('7')).toBeNull();
     });
 
-    it('widens the staff query by VA id, scoped to the organization', async () => {
+    it('widens the staff query by VA id, across organizations', async () => {
       hubstaffMock.getProjectMembers.mockResolvedValue([
         { user_id: 3165910, name: 'Kristine' },
       ]);
-      prismaMock.candidate = {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            { hubstaff_id: '3165910', hubspot_vaid: 'MV250071' },
-          ]),
-      };
+      prismaMock.candidate.findMany.mockResolvedValue([
+        { hubstaff_id: '3165910', hubspot_vaid: 'MV250071' },
+      ]);
       prismaMock.staff.findMany.mockResolvedValue([]);
 
       await (worker as any).generateInvoiceRecord(
         {
-          id: 'org_id',
-          hubspot_id: 'hs_org_1',
+          id: ORG,
+          hubspot_id: ORG_HS,
           invoiceConfiguration: {
             hubstaff_id: 'hubstaff_project_id',
             billing_currency: 'USD',
           },
         },
         {
-          organization_id: 'org_id',
+          organization_id: ORG,
           billing_start_date: '2026-09-16',
           billing_end_date: '2026-09-30',
           is_prebill: true,
@@ -535,12 +601,9 @@ describe('InvoiceWorker', () => {
         { hubstaff_id: { in: ['3165910'] } },
         { hubspot_vaid: { in: ['MV250071'] } },
       ]);
-      // Org scoping must survive the widening, or another client's assignment could
-      // price this invoice.
-      expect(where.OR).toEqual([
-        { organization_id: 'org_id' },
-        { hubspot_organization_id: 'hs_org_1' },
-      ]);
+      // Deliberately NOT org-filtered — org preference is applied when ranking, so
+      // the resolver can fall back to an active assignment elsewhere.
+      expect(where.OR).toBeUndefined();
     });
   });
 
@@ -559,6 +622,7 @@ describe('InvoiceWorker', () => {
       salary: null,
       hubspot_deployment_type: 'Full-Time',
       status: 'active',
+      organization_id: 'org_id',
       tickets: [],
     });
 
@@ -706,6 +770,7 @@ describe('InvoiceWorker', () => {
           salary: null,
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
           tickets: [],
         },
       ]);
@@ -741,6 +806,7 @@ describe('InvoiceWorker', () => {
           salary: null,
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
           tickets: [],
         },
       ]);
@@ -816,6 +882,7 @@ describe('InvoiceWorker', () => {
           salary: null,
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
           tickets: [],
         },
       ]);
@@ -924,6 +991,7 @@ describe('InvoiceWorker', () => {
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
           status: 'active',
+          organization_id: 'org_id',
           tickets: [],
         },
       ]);

@@ -156,10 +156,28 @@ export class InvoiceWorker extends WorkerHost {
    * So the pool is widened by VA id before matching:
    *   hubstaff id → candidate → hubspot_vaid → every candidate sharing that vaid.
    *
-   * `staffRecords` must already be scoped to the invoice's organization — widening by
-   * vaid must NOT let another client's assignment price this invoice. Within that org
-   * the tiebreak is: prefer an `active` row, else fall back to the most recently
-   * updated one.
+   * `staffRecords` spans organizations (it is NOT org-scoped), because a person's only
+   * usable pay record may sit under a different client. Preference order:
+   *
+   *   1. a row for THIS organization, active or not — this client's own record of the
+   *      arrangement always wins, even if stale;
+   *   2. otherwise any active row, wherever it lives — an active assignment elsewhere
+   *      is a better estimate of current pay than nothing;
+   *   3. otherwise the most recently updated row — the last known state.
+   *
+   * Ties inside each tier break on most-recently-updated, so resolution is
+   * deterministic rather than dependent on row order.
+   *
+   * NOTE: tiers 2 and 3 can return another client's assignment. That is deliberate for
+   * *pricing* (the alternative is billing $0), but it means this must NOT be used to
+   * decide whether someone belongs on an invoice at all. Pre-bill inclusion uses
+   * `poolFor` with an explicit same-org + active check instead — see
+   * generateInvoiceRecord.
+   *
+   * `staffRecords` must carry `candidate.hubstaff_id` and `candidate.hubspot_vaid` —
+   * both are what the pool is matched on. A narrowed `select` on the candidate
+   * relation silently empties every pool and makes this return null for everyone, so
+   * callers use a full `include`.
    */
   public buildStaffResolver<
     S extends {
@@ -176,7 +194,16 @@ export class InvoiceWorker extends WorkerHost {
       hubspot_vaid: string | null;
     }[],
     staffRecords: S[],
-  ): (hubstaffUserId: string | number) => S | null {
+    /**
+     * True when a staff row belongs to the organization being invoiced. `NoInfer` so
+     * S is inferred from `staffRecords` alone — otherwise a predicate written against
+     * a narrower shape collapses S to the constraint and strips the caller's fields.
+     */
+    isOrgStaff: (staff: NoInfer<S>) => boolean,
+  ): {
+    resolve: (hubstaffUserId: string | number) => S | null;
+    poolFor: (hubstaffUserId: string | number) => S[];
+  } {
     const vaIdByHubstaffId = new Map<string, string>();
     for (const c of directCandidates) {
       if (c.hubstaff_id && c.hubspot_vaid) {
@@ -184,26 +211,38 @@ export class InvoiceWorker extends WorkerHost {
       }
     }
 
-    return (hubstaffUserId: string | number) => {
+    const poolFor = (hubstaffUserId: string | number) => {
       const key = String(hubstaffUserId);
       const vaId = vaIdByHubstaffId.get(key) ?? null;
-
-      const pool = staffRecords.filter(
+      return staffRecords.filter(
         (s) =>
           s.candidate?.hubstaff_id === key ||
           (!!vaId && s.candidate?.hubspot_vaid === vaId),
       );
-      if (pool.length === 0) return null;
-      if (pool.length === 1) return pool[0];
-
-      // Prefer active assignments; if none is active, the most recently updated row
-      // is the best available record of what this person was last being paid.
-      const active = pool.filter((s) => s.status === 'active');
-      const shortlist = active.length > 0 ? active : pool;
-      return shortlist.reduce((best, s) =>
-        s.updated_at > best.updated_at ? s : best,
-      );
     };
+
+    const mostRecent = (rows: S[]) =>
+      rows.reduce((best, s) => (s.updated_at > best.updated_at ? s : best));
+
+    const resolve = (hubstaffUserId: string | number) => {
+      const pool = poolFor(hubstaffUserId);
+      if (pool.length === 0) return null;
+
+      const ownOrg = pool.filter(isOrgStaff);
+      if (ownOrg.length > 0) {
+        // This client's own record wins outright. Within it, an active row beats a
+        // stale one.
+        const active = ownOrg.filter((s) => s.status === 'active');
+        return mostRecent(active.length > 0 ? active : ownOrg);
+      }
+
+      const active = pool.filter((s) => s.status === 'active');
+      if (active.length > 0) return mostRecent(active);
+
+      return mostRecent(pool);
+    };
+
+    return { resolve, poolFor };
   }
 
   /** Builds the position-rate config lookup used by fallbackHourlyRate — fetched once
@@ -600,12 +639,16 @@ export class InvoiceWorker extends WorkerHost {
       ),
     );
 
-    // Fetch all staff for that identity pool, matching this organization. The outer OR
-    // matches by either our own organization_id or the org's HubSpot company id, since
-    // staff assignment records may be linked via either identifier depending on how
-    // they were created — and it stays in place so widening by vaid can never pull in
-    // another client's assignment. Also sideloads resolved 'bonus'-type tickets from
-    // this exact billing period, which get turned into bonus line items further down.
+    // Fetch all staff for that identity pool, ACROSS organizations. This is
+    // deliberately not org-filtered: buildStaffResolver prefers a row for this
+    // organization but falls back to an active assignment elsewhere rather than
+    // pricing the line at $0, so it needs to see those rows. Org preference is
+    // applied when ranking, not when querying — and pre-bill inclusion re-checks
+    // same-org + active explicitly (see isOrgStaff below).
+    //
+    // Also sideloads resolved 'bonus'-type tickets from this exact billing period,
+    // which get turned into bonus line items further down; those stay scoped to this
+    // organization via the nested org_id filter.
     const staffRecords =
       staffLookupIds.length > 0
         ? await this.prisma.staff.findMany({
@@ -618,12 +661,6 @@ export class InvoiceWorker extends WorkerHost {
                     : []),
                 ],
               },
-              OR: [
-                { organization_id: organization_id },
-                ...(org.hubspot_id
-                  ? [{ hubspot_organization_id: org.hubspot_id }]
-                  : []),
-              ],
             },
             include: {
               candidate: {
@@ -662,12 +699,21 @@ export class InvoiceWorker extends WorkerHost {
       })),
     );
 
+    // True when a staff row belongs to the organization being invoiced. Staff rows
+    // link by either identifier depending on how they were created.
+    const isOrgStaff = (s: {
+      organization_id: string | null;
+      hubspot_organization_id: string | null;
+    }) =>
+      s.organization_id === organization_id ||
+      (!!org.hubspot_id && s.hubspot_organization_id === org.hubspot_id);
+
     // hubstaff user id → the staff assignment that prices their line, resolved via VA
-    // id across duplicate candidate rows (see buildStaffResolver).
-    const resolveStaffFor = this.buildStaffResolver(
-      directCandidates,
-      staffRecords,
-    );
+    // id across duplicate candidate rows (see buildStaffResolver). `poolFor` exposes
+    // the unranked identity pool so pre-bill can apply its own stricter same-org +
+    // active test rather than inheriting the resolver's cross-org fallbacks.
+    const { resolve: resolveStaffFor, poolFor: staffPoolFor } =
+      this.buildStaffResolver(directCandidates, staffRecords, isOrgStaff);
 
     // Aggregate per-worker total tracked seconds for the period — tracked/overall are
     // fed into userSummary either from a flat prebill assumption or real Hubstaff
@@ -705,16 +751,21 @@ export class InvoiceWorker extends WorkerHost {
       const skippedMembers: string[] = [];
 
       members.forEach((member: any) => {
-        const assignedStaff = resolveStaffFor(member.user_id);
-        // staffRecords is already scoped to this organization, so a miss here means
-        // "not assigned to this client" — either no staff record at all or one that
-        // belongs to a different org.
-        if (!assignedStaff || assignedStaff.status !== 'active') {
+        // Who makes the list is decided here, and ONLY here: the member must hold an
+        // ACTIVE staff row for THIS organization. buildStaffResolver is deliberately
+        // not consulted — its cross-org fallbacks exist to price a line, and must
+        // never be what puts this client on the hook for someone who is no longer
+        // theirs. The identity pool is still VA-id-widened, because the active row
+        // for this org legitimately lives on a sibling candidate row.
+        const orgStaff = staffPoolFor(member.user_id).filter(isOrgStaff);
+        const activeOrgStaff = orgStaff.find((s) => s.status === 'active');
+
+        if (!activeOrgStaff) {
           skippedMembers.push(
             `${member.name || member.user?.name || member.user_id} (${
-              assignedStaff
-                ? `staff status '${assignedStaff.status}'`
-                : 'no active staff record for this org'
+              orgStaff.length > 0
+                ? `staff status '${orgStaff[0].status}'`
+                : 'no staff record for this org'
             })`,
           );
           return;

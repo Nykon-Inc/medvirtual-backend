@@ -427,9 +427,17 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       })),
     );
 
-    const resolveStaffFor = this.invoiceWorker.buildStaffResolver(
+    const isOrgStaff = (st: {
+      organization_id: string | null;
+      hubspot_organization_id: string | null;
+    }) =>
+      st.organization_id === organizationId ||
+      (!!org.hubspot_id && st.hubspot_organization_id === org.hubspot_id);
+
+    const { resolve: resolveStaffFor } = this.invoiceWorker.buildStaffResolver(
       directCandidates,
       staffRecords,
+      isOrgStaff,
     );
 
     // --- Actual Hubstaff activities ---
