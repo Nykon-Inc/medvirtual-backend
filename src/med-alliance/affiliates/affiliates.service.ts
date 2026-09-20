@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CommissionStatus, USER } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
+import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
 import { CreateAffiliateProfileDto } from './dto/create-affiliate-profile.dto';
 import {
   JoinProgramDto,
@@ -180,7 +181,7 @@ export class AffiliatesService {
     //1. Create user
     const user = await this.prisma.uSER.create({
       data: {
-        email: dto.email,
+        email: dto.email.toLowerCase().trim(),
         first_name: dto.first_name,
         last_name: dto.last_name,
         phone: dto.phone_number ?? '',
@@ -342,8 +343,10 @@ export class AffiliatesService {
         'This affiliate already has a connected user',
       );
 
-    const emailInUse = await this.prisma.uSER.findUnique({
-      where: { email: dto.email },
+    const normalizedEmail = dto.email.toLowerCase().trim();
+
+    const emailInUse = await this.prisma.uSER.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
     if (emailInUse)
       throw new ConflictException('A user with this email already exists');
@@ -351,7 +354,7 @@ export class AffiliatesService {
     // 1. Create USER with status 'invited'
     const user = await this.prisma.uSER.create({
       data: {
-        email: dto.email,
+        email: normalizedEmail,
         first_name: dto.first_name,
         last_name: dto.last_name,
         phone: dto.phone_number ?? '',
@@ -1132,10 +1135,11 @@ export class AffiliatesService {
         lifetimeAgg: { _sum: { commission_amount: null } },
         payoutHistory: [],
         commsByOrg: [],
+        eligibleAgg: { _sum: { commission_amount: null }, _count: 0 },
       };
     }
 
-    const [pendingAgg, lifetimeAgg, payoutHistory, commsByOrg] =
+    const [pendingAgg, lifetimeAgg, payoutHistory, commsByOrg, eligibleAgg] =
       await Promise.all([
         this.prisma.affiliatePayoutRequest.aggregate({
           _sum: { requested_amount: true },
@@ -1172,6 +1176,14 @@ export class AffiliatesService {
           },
           _sum: { commission_amount: true },
         }),
+        // Counted over the whole table: `profile.commissions` is capped at the 50
+        // most recent of any status, so counting eligible rows there undercounts
+        // whenever pending commissions crowd that window.
+        this.prisma.affiliateCommission.aggregate({
+          where: { affiliate_id: userId, status: 'eligible' },
+          _sum: { commission_amount: true },
+          _count: true,
+        }),
       ]);
     return {
       profile,
@@ -1179,7 +1191,97 @@ export class AffiliatesService {
       lifetimeAgg,
       payoutHistory,
       commsByOrg,
+      eligibleAgg,
       user,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin: every eligible commission for an affiliate, with an authoritative total.
+  //
+  // `findOne` caps commissions at the 50 most recent across all statuses, so the
+  // eligible rows inside it are only the ones that happen to fall in that window —
+  // an affiliate with a large pending backlog has eligible commissions pushed out
+  // of it. Payout creation must never derive its commission set from that preview,
+  // so this returns the complete, unbounded eligible list.
+  // ---------------------------------------------------------------------------
+  async findEligibleCommissions(id: string): Promise<{
+    affiliate_profile_id: string;
+    affiliate_user_id: string | null;
+    eligible_count: number;
+    eligible_amount: number;
+    commissions: Array<{
+      id: string;
+      organization_id: string | null;
+      organization_name: string;
+      amount: number;
+      status: string;
+      date: string;
+      invoice_id: string | null;
+      name: string | null;
+    }>;
+  }> {
+    const profile = await this.prisma.affiliateProfile.findUnique({
+      where: { id },
+      select: { id: true, user_id: true },
+    });
+    if (!profile) throw new NotFoundException('Affiliate profile not found');
+
+    // Commissions key on the profile's user id, not the profile id. Without a
+    // connected user the affiliate cannot own commissions at all.
+    if (!profile.user_id) {
+      return {
+        affiliate_profile_id: profile.id,
+        affiliate_user_id: null,
+        eligible_count: 0,
+        eligible_amount: 0,
+        commissions: [],
+      };
+    }
+
+    const where = {
+      affiliate_id: profile.user_id,
+      status: 'eligible' as const,
+    };
+
+    const [commissions, agg] = await Promise.all([
+      this.prisma.affiliateCommission.findMany({
+        where,
+        orderBy: { createdAt: 'desc' as const },
+        select: {
+          id: true,
+          status: true,
+          commission_amount: true,
+          createdAt: true,
+          organization_id: true,
+          organization: { select: { id: true, name: true } },
+          hubspotInvoiceSnapshot: {
+            select: { hubspot_id: true, invoice_number: true },
+          },
+        },
+      }),
+      this.prisma.affiliateCommission.aggregate({
+        where,
+        _sum: { commission_amount: true },
+        _count: true,
+      }),
+    ]);
+
+    return {
+      affiliate_profile_id: profile.id,
+      affiliate_user_id: profile.user_id,
+      eligible_count: agg._count,
+      eligible_amount: Number(agg._sum.commission_amount ?? 0),
+      commissions: commissions.map((c) => ({
+        id: c.id,
+        organization_id: c.organization_id ?? null,
+        organization_name: c.organization?.name ?? '',
+        amount: Number(c.commission_amount),
+        status: c.status,
+        date: c.createdAt.toISOString(),
+        invoice_id: c.hubspotInvoiceSnapshot?.hubspot_id ?? null,
+        name: c.hubspotInvoiceSnapshot?.invoice_number ?? null,
+      })),
     };
   }
 
@@ -1528,8 +1630,14 @@ export class AffiliatesService {
       (now.getTime() - anchorDate.getTime()) / (1000 * 60 * 60 * 24);
 
     // Decisions are available immediately once deployed — no 30-day stabilization tier.
-    // More than 365 days since deployment_date, the org expires directly.
-    const isExpired = daysSinceDeployment > 365;
+    // DISABLED (per-collaborator commission plan, company-eligibility-manual-only change,
+    // spec doc §4.6): `isExpired`/`daysSinceDeployment` used to auto-compute and set
+    // med_alliance_referral_status ('expired' or 'pending_confirmation') as a side effect of
+    // this admin action. That auto-computed eligibility value is NOT the admin's choice — the
+    // *association* is manual, the *eligibility computation* wasn't. Company eligibility status
+    // is now exclusively a manual admin decision via the Confirm/Block endpoints. Keep
+    // daysSinceDeployment for the audit log metadata (informational) — just don't act on it.
+    const daysSinceDeploymentForAudit = daysSinceDeployment;
 
     await this.prisma.organization.update({
       where: { id: organizationId },
@@ -1541,9 +1649,7 @@ export class AffiliatesService {
         }),
         eligibility_start_at: anchorDate,
         med_alliance_block_reason: null,
-        med_alliance_referral_status: (isExpired
-          ? 'expired'
-          : 'pending_confirmation') as any,
+        // med_alliance_referral_status: (isExpired ? 'expired' : 'pending_confirmation') as any,
       },
     });
 
@@ -1553,21 +1659,20 @@ export class AffiliatesService {
         entity_id: organizationId,
         event: 'stage_changed',
         old_status: 'pending_confirmation',
-        new_status: isExpired ? 'expired' : 'pending_confirmation',
+        // new_status intentionally null — med_alliance_referral_status is no longer
+        // auto-set here (§4.6); only referral_stage/eligibility_start_at changed.
+        new_status: null,
         reason:
-          'Company associated by admin — retroactive deployment date set from first paid invoice',
+          'Company associated by admin — retroactive deployment date set from first paid invoice; admin decision on eligibility still required',
         source: 'admin_action',
         actor_user_id: adminUser.id,
         metadata: {
           referral_stage: 'deployed',
           eligibility_start_at: anchorDate.toISOString(),
-          days_since_first_invoice: Math.floor(daysSinceDeployment),
-          result: isExpired ? 'expired' : 'pending_confirmation',
+          days_since_first_invoice: Math.floor(daysSinceDeploymentForAudit),
         } as any,
       },
     });
-
-    if (isExpired) return;
 
     const affiliateProfile = await this.prisma.affiliateProfile.findUnique({
       where: { id: affiliateProfileId },
@@ -1576,33 +1681,64 @@ export class AffiliatesService {
 
     if (!affiliateProfile || affiliateProfile.status !== 'active') return;
 
-    // Company just landed on pending_confirmation (not yet confirmed eligible), so backfilled
-    // commissions start as 'detected' and wait for an admin decision.
+    // Backfilled commissions start as 'detected' and wait for an admin decision — this
+    // matches CommissionDetectionService's isEligibleNow=false default (§4), since eligibility
+    // status is no longer decided by this flow either.
     const commissionStatus = 'detected';
     const auditEvent = 'commission_detected';
 
-    for (const snapshot of candidates) {
+    // Rewritten to per-collaborator commission (§4.5 #5): one commission per MATCHED
+    // HubspotLineItemSnapshot, not one per whole invoice, using the same shared eligibility
+    // helper CommissionDetectionService and the invoice-paid webhook use — so all three stay
+    // in sync instead of re-forking this math a fourth time.
+    const invoiceIds = candidates.map((s) => s.id);
+    const matchedLineItems = await this.prisma.hubspotLineItemSnapshot.findMany(
+      {
+        where: {
+          invoice_id: { in: invoiceIds },
+          match_status: 'matched',
+          staff_id: { not: null },
+          amount: { gt: 0 },
+        },
+        select: {
+          id: true,
+          amount: true,
+          invoice_id: true,
+          staff_id: true,
+          invoice: { select: { hubspot_id: true } },
+          staff: { select: { id: true, start_date: true } },
+        },
+      },
+    );
+
+    for (const lineItem of matchedLineItems) {
+      const eligibility = computeLineItemCommissionEligibility({
+        lineItemAmount: lineItem.amount ?? 0,
+        staffStartDate: lineItem.staff?.start_date ?? null,
+        commissionPercent: affiliateProfile.commission_percent_default,
+      });
+
+      if (!eligibility.eligible) continue;
+
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: affiliateUserId,
-        hubspotInvoiceId: snapshot.hubspot_id,
+        hubspotInvoiceId: lineItem.invoice.hubspot_id,
+        hubspotLineItemId: lineItem.id,
       });
 
       try {
-        const commissionAmount = new Decimal(snapshot.invoice_amount)
-          .mul(affiliateProfile.commission_percent_default)
-          .div(100)
-          .toDecimalPlaces(2);
-
         await this.prisma.affiliateCommission.create({
           data: {
             affiliate_id: affiliateUserId,
             affiliate_profile_id: affiliateProfileId,
             organization_id: organizationId,
-            hubspot_invoice_snapshot_id: snapshot.id,
+            hubspot_invoice_snapshot_id: lineItem.invoice_id,
+            hubspot_line_item_snapshot_id: lineItem.id,
+            staff_id: lineItem.staff_id,
             commission_percent_snapshot:
               affiliateProfile.commission_percent_default,
-            base_amount_snapshot: snapshot.invoice_amount,
-            commission_amount: commissionAmount,
+            base_amount_snapshot: lineItem.amount ?? 0,
+            commission_amount: eligibility.commissionAmount!,
             status: commissionStatus as CommissionStatus,
             idempotency_key: idempotencyKey,
           },
@@ -1620,14 +1756,16 @@ export class AffiliatesService {
             actor_user_id: adminUser.id,
             metadata: {
               organization_id: organizationId,
-              hubspot_invoice_id: snapshot.hubspot_id,
+              hubspot_invoice_id: lineItem.invoice.hubspot_id,
+              hubspot_line_item_snapshot_id: lineItem.id,
+              staff_id: lineItem.staff_id,
             } as any,
           },
         });
       } catch (err: any) {
         if (err?.code === 'P2002') continue;
         this.logger.error(
-          `Backfill commission failed for invoice ${snapshot.id}: ${err?.message}`,
+          `Backfill commission failed for line item ${lineItem.id}: ${err?.message}`,
         );
       }
     }

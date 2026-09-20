@@ -321,11 +321,19 @@ export class OrganizationController {
     status: 200,
     description: 'Invoice configuration updated successfully',
   })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Organization not found' })
   async updateInvoiceConfiguration(
     @Param('id') id: string,
     @Body() data: UpdateInvoiceConfigurationDto,
+    @CurrentUser() user: USER,
   ) {
-    return await this.organizationService.updateInvoiceConfiguration(id, data);
+    return await this.organizationService.updateInvoiceConfiguration(
+      id,
+      data,
+      user?.id,
+    );
   }
 
   @Post('convert-to-client/:id')

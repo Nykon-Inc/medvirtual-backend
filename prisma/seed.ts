@@ -1,6 +1,21 @@
 import { PrismaClient } from '@prisma/client';
+import * as dotenv from 'dotenv';
+
+// ts-node does not load .env on its own (unlike `nest start`, which goes
+// through @nestjs/config) — without this, process.env.DATABASE_URL is
+// undefined here and Prisma silently falls back to whatever URL was baked
+// in at the last `prisma generate`, which can point at the wrong database.
+dotenv.config();
 
 const prisma = new PrismaClient();
+
+// Hide credentials, show which database this run will actually write to.
+const getHost = (url?: string) => {
+  if (!url) return 'undefined';
+  const parts = url.split('@');
+  return parts.length > 1 ? parts[1] : url;
+};
+console.log(`🌱 Seeding target: ${getHost(process.env.PROD_DATABASE_URL)}`);
 
 async function main() {
   // ─── Business Units ──────────────────────────────────────────────────────────
@@ -409,6 +424,24 @@ async function main() {
         '{{hrTitle}}',
         '{{orgName}}',
         '{{hrDescription}}',
+        '{{hrLink}}',
+      ],
+    },
+    {
+      key: 'hr-panel-candidate-blocked',
+      name: 'Hire Request — Panel Candidate Addition Blocked (48h Lead Time)',
+      description:
+        'Sent to assignees when a client user is blocked from adding candidates to a panel because the scheduled interview is less than 48 hours away.',
+      subject: 'Action needed: candidate addition blocked on {{hrTitle}}',
+      headline: 'Candidate Addition Blocked',
+      body: 'Hello,\n\n{{attemptedByName}} tried to add the following candidate(s) to a panel, but the action was blocked because the scheduled interview is less than 48 hours away:\n\nTitle: {{hrTitle}}\nOrganization: {{orgName}}\nCandidate(s): {{candidateNames}}',
+      button_label: 'View Hire Request Details',
+      button_url: '{{hrLink}}',
+      placeholders: [
+        '{{attemptedByName}}',
+        '{{candidateNames}}',
+        '{{hrTitle}}',
+        '{{orgName}}',
         '{{hrLink}}',
       ],
     },
@@ -843,27 +876,6 @@ async function main() {
         '{{partnerEmail}}',
         '{{affiliateProfileId}}',
         '{{partnersUrl}}',
-      ],
-    },
-    {
-      key: 'alliance-admin-mark-paid-error',
-      name: 'Med Alliance — Admin: markPaid() Error',
-      description:
-        'Sent to admins when markPaid() fails during payout processing.',
-      subject:
-        'markPaid() error at "{{errorPhase}}" — payout {{payoutRequestId}}',
-      headline: 'Action required: markPaid() failed at phase "{{errorPhase}}"',
-      body: 'An error occurred while processing a payout via markPaid(). The payout was not completed.\n\nPayout Request ID: {{payoutRequestId}}\nTriggered by: {{adminName}}\nFailed at phase: {{errorPhase}}\nAffiliate: {{affiliateName}}\nAmount: ${{amount}}\nError: {{errorMessage}}',
-      button_label: 'View Payout Request',
-      button_url: '{{payoutRequestUrl}}',
-      placeholders: [
-        '{{errorPhase}}',
-        '{{payoutRequestId}}',
-        '{{adminName}}',
-        '{{affiliateName}}',
-        '{{amount}}',
-        '{{errorMessage}}',
-        '{{payoutRequestUrl}}',
       ],
     },
     {

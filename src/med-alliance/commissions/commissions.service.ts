@@ -19,6 +19,7 @@ import {
 import { AFFILIATE_VISIBLE_STATUSES } from '../../common/constant/commissions';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
+import { computeLineItemCommissionEligibility } from '../shared/commission-eligibility.util';
 
 // Terminal statuses — transitions out of these are not allowed.
 const TERMINAL_STATUSES = ['paid', 'void', 'rejected'];
@@ -27,12 +28,24 @@ const TERMINAL_STATUSES = ['paid', 'void', 'rejected'];
 // 'detected' is excluded: commissions must reach 'pending_admin_confirmation' via the 30-day cron before admins can decide.
 const DECIDABLE_STATUSES = ['pending_admin_confirmation'];
 
+// Reusable Staff → Candidate name projection, so admins can see *which collaborator*
+// a commission (or a line item) is for. Kept as its own const since it's included at
+// two levels below: on the commission itself (denormalized staff_id) and per line item.
+const STAFF_SELECT = {
+  select: {
+    id: true,
+    candidate: { select: { first_name: true, last_name: true } },
+  },
+};
+
 const COMMISSION_SELECT = {
   id: true,
   affiliate_id: true,
   affiliate_profile_id: true,
   organization_id: true,
   hubspot_invoice_snapshot_id: true,
+  hubspot_line_item_snapshot_id: true,
+  staff_id: true,
   commission_percent_snapshot: true,
   base_amount_snapshot: true,
   commission_amount: true,
@@ -53,6 +66,10 @@ const COMMISSION_SELECT = {
       admin: { select: { id: true, first_name: true, last_name: true } },
     },
   },
+  staff: STAFF_SELECT,
+  hubspotLineItemSnapshot: {
+    select: { id: true, name: true, amount: true, staff: STAFF_SELECT },
+  },
   hubspotInvoiceSnapshot: {
     select: {
       id: true,
@@ -72,6 +89,7 @@ const COMMISSION_SELECT = {
           quantity: true,
           amount: true,
           discount: true,
+          staff: STAFF_SELECT,
         },
       },
     },
@@ -608,9 +626,17 @@ export class CommissionsService {
   // always sets status to 'pending_admin_confirmation' since the admin is
   // explicitly initiating the creation.
   // ---------------------------------------------------------------------------
+  /**
+   * Rewritten to per-collaborator commission (per-collaborator commission plan §4.5 #4):
+   * `lineItemIds` are HubspotLineItemSnapshot ids (must already be matched to a Staff row),
+   * not invoice ids — an admin now force-creates one commission per collaborator payment,
+   * not per whole invoice. Uses the same shared eligibility helper CommissionDetectionService
+   * and the invoice-paid webhook use, so the 365-day-per-Staff window is enforced here too
+   * (this was previously never checked in this manual-create path at all).
+   */
   async createFromInvoices(
     affiliateProfileId: string,
-    invoiceIds: string[],
+    lineItemIds: string[],
     adminUser: USER,
   ): Promise<{ created: number; skipped: number }> {
     const profile = await this.prisma.affiliateProfile.findUnique({
@@ -631,25 +657,46 @@ export class CommissionsService {
     let created = 0;
     let skipped = 0;
 
-    for (const invoiceId of invoiceIds) {
-      const snapshot = await this.prisma.hubspotInvoiceSnapshot.findUnique({
-        where: { id: invoiceId },
+    for (const lineItemId of lineItemIds) {
+      const lineItem = await this.prisma.hubspotLineItemSnapshot.findUnique({
+        where: { id: lineItemId },
         select: {
           id: true,
-          hubspot_id: true,
-          organization_id: true,
-          invoice_status: true,
-          invoice_amount: true,
-          payment_status: true,
-          paid_at: true,
+          amount: true,
+          match_status: true,
+          staff_id: true,
+          staff: { select: { id: true, start_date: true } },
+          invoice: {
+            select: {
+              id: true,
+              hubspot_id: true,
+              organization_id: true,
+              invoice_status: true,
+              invoice_amount: true,
+              payment_status: true,
+              paid_at: true,
+            },
+          },
         },
       });
 
-      if (!snapshot) {
-        this.logger.warn(`Invoice snapshot ${invoiceId} not found — skipping`);
+      if (!lineItem) {
+        this.logger.warn(`Line item ${lineItemId} not found — skipping`);
         skipped++;
         continue;
       }
+
+      // Must already be matched to a Staff — this endpoint force-creates from an existing
+      // match, it does not perform matching itself (that's StaffMatchingService's job).
+      if (lineItem.match_status !== 'matched' || !lineItem.staff_id) {
+        this.logger.warn(
+          `Line item ${lineItemId} is not matched to a Staff — skipping`,
+        );
+        skipped++;
+        continue;
+      }
+
+      const snapshot = lineItem.invoice;
 
       // Re-validate invoice eligibility.
       const isEligibleInvoice =
@@ -660,7 +707,7 @@ export class CommissionsService {
 
       if (!isEligibleInvoice) {
         this.logger.warn(
-          `Invoice snapshot ${invoiceId} failed eligibility check — skipping`,
+          `Line item ${lineItemId}: parent invoice failed eligibility check — skipping`,
         );
         skipped++;
         continue;
@@ -683,7 +730,7 @@ export class CommissionsService {
 
       if (!org || org.referred_by_affiliate_id !== profile.user_id) {
         this.logger.warn(
-          `Invoice ${invoiceId}: org not found or not referred by this affiliate — skipping`,
+          `Line item ${lineItemId}: org not found or not referred by this affiliate — skipping`,
         );
         skipped++;
         continue;
@@ -694,8 +741,8 @@ export class CommissionsService {
         continue;
       }
 
-      // Expiry is owned centrally by commission-detection.service.ts and the cron sweep
-      // (expireStaleEligibility) — this is now a read-only check, never a writer.
+      // Company-level expiry status is owned centrally by the admin's Confirm/Block
+      // decision (§4.6) — this remains a read-only check, never a writer.
       if (org.med_alliance_referral_status === 'expired') {
         skipped++;
         continue;
@@ -706,7 +753,8 @@ export class CommissionsService {
         continue;
       }
 
-      // Transition to deployed on first paid invoice (idempotent).
+      // Transition to deployed on first paid invoice (idempotent). Stage-only — never touches
+      // med_alliance_referral_status (§4.6, manual-only).
       if (!org.first_paid_invoice_at && org.referral_stage !== 'deployed') {
         const firstInvoiceDate = snapshot.paid_at ?? new Date();
         await this.prisma.organization.update({
@@ -723,8 +771,8 @@ export class CommissionsService {
             entity_type: 'referred_company',
             entity_id: org.id,
             event: 'stage_changed',
-            old_status: 'not_eligible',
-            new_status: 'not_eligible',
+            old_status: null,
+            new_status: null,
             reason:
               'First paid invoice — transitioned to deployed stage via manual commission creation',
             source: 'admin_action',
@@ -737,26 +785,40 @@ export class CommissionsService {
         });
       }
 
+      // Per-collaborator 365-day window (§4) — the same eligibility computation
+      // CommissionDetectionService and the invoice-paid webhook use, now enforced here too.
+      const eligibility = computeLineItemCommissionEligibility({
+        lineItemAmount: lineItem.amount ?? 0,
+        staffStartDate: lineItem.staff?.start_date ?? null,
+        commissionPercent: profile.commission_percent_default,
+      });
+
+      if (!eligibility.eligible) {
+        this.logger.warn(
+          `Line item ${lineItemId}: staff outside the 365-day commission window (${eligibility.skipReason}) — skipping`,
+        );
+        skipped++;
+        continue;
+      }
+
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: profile.user_id,
         hubspotInvoiceId: snapshot.hubspot_id,
+        hubspotLineItemId: lineItem.id,
       });
 
       try {
-        const commissionAmount = new Decimal(snapshot.invoice_amount)
-          .mul(profile.commission_percent_default)
-          .div(100)
-          .toDecimalPlaces(2);
-
         const commission = await this.prisma.affiliateCommission.create({
           data: {
             affiliate_id: profile.user_id,
             affiliate_profile_id: profile.id,
             organization_id: snapshot.organization_id,
             hubspot_invoice_snapshot_id: snapshot.id,
+            hubspot_line_item_snapshot_id: lineItem.id,
+            staff_id: lineItem.staff_id,
             commission_percent_snapshot: profile.commission_percent_default,
-            base_amount_snapshot: snapshot.invoice_amount,
-            commission_amount: commissionAmount,
+            base_amount_snapshot: lineItem.amount ?? 0,
+            commission_amount: eligibility.commissionAmount!,
             status: CommissionStatus.pending_admin_confirmation,
             idempotency_key: idempotencyKey,
           },
@@ -773,6 +835,8 @@ export class CommissionsService {
           metadata: {
             organization_id: snapshot.organization_id,
             hubspot_invoice_id: snapshot.hubspot_id,
+            hubspot_line_item_snapshot_id: lineItem.id,
+            staff_id: lineItem.staff_id,
             created_by_admin: adminUser.id,
           },
         });
@@ -784,7 +848,7 @@ export class CommissionsService {
           continue;
         }
         this.logger.error(
-          `Failed to create commission for invoice ${invoiceId}: ${err?.message ?? err}`,
+          `Failed to create commission for line item ${lineItemId}: ${err?.message ?? err}`,
         );
         skipped++;
       }

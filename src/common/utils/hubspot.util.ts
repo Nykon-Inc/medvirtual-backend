@@ -231,3 +231,53 @@ export async function resolvePaidAt(
     return null;
   }
 }
+
+export interface HubspotLineItemRecord {
+  hubspot_id: string;
+  name: string | null;
+  description: string | null;
+  quantity: string | null;
+  amount: string | null;
+  discount: string | null;
+}
+
+/**
+ * Fetches full line-item details for a HubSpot invoice's associated line_items.
+ * Shared by InvoiceIngestionService (periodic sync, §2) and HandlerInvoiceCreation
+ * (invoice-created webhook, §4.5 #1) so both ingestion paths produce line items in
+ * the same shape for StaffMatchingService to consume — they must never diverge.
+ */
+export async function fetchLineItemsForInvoice(
+  lineItemIds: string[],
+): Promise<HubspotLineItemRecord[]> {
+  const records: HubspotLineItemRecord[] = [];
+
+  for (const id of lineItemIds) {
+    try {
+      const response = await axios.get(
+        `https://api.hubapi.com/crm/v3/objects/line_items/${id}?properties=name,amount,description,quantity,discount`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+          },
+        },
+      );
+      const props = response.data?.properties ?? {};
+      records.push({
+        hubspot_id: id,
+        name: props.name ?? null,
+        description: props.description ?? null,
+        quantity: props.quantity ?? null,
+        amount: props.amount ?? null,
+        discount: props.discount ?? null,
+      });
+    } catch (err) {
+      console.error(
+        `Failed to fetch line item ${id} from HubSpot: ${err instanceof Error ? err.message : err}`,
+      );
+      // Non-blocking: skip this line item
+    }
+  }
+
+  return records;
+}

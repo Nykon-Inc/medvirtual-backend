@@ -32,6 +32,7 @@ const mockPrisma = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     updateMany: jest.fn(),
+    count: jest.fn(),
   },
   affiliateProfile: {
     findUnique: jest.fn(),
@@ -1540,6 +1541,47 @@ describe('PayoutRequestsService', () => {
       await expect(
         service.createForAdmin(adminCreateDto, mockAdminUser),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    // Regression: the admin UI derived its selection from a capped commission
+    // preview, so a payout could be created over fewer commissions than the
+    // affiliate had earned. The client now states the count it saw and the
+    // server refuses to pay out when it disagrees.
+    it('should reject when expected_eligible_count does not match the real count', async () => {
+      (mockPrisma as any).affiliateProfile = {
+        findUnique: jest.fn().mockResolvedValue(makeProfileWithVendor()),
+      };
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([
+        makeCommission(),
+      ]);
+      mockPrisma.affiliateCommission.count.mockResolvedValue(12);
+
+      await expect(
+        service.createForAdmin(
+          { ...adminCreateDto, expected_eligible_count: 7 },
+          mockAdminUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should not query the eligible count when expected_eligible_count is omitted', async () => {
+      (mockPrisma as any).affiliateProfile = {
+        findUnique: jest.fn().mockResolvedValue(makeProfileWithVendor()),
+      };
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([
+        makeCommission(),
+      ]);
+      mockPrisma.affiliateCommission.count.mockResolvedValue(12);
+      mockPrisma.$transaction.mockResolvedValue({ id: 'payout-1' });
+      mockPrisma.affiliatePayoutRequest.findUnique.mockResolvedValue({
+        id: 'payout-1',
+      });
+
+      await service.createForAdmin(adminCreateDto, mockAdminUser);
+
+      expect(mockPrisma.affiliateCommission.count).not.toHaveBeenCalled();
     });
 
     it('should create payout request in transaction and return admin-shaped result', async () => {

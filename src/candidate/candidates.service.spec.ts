@@ -382,6 +382,97 @@ describe('CandidatesService', () => {
       }
     });
 
+    it('applies positions filter when passed as a single comma-separated string', async () => {
+      await service.findAll(
+        mockUser,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'Sr Bookkeeper,Jr Bookkeeper',
+      );
+
+      for (const branch of branchesOf()) {
+        const positionsFilter = andFiltersOf(branch).find(
+          (f: any) => f.OR?.[0]?.approved_positions_pairing,
+        );
+        expect(positionsFilter).toEqual({
+          OR: [
+            { approved_positions_pairing: { has: 'Sr Bookkeeper' } },
+            { approved_positions_pairing: { has: 'Jr Bookkeeper' } },
+          ],
+        });
+      }
+    });
+
+    it('does not throw and applies positions filter when the query param is repeated (array)', async () => {
+      await expect(
+        service.findAll(
+          mockUser,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          ['Sr Bookkeeper', 'Jr Bookkeeper'],
+        ),
+      ).resolves.toBeDefined();
+
+      for (const branch of branchesOf()) {
+        const positionsFilter = andFiltersOf(branch).find(
+          (f: any) => f.OR?.[0]?.approved_positions_pairing,
+        );
+        expect(positionsFilter).toEqual({
+          OR: [
+            { approved_positions_pairing: { has: 'Sr Bookkeeper' } },
+            { approved_positions_pairing: { has: 'Jr Bookkeeper' } },
+          ],
+        });
+      }
+    });
+
+    it('does not throw and applies skills filter when the query param is repeated (array)', async () => {
+      await expect(
+        service.findAll(
+          mockUser,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          ['Office', 'Communication'],
+        ),
+      ).resolves.toBeDefined();
+
+      for (const branch of branchesOf()) {
+        const skillsFilters = andFiltersOf(branch).filter(
+          (f: any) => f.skills?.some?.skill_name,
+        );
+        expect(skillsFilters).toEqual([
+          {
+            skills: {
+              some: { skill_name: { contains: 'Office', mode: 'insensitive' } },
+            },
+          },
+          {
+            skills: {
+              some: {
+                skill_name: { contains: 'Communication', mode: 'insensitive' },
+              },
+            },
+          },
+        ]);
+      }
+    });
+
     it('resolves core_skills_fields into an exact-match filter for system_admin users', async () => {
       const systemAdminUser = {
         id: 'user-3',
@@ -593,6 +684,7 @@ describe('CandidatesService', () => {
         },
         select: {
           id: true,
+          hubspot_vaid: true,
           first_name: true,
           last_name: true,
           email: true,

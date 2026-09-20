@@ -32,6 +32,8 @@ const mockPrisma = {
   },
   uSER: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
   },
   affiliatePayoutRequest: {
     aggregate: jest.fn(),
@@ -43,12 +45,16 @@ const mockPrisma = {
     groupBy: jest.fn(),
     findMany: jest.fn(),
     create: jest.fn(),
+    count: jest.fn(),
   },
   organization: {
     findUnique: jest.fn(),
     update: jest.fn(),
   },
   hubspotInvoiceSnapshot: {
+    findMany: jest.fn(),
+  },
+  hubspotLineItemSnapshot: {
     findMany: jest.fn(),
   },
   medAllianceAuditLog: {
@@ -263,6 +269,36 @@ describe('AffiliatesService', () => {
       const [, runtimeValues] = (emailTemplates.getTemplateContent as jest.Mock)
         .mock.calls[0];
       expect(runtimeValues).not.toHaveProperty('{{partnerName}}');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // inviteUserForAffiliate
+  // -------------------------------------------------------------------------
+  describe('inviteUserForAffiliate', () => {
+    const inviteDto: any = {
+      email: 'New@Partner.com',
+      first_name: 'New',
+      last_name: 'Partner',
+    };
+
+    it('should throw ConflictException when an existing user matches the email case-insensitively', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: null,
+      });
+      mockPrisma.uSER.findFirst.mockResolvedValue({ id: 'existing-user' });
+
+      await expect(
+        service.inviteUserForAffiliate('profile-1', inviteDto, 'admin-1'),
+      ).rejects.toThrow(
+        new ConflictException('A user with this email already exists'),
+      );
+
+      expect(mockPrisma.uSER.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'new@partner.com', mode: 'insensitive' } },
+      });
+      expect(mockPrisma.uSER.create).not.toHaveBeenCalled();
     });
   });
 
@@ -920,6 +956,7 @@ describe('AffiliatesService', () => {
       mockPrisma.organization.update.mockResolvedValue({});
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([]);
       mockInvoiceIngestionService.run.mockResolvedValue(undefined);
       mockHubspotService.setCompanyAffiliateReferral.mockResolvedValue(
         undefined,
@@ -966,7 +1003,7 @@ describe('AffiliatesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should set status to pending_confirmation (no 30-day tier) and anchor eligibility_start_at on the raw anchor date', async () => {
+    it('should set referral_stage=deployed and anchor eligibility_start_at on the raw anchor date (med_alliance_referral_status untouched — §4.6)', async () => {
       mockPrisma.affiliateProfile.findUnique
         .mockResolvedValueOnce(mockProfile) // outer profile lookup
         .mockResolvedValueOnce(mockProfile); // inner lookup in _backfillOnAssociation
@@ -994,20 +1031,24 @@ describe('AffiliatesService', () => {
           where: { id: 'org-1' },
         }),
       );
+      // The backfill write is the one carrying eligibility_start_at (§4.6: no longer keyed
+      // by med_alliance_referral_status, since that field is no longer set here at all).
       const updateCallArgs = mockPrisma.organization.update.mock.calls.find(
-        (c: any) => c[0].data?.med_alliance_referral_status,
+        (c: any) => c[0].data?.eligibility_start_at,
       );
       expect(updateCallArgs[0].data).toEqual(
         expect.objectContaining({
           referral_stage: 'deployed',
           eligibility_start_at: anchorDate,
           med_alliance_block_reason: null,
-          med_alliance_referral_status: 'pending_confirmation',
         }),
       );
+      expect(
+        updateCallArgs[0].data.med_alliance_referral_status,
+      ).toBeUndefined();
     });
 
-    it('should mark expired and skip commission backfill when anchor date is more than 365 days ago', async () => {
+    it('should still backfill matched-line-item commissions when anchor date is more than 365 days ago (company eligibility no longer gates this — §4.6; per-collaborator eligibility still applies — §4)', async () => {
       const oldAnchor = daysAgo(400);
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
@@ -1016,8 +1057,20 @@ describe('AffiliatesService', () => {
           hubspot_id: 'hs-org-1',
           deployment_date: oldAnchor,
         });
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
-        paidSnapshot({ paid_at: oldAnchor }),
+      const snap = paidSnapshot({ paid_at: oldAnchor });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      // A staff member who started recently (30 days ago) still has a fresh commission
+      // window even though the COMPANY's deployment_date is 400 days old — this is exactly
+      // the per-collaborator clock the plan introduces (§4).
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-1',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-1',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-1', start_date: daysAgo(30) },
+        },
       ]);
 
       await service
@@ -1025,16 +1078,23 @@ describe('AffiliatesService', () => {
         .catch(() => {});
 
       const updateCallArgs = mockPrisma.organization.update.mock.calls.find(
-        (c: any) => c[0].data?.med_alliance_referral_status,
+        (c: any) => c[0].data?.eligibility_start_at,
       );
-      expect(updateCallArgs[0].data).toEqual(
-        expect.objectContaining({ med_alliance_referral_status: 'expired' }),
+      expect(
+        updateCallArgs[0].data.med_alliance_referral_status,
+      ).toBeUndefined();
+      expect(mockPrisma.affiliateCommission.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            hubspot_line_item_snapshot_id: 'li-1',
+            staff_id: 'staff-1',
+            status: 'detected',
+          }),
+        }),
       );
-      // No commission backfill once expired.
-      expect(mockPrisma.affiliateCommission.create).not.toHaveBeenCalled();
     });
 
-    it('should always backfill commissions as "detected" (never pending_admin_confirmation) when not expired', async () => {
+    it('should skip a matched line item whose staff started more than 365 days ago (per-collaborator window — §4)', async () => {
       const anchorDate = daysAgo(5);
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
       mockPrisma.organization.findUnique
@@ -1043,8 +1103,46 @@ describe('AffiliatesService', () => {
           hubspot_id: 'hs-org-1',
           deployment_date: anchorDate,
         });
-      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
-        paidSnapshot({ paid_at: anchorDate }),
+      const snap = paidSnapshot({ paid_at: anchorDate });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-expired',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-expired',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-expired', start_date: daysAgo(400) },
+        },
+      ]);
+
+      await service
+        .associateCompany('profile-1', 'org-1', mockAdminUser)
+        .catch(() => {});
+
+      expect(mockPrisma.affiliateCommission.create).not.toHaveBeenCalled();
+    });
+
+    it('should always backfill matched-line-item commissions as "detected" (never pending_admin_confirmation)', async () => {
+      const anchorDate = daysAgo(5);
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.organization.findUnique
+        .mockResolvedValueOnce({ id: 'org-1', referred_by_affiliate_id: null })
+        .mockResolvedValueOnce({
+          hubspot_id: 'hs-org-1',
+          deployment_date: anchorDate,
+        });
+      const snap = paidSnapshot({ paid_at: anchorDate });
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([snap]);
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        {
+          id: 'li-1',
+          amount: new Decimal('500.00'),
+          invoice_id: snap.id,
+          staff_id: 'staff-1',
+          invoice: { hubspot_id: snap.hubspot_id },
+          staff: { id: 'staff-1', start_date: daysAgo(10) },
+        },
       ]);
 
       await service
@@ -1112,6 +1210,119 @@ describe('AffiliatesService', () => {
       expect(
         mockHubspotService.setCompanyAffiliateReferral,
       ).toHaveBeenCalledWith('org-1', 'affiliate-user-1', mockAdminUser.id);
+    });
+  });
+
+  describe('findEligibleCommissions', () => {
+    it('should throw when the affiliate profile does not exist', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.findEligibleCommissions('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return empty results when the profile has no connected user', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: null,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result).toEqual({
+        affiliate_profile_id: 'profile-1',
+        affiliate_user_id: null,
+        eligible_count: 0,
+        eligible_amount: 0,
+        commissions: [],
+      });
+      expect(mockPrisma.affiliateCommission.findMany).not.toHaveBeenCalled();
+    });
+
+    // Regression: the side panel caps commissions at the 50 most recent of any
+    // status, so an affiliate with a large pending backlog had eligible
+    // commissions pushed out of the payout selection. This query must be
+    // unbounded and filtered on status server-side.
+    it('should return every eligible commission with no take limit', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: 'user-1',
+      });
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          status: 'eligible',
+          commission_amount: '301.15',
+          createdAt: new Date('2026-07-07T19:54:34.650Z'),
+          organization_id: 'org-1',
+          organization: { id: 'org-1', name: 'Acme Health' },
+          hubspotInvoiceSnapshot: {
+            hubspot_id: 'hs-1',
+            invoice_number: 'INV-1',
+          },
+        },
+        {
+          id: 'c2',
+          status: 'eligible',
+          commission_amount: '77',
+          createdAt: new Date('2026-09-17T20:08:36.148Z'),
+          organization_id: null,
+          organization: null,
+          hubspotInvoiceSnapshot: null,
+        },
+      ]);
+      mockPrisma.affiliateCommission.aggregate.mockResolvedValue({
+        _sum: { commission_amount: '378.15' },
+        _count: 2,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result.eligible_count).toBe(2);
+      expect(result.eligible_amount).toBe(378.15);
+      expect(result.affiliate_user_id).toBe('user-1');
+      expect(result.commissions).toHaveLength(2);
+      expect(result.commissions[0]).toEqual({
+        id: 'c1',
+        organization_id: 'org-1',
+        organization_name: 'Acme Health',
+        amount: 301.15,
+        status: 'eligible',
+        date: '2026-07-07T19:54:34.650Z',
+        invoice_id: 'hs-1',
+        name: 'INV-1',
+      });
+      expect(result.commissions[1].organization_name).toBe('');
+      expect(result.commissions[1].invoice_id).toBeNull();
+
+      // Keys on the profile's user id, filters status in the query, and never
+      // caps the result set.
+      const findManyArgs =
+        mockPrisma.affiliateCommission.findMany.mock.calls[0][0];
+      expect(findManyArgs.where).toEqual({
+        affiliate_id: 'user-1',
+        status: 'eligible',
+      });
+      expect(findManyArgs.take).toBeUndefined();
+    });
+
+    it('should report zero amount when the affiliate has no eligible commissions', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue({
+        id: 'profile-1',
+        user_id: 'user-1',
+      });
+      mockPrisma.affiliateCommission.findMany.mockResolvedValue([]);
+      mockPrisma.affiliateCommission.aggregate.mockResolvedValue({
+        _sum: { commission_amount: null },
+        _count: 0,
+      });
+
+      const result = await service.findEligibleCommissions('profile-1');
+
+      expect(result.eligible_count).toBe(0);
+      expect(result.eligible_amount).toBe(0);
+      expect(result.commissions).toEqual([]);
     });
   });
 });

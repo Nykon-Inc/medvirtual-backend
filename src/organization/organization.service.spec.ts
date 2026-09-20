@@ -6,7 +6,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { HubspotService } from '../hubspot/hubspot.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { OrganizationRole, OrganizationStatus } from '@prisma/client';
+import {
+  BillingMode,
+  OrganizationRole,
+  OrganizationStatus,
+} from '@prisma/client';
 import { HandlerOrganizationCreation } from '../hubspot/handlers/organizationCreation';
 import { HandlerDealCreation } from '../hubspot/handlers/dealCreation';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -75,12 +79,20 @@ describe('OrganizationService', () => {
     hireRequest: {
       updateMany: jest.fn(),
     },
+    contact: {
+      findMany: jest.fn(),
+    },
+    invoiceConfiguration: {
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+    },
   };
 
   const mockHubspotService = {
     createOrUpdateCompany: jest.fn(),
     createOrganizationInHubspot: jest.fn(),
     updateOrganizationInHubspot: jest.fn(),
+    setCompanyHubstaffProjectId: jest.fn(),
   };
 
   const mockAuthService = {
@@ -235,6 +247,55 @@ describe('OrganizationService', () => {
     });
   });
 
+  describe('getContactByOrgId', () => {
+    it('should include user_id so the caller can tell the contact is already linked to a USER', async () => {
+      const linkedContact = {
+        id: 'contact-1',
+        user_id: 'user-1',
+        hubspot_id: 'hs-1',
+        first_name: 'Julia',
+        last_name: 'Villaran',
+        email: 'julia.villaran+lagniappe@medvirtual.ai',
+        phone: '',
+      };
+      mockPrismaService.contact.findMany.mockResolvedValue([linkedContact]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(mockPrismaService.contact.findMany).toHaveBeenCalledWith({
+        where: { organization_id: 'org-1' },
+        select: {
+          id: true,
+          user_id: true,
+          hubspot_id: true,
+          first_name: true,
+          last_name: true,
+          email: true,
+          phone: true,
+        },
+      });
+      expect(result).toEqual([linkedContact]);
+      expect(result[0].user_id).toBe('user-1');
+    });
+
+    it('should return user_id as null when the contact has no linked USER', async () => {
+      const unlinkedContact = {
+        id: 'contact-2',
+        user_id: null,
+        hubspot_id: 'hs-2',
+        first_name: 'John',
+        last_name: 'Doe',
+        email: 'john.doe@medvirtual.ai',
+        phone: '',
+      };
+      mockPrismaService.contact.findMany.mockResolvedValue([unlinkedContact]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(result[0].user_id).toBeNull();
+    });
+  });
+
   describe('create', () => {
     /*
     it('should throw BadRequestException if organization already exists', async () => {
@@ -352,6 +413,148 @@ describe('OrganizationService', () => {
       expect(rawSql).not.toContain('COALESCE');
       expect(rawSql).toContain('status_before_deactivation');
       expect(rawSql).toContain("= 'active'");
+    });
+  });
+
+  describe('updateInvoiceConfiguration', () => {
+    const orgId = 'org-1';
+    const actorId = 'user-1';
+
+    beforeEach(() => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        id: orgId,
+        hubspot_id: '12345',
+      });
+      mockHubspotService.setCompanyHubstaffProjectId.mockResolvedValue(
+        undefined,
+      );
+    });
+
+    it('should push hubstaff_id to HubSpot when the value changes', async () => {
+      mockPrismaService.invoiceConfiguration.findUnique.mockResolvedValue({
+        hubstaff_id: 'old-id',
+      });
+      mockPrismaService.invoiceConfiguration.upsert.mockResolvedValue({
+        id: 'cfg-1',
+        organization_id: orgId,
+        hubstaff_id: 'new-id',
+      });
+
+      const res = await service.updateInvoiceConfiguration(
+        orgId,
+        { hubstaff_id: 'new-id' },
+        actorId,
+      );
+
+      expect(res.status).toBe(200);
+      expect(
+        mockHubspotService.setCompanyHubstaffProjectId,
+      ).toHaveBeenCalledWith(
+        orgId,
+        'new-id',
+        actorId,
+        'Hubstaff ID updated from organization profile',
+      );
+    });
+
+    it('should push hubstaff_id when no configuration exists yet', async () => {
+      mockPrismaService.invoiceConfiguration.findUnique.mockResolvedValue(null);
+      mockPrismaService.invoiceConfiguration.upsert.mockResolvedValue({
+        id: 'cfg-1',
+        organization_id: orgId,
+        hubstaff_id: 'new-id',
+      });
+
+      await service.updateInvoiceConfiguration(
+        orgId,
+        { hubstaff_id: 'new-id' },
+        actorId,
+      );
+
+      expect(
+        mockHubspotService.setCompanyHubstaffProjectId,
+      ).toHaveBeenCalledWith(
+        orgId,
+        'new-id',
+        actorId,
+        'Hubstaff ID updated from organization profile',
+      );
+    });
+
+    it('should not call HubSpot when hubstaff_id is unchanged', async () => {
+      mockPrismaService.invoiceConfiguration.findUnique.mockResolvedValue({
+        hubstaff_id: 'same-id',
+      });
+      mockPrismaService.invoiceConfiguration.upsert.mockResolvedValue({
+        id: 'cfg-1',
+        organization_id: orgId,
+        hubstaff_id: 'same-id',
+      });
+
+      await service.updateInvoiceConfiguration(
+        orgId,
+        { hubstaff_id: 'same-id' },
+        actorId,
+      );
+
+      expect(
+        mockHubspotService.setCompanyHubstaffProjectId,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should not call HubSpot when hubstaff_id is absent from the payload', async () => {
+      mockPrismaService.invoiceConfiguration.findUnique.mockResolvedValue({
+        hubstaff_id: 'existing-id',
+      });
+      mockPrismaService.invoiceConfiguration.upsert.mockResolvedValue({
+        id: 'cfg-1',
+        organization_id: orgId,
+        hubstaff_id: 'existing-id',
+      });
+
+      await service.updateInvoiceConfiguration(
+        orgId,
+        { billing_mode: BillingMode.arrears },
+        actorId,
+      );
+
+      expect(mockPrismaService.invoiceConfiguration.upsert).toHaveBeenCalled();
+      expect(
+        mockHubspotService.setCompanyHubstaffProjectId,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should still return 200 when the HubSpot push fails', async () => {
+      mockPrismaService.invoiceConfiguration.findUnique.mockResolvedValue(null);
+      mockPrismaService.invoiceConfiguration.upsert.mockResolvedValue({
+        id: 'cfg-1',
+        organization_id: orgId,
+        hubstaff_id: 'new-id',
+      });
+      mockHubspotService.setCompanyHubstaffProjectId.mockRejectedValue(
+        new Error('HubSpot down'),
+      );
+
+      const res = await service.updateInvoiceConfiguration(
+        orgId,
+        { hubstaff_id: 'new-id' },
+        actorId,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.hubstaff_id).toBe('new-id');
+    });
+
+    it('should throw NotFoundException when the organization does not exist', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateInvoiceConfiguration(orgId, { hubstaff_id: 'new-id' }),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(
+        mockHubspotService.setCompanyHubstaffProjectId,
+      ).not.toHaveBeenCalled();
     });
   });
 

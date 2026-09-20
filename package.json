@@ -34,10 +34,12 @@
     "db:sync": "ts-node scripts/sync-database.ts",
     "invoice:init-configs": "ts-node scripts/init-invoice-configs.ts",
     "invoice:test-hubspot-sync": "ts-node scripts/test-hubspot-invoice-sync.ts",
+    "invoice:test-hubstaff-sync": "ts-node scripts/test-hubstaff-sync.ts",
+    "backfill:hubspot-vaid": "ts-node scripts/backfill-hubspot-vaid.ts",
+    "backfill:hubstaff-id": "ts-node scripts/backfill-hubstaff-id.ts",
     "hubstaff:sync-dry-run": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-hubstaff-sync.ts",
     "hubstaff:export-mapping": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/export-hubstaff-va-mapping.ts",
-    "invoice:diagnose": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-invoice-generation.ts",
-    "invoice:test-hubstaff-sync": "ts-node scripts/test-hubstaff-sync.ts"
+    "invoice:diagnose": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-invoice-generation.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.858.0",

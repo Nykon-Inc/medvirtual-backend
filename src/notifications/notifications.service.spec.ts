@@ -3372,5 +3372,93 @@ describe('NotificationsService', () => {
         },
       );
     });
+
+    describe('sender address', () => {
+      it.each([
+        ['public', 'notifyOfferPanelCreatedPublic'],
+        ['client', 'notifyOfferPanelCreatedClient'],
+      ] as const)(
+        'sends as the creator when their email is on a verified domain (%s)',
+        async (_label, method) => {
+          (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
+            ...basePanel,
+            createdBy: { ...basePanel.createdBy, email: 'paulo@medvirtual.ai' },
+          });
+
+          await (service as any)[method]('p1');
+
+          expect(mockMailService.sendMail).toHaveBeenCalledWith(
+            expect.objectContaining({
+              from: expect.stringContaining('<paulo@medvirtual.ai>'),
+            }),
+          );
+        },
+      );
+
+      it('sends as the creator when their email is on the other verified domain', async () => {
+        (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
+          ...basePanel,
+          createdBy: {
+            ...basePanel.createdBy,
+            email: 'hanieh@berryvirtual.com',
+          },
+        });
+
+        await service.notifyOfferPanelCreatedPublic('p1');
+
+        expect(mockMailService.sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({
+            from: expect.stringContaining('<hanieh@berryvirtual.com>'),
+          }),
+        );
+      });
+
+      it('falls back to the shared noreply address when the creator domain is not verified', async () => {
+        (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
+          ...basePanel,
+          createdBy: { ...basePanel.createdBy, email: 'paulo@regenta.ai' },
+        });
+
+        await service.notifyOfferPanelCreatedPublic('p1');
+
+        expect(mockMailService.sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({
+            from: expect.stringContaining('<noreply@medvirtual.ai>'),
+          }),
+        );
+      });
+
+      it('falls back to the shared noreply address when the creator has no email', async () => {
+        (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
+          ...basePanel,
+          createdBy: { ...basePanel.createdBy, email: null },
+        });
+
+        await service.notifyOfferPanelCreatedPublic('p1');
+
+        expect(mockMailService.sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({
+            from: expect.stringContaining('<noreply@medvirtual.ai>'),
+          }),
+        );
+      });
+
+      it('still suppresses the cc when the verified creator email matches the recipient', async () => {
+        (mockPrismaService as any).offerPanel.findUnique.mockResolvedValue({
+          ...basePanel,
+          recipient_email: 'paulo@medvirtual.ai',
+          createdBy: { ...basePanel.createdBy, email: 'paulo@medvirtual.ai' },
+        });
+
+        await service.notifyOfferPanelCreatedPublic('p1');
+
+        expect(mockMailService.sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({
+            from: expect.stringContaining('<paulo@medvirtual.ai>'),
+            cc: undefined,
+          }),
+        );
+      });
+    });
   });
 });

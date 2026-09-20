@@ -1,14 +1,16 @@
 import { DateTime } from '@hubspot/api-client/lib/codegen/crm/associations/v4';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class scheduleInterviewDTO {
   @ApiProperty({
-    description: 'The date of the interview',
+    description:
+      'The date and time of the interview. For client-originated hire requests, must be at least 24 hours in advance.',
     type: String,
     required: true,
   })
   @IsString()
+  @IsNotEmpty()
   date_time: DateTime;
 
   @ApiProperty({

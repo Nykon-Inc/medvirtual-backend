@@ -78,6 +78,7 @@ const prismaMock = {
     create: jest.fn(),
     findMany: jest.fn(),
     deleteMany: jest.fn(),
+    updateMany: jest.fn(),
   },
   organization: {
     findUnique: jest.fn(),
@@ -1966,7 +1967,11 @@ describe('HireRequestService', () => {
           id: baseId,
           organization: { id: user.organization_id },
         },
-        select: { id: true, hubspot_ticket_id: true },
+        select: {
+          id: true,
+          hubspot_ticket_id: true,
+          createdBy: { select: { role: true } },
+        },
       });
     });
 
@@ -2093,6 +2098,201 @@ describe('HireRequestService', () => {
       await expect(
         service.scheduleInterview(baseId, baseData as any, user),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    describe('24h minimum lead time (client-originated hire requests)', () => {
+      const inTwoHours = new Date(
+        Date.now() + 2 * 60 * 60 * 1000,
+      ).toISOString();
+      const in48Hours = new Date(
+        Date.now() + 48 * 60 * 60 * 1000,
+      ).toISOString();
+
+      beforeEach(() => {
+        jest
+          .spyOn(service, 'verifyUnavailableCandidates')
+          .mockResolvedValue(false);
+      });
+
+      it('rejects when the hire request is client-originated and date_time is inside the 24h window', async () => {
+        prismaMock.hireRequest.findUnique.mockResolvedValue({
+          id: baseId,
+          createdBy: { role: 'organization_admin' },
+        });
+
+        await expect(
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
+        ).rejects.toThrow(
+          'Interviews for client-requested hire requests must be scheduled at least 24 hours in advance.',
+        );
+
+        expect(prismaMock.interview.create).not.toHaveBeenCalled();
+        expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
+      });
+
+      it('resolves when the hire request is client-originated and date_time is 48h out', async () => {
+        prismaMock.hireRequest.findUnique.mockResolvedValue({
+          id: baseId,
+          createdBy: { role: 'organization_admin' },
+        });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
+        prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
+        prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
+        prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+        jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+        await expect(
+          service.scheduleInterview(
+            baseId,
+            { date_time: in48Hours } as any,
+            user,
+          ),
+        ).resolves.toBe(true);
+      });
+
+      it('resolves when the hire request is admin-originated even if date_time is inside the 24h window', async () => {
+        prismaMock.hireRequest.findUnique.mockResolvedValue({
+          id: baseId,
+          createdBy: { role: 'system_admin' },
+        });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
+        prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
+        prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
+        prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+        jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+        await expect(
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
+        ).resolves.toBe(true);
+      });
+
+      it('resolves permissively when createdBy is null, regardless of date_time', async () => {
+        prismaMock.hireRequest.findUnique.mockResolvedValue({
+          id: baseId,
+          createdBy: null,
+        });
+        prismaMock.candidatePanel.findFirst.mockResolvedValue({
+          id: 'panel1',
+          panelCandidates: [],
+        });
+        prismaMock.interview.create.mockResolvedValue({ id: 'interview1' });
+        prismaMock.candidatePanel.update.mockResolvedValue({ id: 'panel1' });
+        prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+        jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+        await expect(
+          service.scheduleInterview(
+            baseId,
+            { date_time: inTwoHours } as any,
+            user,
+          ),
+        ).resolves.toBe(true);
+      });
+    });
+  });
+
+  describe('editInterview', () => {
+    const baseId = 'hr1';
+    const inTwoHours = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const in48Hours = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('rejects when the hire request is client-originated and date_time is inside the 24h window', async () => {
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: baseId,
+        createdBy: { role: 'organization_admin' },
+      });
+
+      await expect(
+        service.editInterview(baseId, { date_time: inTwoHours } as any, user),
+      ).rejects.toThrow(
+        'Interviews for client-requested hire requests must be scheduled at least 24 hours in advance.',
+      );
+
+      expect(prismaMock.interview.updateMany).not.toHaveBeenCalled();
+      expect(prismaMock.hireRequest.update).not.toHaveBeenCalled();
+    });
+
+    it('resolves when the hire request is client-originated and date_time is 48h out', async () => {
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: baseId,
+        createdBy: { role: 'organization_admin' },
+      });
+      prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1' });
+      prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+      prismaMock.interview.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+      await expect(
+        service.editInterview(baseId, { date_time: in48Hours } as any, user),
+      ).resolves.toBe(true);
+    });
+
+    it('resolves when the hire request is admin-originated even if date_time is inside the 24h window', async () => {
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: baseId,
+        createdBy: { role: 'system_admin' },
+      });
+      prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1' });
+      prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+      prismaMock.interview.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+      await expect(
+        service.editInterview(baseId, { date_time: inTwoHours } as any, user),
+      ).resolves.toBe(true);
+    });
+
+    it('resolves permissively when createdBy is null, regardless of date_time', async () => {
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: baseId,
+        createdBy: null,
+      });
+      prismaMock.candidatePanel.findFirst.mockResolvedValue({ id: 'panel1' });
+      prismaMock.hireRequest.update.mockResolvedValue({ id: baseId });
+      prismaMock.interview.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(true);
+
+      await expect(
+        service.editInterview(baseId, { date_time: inTwoHours } as any, user),
+      ).resolves.toBe(true);
+    });
+
+    it('measures the 24h gap from now, not from the interview previously scheduled far in the future', async () => {
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: baseId,
+        createdBy: { role: 'organization_admin' },
+      });
+      const threeHoursOut = new Date(
+        Date.now() + 3 * 60 * 60 * 1000,
+      ).toISOString();
+
+      await expect(
+        service.editInterview(
+          baseId,
+          { date_time: threeHoursOut } as any,
+          user,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prismaMock.interview.updateMany).not.toHaveBeenCalled();
     });
   });
 

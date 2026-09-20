@@ -1302,6 +1302,133 @@ ${getEmailLogoCss()}
     });
   }
 
+  // Fires when the 48h panel-candidate minimum lead-time rule blocks an
+  // organization user from adding candidates to a panel. Best-effort side
+  // effect from inside a blocking validation path — must never throw, so the
+  // caller's BadRequestException always reaches the user unaffected.
+  async notifyPanelCandidateBlocked(
+    hireRequestId: string,
+    attemptedByUserId: string,
+    candidateIds: string[],
+  ): Promise<boolean> {
+    const hr = await this.prisma.hireRequest.findUnique({
+      where: { id: hireRequestId },
+      select: {
+        id: true,
+        title: true,
+        assign_user_id: true,
+        organization: {
+          select: { name: true, business_unit: true },
+        },
+      },
+    });
+    if (!hr) throw new NotFoundException('Hire request not found');
+
+    const userIds = hr?.assign_user_id
+      ?.split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    // get all users to notify
+    const users = await this.prisma.uSER.findMany({
+      where: { id: { in: userIds } },
+      select: { email: true, first_name: true, last_name: true, id: true },
+    });
+    if (!users || users.length === 0 || !users[0].email) {
+      this.logger.warn(
+        `notifyPanelCandidateBlocked: hire request ${hireRequestId} has no assignee email to notify`,
+      );
+      return false;
+    }
+
+    let attemptedByName = 'A user';
+    try {
+      const attemptedByUser = await this.prisma.uSER.findUnique({
+        where: { id: attemptedByUserId },
+        select: { first_name: true, last_name: true, email: true },
+      });
+      if (attemptedByUser) {
+        attemptedByName =
+          `${attemptedByUser.first_name || ''} ${attemptedByUser.last_name || ''}`.trim() ||
+          attemptedByUser.email ||
+          attemptedByName;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `notifyPanelCandidateBlocked: failed to load attempting user ${attemptedByUserId}`,
+        err?.message || err,
+      );
+    }
+
+    let candidateNames = 'a candidate';
+    try {
+      const candidates = await this.prisma.candidate.findMany({
+        where: { id: { in: candidateIds } },
+        select: { id: true, first_name: true, last_name: true },
+      });
+      if (candidates && candidates.length > 0) {
+        const names = candidates
+          .map((c) => `${c.first_name || ''} ${c.last_name || ''}`.trim())
+          .filter(Boolean);
+        if (names.length > 0) candidateNames = names.join(', ');
+      }
+    } catch (err) {
+      this.logger.warn(
+        `notifyPanelCandidateBlocked: failed to load candidates ${candidateIds.join(', ')}`,
+        err?.message || err,
+      );
+    }
+
+    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+
+    const emailTheme = await getBusinessUnitEmailTheme(
+      this.prisma,
+      hr.organization.business_unit,
+    );
+
+    const fallbackHtml = this.buildEmail(
+      `<p>Hello,</p>
+       <p><strong>${attemptedByName}</strong> tried to add the following candidate(s) to a panel, but the action was blocked because the scheduled interview is less than 48 hours away:</p>
+
+       <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+         <h3 style="margin-top: 0; color: #333;">Hire Request Details</h3>
+         <p><strong>Title:</strong> ${hr.title}</p>
+         <p><strong>Organization:</strong> ${hr.organization.name}</p>
+         <p><strong>Candidate(s):</strong> ${candidateNames}</p>
+         <p><strong>Reason:</strong> Interview is scheduled within the next 48 hours</p>
+       </div>
+
+       <div style="text-align: left; margin: 30px 0;">
+         <a href="${detailUrl}" class="cta-button">
+           View Hire Request Details
+         </a>
+       </div>`,
+      emailTheme,
+    );
+
+    const tpl = await this.getTplContent(
+      'hr-panel-candidate-blocked',
+      {
+        '{{attemptedByName}}': attemptedByName,
+        '{{candidateNames}}': candidateNames,
+        '{{hrTitle}}': hr.title,
+        '{{orgName}}': hr.organization.name,
+        '{{hrLink}}': detailUrl,
+      },
+      emailTheme,
+      hr.organization.business_unit,
+    );
+
+    return await this.mail.sendMail({
+      from: `${hr.organization.business_unit || 'MedVirtual'} <noreply@medvirtual.ai>`,
+      to: users.map((user) => user.email),
+      subject:
+        tpl?.subject ??
+        `Action needed: candidate addition blocked on ${hr.title}`,
+      html: tpl?.html ?? fallbackHtml,
+    });
+  }
+
   async notifyHireRequestSelectWinner(hireRequestId: string): Promise<boolean> {
     const hr = await this.prisma.hireRequest.findUnique({
       where: { id: hireRequestId },
@@ -2600,6 +2727,27 @@ ${getEmailLogoCss()}
     return cc;
   }
 
+  private static readonly VERIFIED_SENDER_DOMAINS = [
+    'medvirtual.ai',
+    'berryvirtual.com',
+  ];
+
+  /**
+   * Resend only allows `from` on domains verified in the account. When the
+   * panel creator's email is on one of those domains, send as them so the
+   * recipient sees a real teammate instead of a no-reply address; otherwise
+   * fall back to the shared noreply address, which is always verified.
+   */
+  private offerPanelSenderAddress(
+    creatorEmail: string | null | undefined,
+  ): string {
+    const trimmedEmail = creatorEmail?.trim();
+    const domain = trimmedEmail?.split('@')[1]?.toLowerCase();
+    const isVerified =
+      !!domain && NotificationsService.VERIFIED_SENDER_DOMAINS.includes(domain);
+    return isVerified ? (trimmedEmail as string) : 'noreply@medvirtual.ai';
+  }
+
   /**
    * BCC the HubSpot logging address on the recipient-facing offer-panel email so
    * the send is recorded on the contact's CRM timeline.
@@ -2810,7 +2958,7 @@ ${getEmailLogoCss()}
     );
 
     return this.mail.sendMail({
-      from: `${theme?.companyName || 'MedVirtual'} <noreply@medvirtual.ai>`,
+      from: `${theme?.companyName || 'MedVirtual'} <${this.offerPanelSenderAddress(panel.createdBy.email)}>`,
       to: panel.recipient_email,
       cc: this.offerPanelCreatorCc(
         panel.createdBy.email,
@@ -2891,7 +3039,7 @@ ${getEmailLogoCss()}
     );
 
     return this.mail.sendMail({
-      from: `${theme?.companyName || 'MedVirtual'} <noreply@medvirtual.ai>`,
+      from: `${theme?.companyName || 'MedVirtual'} <${this.offerPanelSenderAddress(panel.createdBy.email)}>`,
       to: panel.recipient_email,
       // Both the cc and the bcc also apply to the resend path, which reuses this
       // method: a resend is the same email reaching the client, so it belongs on

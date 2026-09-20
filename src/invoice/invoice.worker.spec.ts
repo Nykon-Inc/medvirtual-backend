@@ -84,6 +84,33 @@ describe('InvoiceWorker', () => {
       },
     };
 
+    it('excludes hardcoded Hubstaff users from invoice generation', async () => {
+      const payload = {
+        organization_id: 'org_id',
+        billing_start_date: '2026-06-01',
+        billing_end_date: '2026-06-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      };
+
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 3020409, name: 'Nancy' },
+        { user_id: '1954999', name: 'Kier' },
+        { user_id: 2548488, name: 'Patricia' },
+        { user_id: 123, name: 'John Doe' },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, payload);
+
+      expect(prismaMock.staff.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            candidate: { hubstaff_id: { in: ['123'] } },
+          }),
+        }),
+      );
+    });
+
     it('calculates with proration rate for a short custom period (June 16 to 19 - below half month)', async () => {
       const payload = {
         organization_id: 'org_id',
@@ -122,9 +149,9 @@ describe('InvoiceWorker', () => {
       const serviceAmount = primaryLineCall[0].data.service_amount;
       // 4 days (June 16 to 19) are weekdays: 16 (Tue), 17 (Wed), 18 (Thu), 19 (Fri). All 4 are workdays.
       // With prebill = true, hours = 4 * 8 = 32 hours.
-      // prorationRate = (4000 * 12) / 52 / 40 = 23.076923076923077
-      // expected total = 32 * 23.076923076923077 = 738.4615384615385
-      const expected = new Decimal(32).mul(new Decimal((4000 * 12) / 52 / 40));
+      // prorationRate = 4000 / 176 = 22.727272727272727
+      // expected total = 32 * 22.727272727272727 = 727.2727272727273
+      const expected = new Decimal(32).mul(new Decimal(4000 / 176));
       expect(serviceAmount.toNumber()).toBeCloseTo(expected.toNumber(), 2);
     });
 
@@ -241,7 +268,7 @@ describe('InvoiceWorker', () => {
       // June 1 to June 20 contains 15 workdays.
       // hours = 15 * 8 = 120.
       // expected total = 120 * 23.076923076923077 = 2769.230769230769
-      const expected = new Decimal(120).mul(new Decimal((4000 * 12) / 52 / 40));
+      const expected = new Decimal(120).mul(new Decimal(4000 / 176));
       expect(serviceAmount.toNumber()).toBeCloseTo(expected.toNumber(), 2);
     });
 
@@ -745,7 +772,7 @@ describe('InvoiceWorker', () => {
         created_by: 'user_1',
       });
 
-      const salariedBillRate = (4000 * 12) / 52 / 40;
+      const salariedBillRate = 4000 / 176;
 
       expect(lineOfCategory('hourly_service').service_amount.toNumber()).toBe(
         4000,

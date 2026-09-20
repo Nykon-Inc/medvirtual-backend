@@ -128,6 +128,77 @@ export class OrganizationUpdateService {
     }
   }
 
+  async setHubstaffProjectId(
+    organizationId: string,
+    hubstaffId: string | null,
+    actorUserId?: string,
+    reason?: string,
+  ): Promise<void> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { hubspot_id: true },
+    });
+    if (!org?.hubspot_id) return;
+
+    const source = actorUserId
+      ? HubspotAuditSource.user_action
+      : HubspotAuditSource.cron;
+
+    try {
+      await axios.patch(
+        `https://api.hubapi.com/crm/v3/objects/companies/${Number(org.hubspot_id)}`,
+        {
+          properties: {
+            // HubSpot clears a property when it receives an empty string, not null
+            hubspot_project_id: hubstaffId ?? '',
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      void this.audit.log({
+        actorUserId,
+        entityType: HubspotEntityType.organization,
+        entityId: organizationId,
+        hubspotObjectId: org.hubspot_id,
+        hubspotObjectType: 'companies',
+        action: HubspotAuditAction.UPDATE,
+        source,
+        success: true,
+        payload: {
+          fields: ['hubspot_project_id'],
+          ...(reason && { reason }),
+        },
+      });
+    } catch (error) {
+      if (error.response) {
+        console.error(
+          'Error to update hubspot_project_id:',
+          error.response.data,
+        );
+      } else {
+        console.error('Connection error:', error.message);
+      }
+      void this.audit.log({
+        actorUserId,
+        entityType: HubspotEntityType.organization,
+        entityId: organizationId,
+        hubspotObjectId: org.hubspot_id,
+        hubspotObjectType: 'companies',
+        action: HubspotAuditAction.UPDATE,
+        source,
+        success: false,
+        errorCode: error.response?.status?.toString() ?? error.code,
+        errorMessage: error.message,
+        payload: { ...(reason && { reason }) },
+      });
+    }
+  }
+
   async setAffiliateReferral(
     organizationId: string,
     affiliateUserId: string,

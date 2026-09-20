@@ -34,6 +34,9 @@ const mockPrisma = {
   hubspotInvoiceSnapshot: {
     findUnique: jest.fn(),
   },
+  hubspotLineItemSnapshot: {
+    findUnique: jest.fn(),
+  },
   medAllianceAuditLog: {
     create: jest.fn(),
     findMany: jest.fn(),
@@ -1030,7 +1033,7 @@ describe('CommissionsService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // createFromInvoices
+  // createFromInvoices — rewritten to per-collaborator line-item selection (§4.5 #4)
   // -------------------------------------------------------------------------
   describe('createFromInvoices', () => {
     const makeProfile = (overrides: Partial<any> = {}) => ({
@@ -1041,14 +1044,23 @@ describe('CommissionsService', () => {
       ...overrides,
     });
 
-    const makeSnapshot = (overrides: Partial<any> = {}) => ({
-      id: 'snap-1',
-      hubspot_id: 'hs-inv-1',
-      organization_id: 'org-1',
-      invoice_status: 'paid',
-      invoice_amount: '1500.00',
-      payment_status: null,
-      paid_at: new Date('2026-02-10'),
+    // A matched line item, joined with its parent invoice and Staff row — the shape
+    // createFromInvoices() now selects via hubspotLineItemSnapshot.findUnique().
+    const makeLineItem = (overrides: Partial<any> = {}) => ({
+      id: 'li-1',
+      amount: '500.00',
+      match_status: 'matched',
+      staff_id: 'staff-1',
+      staff: { id: 'staff-1', start_date: new Date('2026-02-01') }, // recent, within window
+      invoice: {
+        id: 'snap-1',
+        hubspot_id: 'hs-inv-1',
+        organization_id: 'org-1',
+        invoice_status: 'paid',
+        invoice_amount: '1500.00',
+        payment_status: null,
+        paid_at: new Date('2026-02-10'),
+      },
       ...overrides,
     });
 
@@ -1068,7 +1080,7 @@ describe('CommissionsService', () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser),
+        service.createFromInvoices('profile-1', ['li-1'], mockAdminUser),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -1078,7 +1090,7 @@ describe('CommissionsService', () => {
       );
 
       await expect(
-        service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser),
+        service.createFromInvoices('profile-1', ['li-1'], mockAdminUser),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -1088,32 +1100,54 @@ describe('CommissionsService', () => {
       );
 
       await expect(
-        service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser),
+        service.createFromInvoices('profile-1', ['li-1'], mockAdminUser),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should skip an invoice snapshot that does not exist', async () => {
+    it('should skip a line item that does not exist', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(null);
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-missing'],
+        ['li-missing'],
         mockAdminUser,
       );
 
       expect(result).toEqual({ created: 0, skipped: 1 });
     });
 
-    it('should skip an invoice that fails re-validation (not paid)', async () => {
+    it('should skip a line item that is not matched to a Staff', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot({ invoice_status: 'open' }),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem({
+          match_status: 'unmatched',
+          staff_id: null,
+          staff: null,
+        }),
       );
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
+        mockAdminUser,
+      );
+
+      expect(result).toEqual({ created: 0, skipped: 1 });
+      expect(mockPrisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should skip a line item whose parent invoice fails re-validation (not paid)', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem({
+          invoice: { ...makeLineItem().invoice, invoice_status: 'open' },
+        }),
+      );
+
+      const result = await service.createFromInvoices(
+        'profile-1',
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1123,8 +1157,8 @@ describe('CommissionsService', () => {
 
     it('should skip when org is not found or not referred by this affiliate', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referred_by_affiliate_id: 'someone-else' }),
@@ -1132,7 +1166,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1141,8 +1175,8 @@ describe('CommissionsService', () => {
 
     it('should skip when org has an active_client_block reason (MA-004)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({
@@ -1153,7 +1187,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1163,8 +1197,8 @@ describe('CommissionsService', () => {
 
     it('should skip (read-only) when org status is expired — no inline write', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ med_alliance_referral_status: 'expired' }),
@@ -1172,7 +1206,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1184,8 +1218,8 @@ describe('CommissionsService', () => {
 
     it('should skip when org referral_stage is canceled', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({ referral_stage: 'canceled' }),
@@ -1193,17 +1227,37 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
       expect(result).toEqual({ created: 0, skipped: 1 });
     });
 
-    it('should transition org to deployed with a raw (no-offset) eligibility_start_at on first paid invoice', async () => {
+    it('should skip a matched line item whose staff started more than 365 days ago (per-collaborator window — §4)', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      const snapshot = makeSnapshot({ paid_at: new Date('2026-03-01') });
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(snapshot);
+      const expiredStart = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem({ staff: { id: 'staff-1', start_date: expiredStart } }),
+      );
+      mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
+
+      const result = await service.createFromInvoices(
+        'profile-1',
+        ['li-1'],
+        mockAdminUser,
+      );
+
+      expect(result).toEqual({ created: 0, skipped: 1 });
+      expect(mockPrisma.affiliateCommission.create).not.toHaveBeenCalled();
+    });
+
+    it('should transition org to deployed (stage only) with a raw eligibility_start_at on first paid invoice — med_alliance_referral_status untouched (§4.6)', async () => {
+      mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
+      const lineItem = makeLineItem({
+        invoice: { ...makeLineItem().invoice, paid_at: new Date('2026-03-01') },
+      });
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(lineItem);
       mockPrisma.organization.findUnique.mockResolvedValue(
         makeOrg({
           first_paid_invoice_at: null,
@@ -1216,7 +1270,7 @@ describe('CommissionsService', () => {
         id: 'comm-new',
       });
 
-      await service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser);
+      await service.createFromInvoices('profile-1', ['li-1'], mockAdminUser);
 
       expect(mockPrisma.organization.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1233,8 +1287,8 @@ describe('CommissionsService', () => {
 
     it('should NOT transition to deployed when org already has first_paid_invoice_at', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create.mockResolvedValue({
@@ -1242,15 +1296,15 @@ describe('CommissionsService', () => {
       });
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
 
-      await service.createFromInvoices('profile-1', ['snap-1'], mockAdminUser);
+      await service.createFromInvoices('profile-1', ['li-1'], mockAdminUser);
 
       expect(mockPrisma.organization.update).not.toHaveBeenCalled();
     });
 
-    it('should create a commission as pending_admin_confirmation and write an audit log', async () => {
+    it('should create a commission at the LINE ITEM amount (not the invoice total) as pending_admin_confirmation and write an audit log', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create.mockResolvedValue({
@@ -1260,7 +1314,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1272,10 +1326,19 @@ describe('CommissionsService', () => {
             affiliate_profile_id: 'profile-1',
             organization_id: 'org-1',
             hubspot_invoice_snapshot_id: 'snap-1',
+            hubspot_line_item_snapshot_id: 'li-1',
+            staff_id: 'staff-1',
+            base_amount_snapshot: '500.00',
             status: 'pending_admin_confirmation',
           }),
         }),
       );
+      // 500 * 10% = 50, not 1500 * 10% = 150 (the invoice total).
+      const createdAmount = String(
+        mockPrisma.affiliateCommission.create.mock.calls[0][0].data
+          .commission_amount,
+      );
+      expect(createdAmount).toBe('50');
       expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -1289,8 +1352,8 @@ describe('CommissionsService', () => {
 
     it('should count as skipped when commission creation hits a P2002 unique constraint', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
-        makeSnapshot(),
+      mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
+        makeLineItem(),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       const uniqueError = Object.assign(new Error('Unique constraint failed'), {
@@ -1300,7 +1363,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1'],
+        ['li-1'],
         mockAdminUser,
       );
 
@@ -1309,12 +1372,13 @@ describe('CommissionsService', () => {
 
     it('should count as skipped and continue when commission creation fails with a non-P2002 error', async () => {
       mockPrisma.affiliateProfile.findUnique.mockResolvedValue(makeProfile());
-      mockPrisma.hubspotInvoiceSnapshot.findUnique
+      mockPrisma.hubspotLineItemSnapshot.findUnique
+        .mockResolvedValueOnce(makeLineItem({ id: 'li-1' }))
         .mockResolvedValueOnce(
-          makeSnapshot({ id: 'snap-1', hubspot_id: 'hs-inv-1' }),
-        )
-        .mockResolvedValueOnce(
-          makeSnapshot({ id: 'snap-2', hubspot_id: 'hs-inv-2' }),
+          makeLineItem({
+            id: 'li-2',
+            invoice: { ...makeLineItem().invoice, hubspot_id: 'hs-inv-2' },
+          }),
         );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
       mockPrisma.affiliateCommission.create
@@ -1324,7 +1388,7 @@ describe('CommissionsService', () => {
 
       const result = await service.createFromInvoices(
         'profile-1',
-        ['snap-1', 'snap-2'],
+        ['li-1', 'li-2'],
         mockAdminUser,
       );
 

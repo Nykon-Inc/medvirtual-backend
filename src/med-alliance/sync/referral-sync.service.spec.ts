@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReferralSyncService } from './referral-sync.service';
 import { HubspotMatchingService } from './hubspot-matching.service';
 import { InvoiceIngestionService } from './invoice-ingestion.service';
+import { StaffMatchingService } from './staff-matching.service';
 import { CommissionDetectionService } from './commission-detection.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -14,6 +15,7 @@ const mockPrisma = {
 
 const mockHubspotMatching = { run: jest.fn() };
 const mockInvoiceIngestion = { run: jest.fn() };
+const mockStaffMatching = { run: jest.fn() };
 const mockCommissionDetection = { run: jest.fn() };
 
 // ---------------------------------------------------------------------------
@@ -23,6 +25,13 @@ const invoiceStats = (overrides = {}) => ({
   created: 1,
   updated: 0,
   skipped: 0,
+  lineItems: { created: 1, updated: 0, skipped: 0 },
+  ...overrides,
+});
+const staffMatchStats = (overrides = {}) => ({
+  matched: 1,
+  unmatched: 0,
+  ambiguous: 0,
   ...overrides,
 });
 const commissionStats = (overrides = {}) => ({
@@ -51,6 +60,7 @@ describe('ReferralSyncService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: HubspotMatchingService, useValue: mockHubspotMatching },
         { provide: InvoiceIngestionService, useValue: mockInvoiceIngestion },
+        { provide: StaffMatchingService, useValue: mockStaffMatching },
         {
           provide: CommissionDetectionService,
           useValue: mockCommissionDetection,
@@ -59,6 +69,7 @@ describe('ReferralSyncService', () => {
     }).compile();
 
     service = module.get<ReferralSyncService>(ReferralSyncService);
+    mockStaffMatching.run.mockResolvedValue(staffMatchStats());
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -148,6 +159,7 @@ describe('ReferralSyncService', () => {
 
     expect(result.phaseB).toEqual({
       invoices: { created: 0, updated: 0, skipped: 0 },
+      lineItems: { created: 0, matched: 0, unmatched: 0, ambiguous: 0 },
       commissions: { created: 0, skipped: 0 },
     });
     expect(mockInvoiceIngestion.run).not.toHaveBeenCalled();
@@ -177,7 +189,23 @@ describe('ReferralSyncService', () => {
       expect(result.phaseA.outcome).toBe('synced');
       expect(result.phaseB).toBeDefined();
       expect(result.phaseB!.invoices).toEqual(invoiceStats());
+      expect(result.phaseB!.lineItems).toEqual({
+        created: 1,
+        matched: 1,
+        unmatched: 0,
+        ambiguous: 0,
+      });
       expect(result.phaseB!.commissions).toEqual(commissionStats());
+    });
+
+    it('should call StaffMatchingService.run between invoice ingestion and commission detection', async () => {
+      mockHubspotMatching.run.mockResolvedValue(
+        makeMatchResult('synced', 'hs-company-1'),
+      );
+
+      await service.run('org-1');
+
+      expect(mockStaffMatching.run).toHaveBeenCalledWith('org-1');
     });
 
     it('should run Phase B when already_matched outcome (hubspot_id was already set)', async () => {
@@ -238,7 +266,7 @@ describe('ReferralSyncService', () => {
   // -------------------------------------------------------------------------
   // Phase B stats propagated correctly
   // -------------------------------------------------------------------------
-  it('should propagate invoice and commission stats into phaseB result', async () => {
+  it('should propagate invoice, line item, and commission stats into phaseB result', async () => {
     mockHubspotMatching.run.mockResolvedValue(
       makeMatchResult('synced', 'hs-1'),
     );
@@ -250,6 +278,12 @@ describe('ReferralSyncService', () => {
       created: 3,
       updated: 1,
       skipped: 2,
+      lineItems: { created: 5, updated: 2, skipped: 1 },
+    });
+    mockStaffMatching.run.mockResolvedValue({
+      matched: 4,
+      unmatched: 1,
+      ambiguous: 0,
     });
     mockCommissionDetection.run.mockResolvedValue({ created: 2, skipped: 1 });
 
@@ -259,6 +293,13 @@ describe('ReferralSyncService', () => {
       created: 3,
       updated: 1,
       skipped: 2,
+      lineItems: { created: 5, updated: 2, skipped: 1 },
+    });
+    expect(result.phaseB!.lineItems).toEqual({
+      created: 5,
+      matched: 4,
+      unmatched: 1,
+      ambiguous: 0,
     });
     expect(result.phaseB!.commissions).toEqual({ created: 2, skipped: 1 });
   });

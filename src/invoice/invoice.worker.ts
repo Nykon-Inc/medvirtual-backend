@@ -57,6 +57,9 @@ export const HOLIDAY_OVERTIME_RATE_MULTIPLIER = 0.5;
 @Injectable()
 export class InvoiceWorker extends WorkerHost {
   private readonly logger = new Logger(InvoiceWorker.name);
+  private readonly excludedHubstaffUserIds = new Set([
+    3020409, 1954999, 2548488,
+  ]);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -115,9 +118,9 @@ export class InvoiceWorker extends WorkerHost {
    *
    * Resolution order mirrors the primary-line pricing branches below so the overtime
    * rate is always derived from the same source as the base charge: a salaried
-   * worker's hourly equivalent (monthly salary annualized, then spread across a
-   * standard 52-week/40hr year), else the candidate's own hourly rate, else the
-   * position+business-unit floor price.
+   * worker's hourly equivalent (monthly salary over the standard 176-hour full-time
+   * month), else the candidate's own hourly rate, else the position+business-unit
+   * floor price.
    *
    * Note this is deliberately the *hourly* rate even for full-month salaried workers
    * billed a flat amount — their primary line stays the flat salary, and overtime is
@@ -131,7 +134,7 @@ export class InvoiceWorker extends WorkerHost {
   ): Decimal {
     if (staff?.salary) {
       const monthlySalary = Number(staff.salary);
-      return new Decimal((monthlySalary * 12) / 52 / 40);
+      return new Decimal(monthlySalary / 176);
     }
     if (candidate?.hourly_pay_rate) {
       return new Decimal(Number(candidate.hourly_pay_rate));
@@ -271,7 +274,15 @@ export class InvoiceWorker extends WorkerHost {
     }
 
     const payload = job.data;
-    const { job_id, organization_id, created_by, isCustom } = payload;
+    const {
+      job_id,
+      organization_id,
+      billing_start_date,
+      billing_end_date,
+      created_by,
+      is_prebill,
+      isCustom,
+    } = payload;
 
     try {
       // 1. Mark job as "processing"
@@ -443,7 +454,10 @@ export class InvoiceWorker extends WorkerHost {
     // Fetch project members to get names for snapshots — worker_name_snapshot on each
     // line item is populated from this map so historical invoices keep showing the
     // worker's name as of generation time even if they're later renamed in Hubstaff.
-    const members = await this.hubstaff.getProjectMembers(hubstaffId);
+    const members = (await this.hubstaff.getProjectMembers(hubstaffId)).filter(
+      (member: any) =>
+        !this.excludedHubstaffUserIds.has(Number(member.user_id)),
+    );
 
     const memberMap = new Map<number, string>();
     members.forEach((m: any) => {
@@ -492,7 +506,11 @@ export class InvoiceWorker extends WorkerHost {
     const staffLookupIds = Array.from(
       new Set([
         ...hubstaffUserIds,
-        ...activities.map((act: any) => String(act.user_id)),
+        ...activities
+          .map((act: any) => String(act.user_id))
+          .filter(
+            (id: string) => !this.excludedHubstaffUserIds.has(Number(id)),
+          ),
       ]),
     );
 
@@ -634,7 +652,12 @@ export class InvoiceWorker extends WorkerHost {
       // membership — so someone who worked part of the cycle and was then removed from
       // the project is still billed, and a member who logged nothing isn't.
       // (`activities` was fetched above, before the staff lookup that prices them.)
+
       activities.forEach((act: any) => {
+        // Honour the same hardcoded-user exclusion applied to project members above —
+        // post-bill is driven by activity, so it has to be filtered here too.
+        if (this.excludedHubstaffUserIds.has(Number(act.user_id))) return;
+
         const current = userSummary.get(act.user_id) || {
           tracked: 0,
           overall: 0,
@@ -766,7 +789,7 @@ export class InvoiceWorker extends WorkerHost {
 
         // 3. Create Line Items — one primary InvoiceLineItem per worker who tracked time
         // or was assumed to (prebill), plus nested overtime/bonus/reconciliation lines.
-        for (const [userId] of userSummary.entries()) {
+        for (const [userId, stats] of userSummary.entries()) {
           // Find Staff & Candidate
           const staff =
             staffRecords.find(
@@ -947,7 +970,11 @@ export class InvoiceWorker extends WorkerHost {
               // standard 52-week/40hr year) is only used when the cycle isn't a standard
               // full/half month — otherwise the primary line is the flat salary amount.
               const monthlySalary = Number(staff.salary);
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = monthlySalary / 176;
+              overtimeHourlyRate = new Decimal(prorationRate);
+              overtimeTotal = new Decimal(overtimeHours).mul(
+                overtimeHourlyRate,
+              );
 
               // Detect whether this billing cycle is a calendar full-month, a half-month
               // (1st-15th or 16th-end), or an irregular custom range — full-time salaried
@@ -1014,7 +1041,7 @@ export class InvoiceWorker extends WorkerHost {
             // not worked.
             if (staff && staff.salary) {
               const monthlySalary = Number(staff.salary);
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = monthlySalary / 176;
               const prorationHourlyDecimal = new Decimal(prorationRate);
 
               if (isFullTime) {
@@ -1292,7 +1319,7 @@ export class InvoiceWorker extends WorkerHost {
         }
 
         // 5. Update Version Totals
-        await tx.invoiceVersion.update({
+        const finalVersion = await tx.invoiceVersion.update({
           where: { id: version.id },
           data: {
             subtotal,

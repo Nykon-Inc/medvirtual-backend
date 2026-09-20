@@ -18,6 +18,7 @@ const mockPrisma = {
   organization: { update: jest.fn() },
   affiliateCommission: { update: jest.fn() },
   hubspotInvoiceSnapshot: { update: jest.fn() },
+  hubspotLineItemSnapshot: { update: jest.fn() },
   medAllianceAuditLog: { create: jest.fn() },
   $transaction: jest.fn(),
 };
@@ -476,6 +477,215 @@ describe('ReviewCasesService', () => {
       ).resolves.not.toThrow();
 
       expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // unmatched_line_item / ambiguous_line_item — manual_link and not_applicable
+    // -------------------------------------------------------------------------
+    describe('unmatched_line_item / ambiguous_line_item resolution', () => {
+      const makeLineItemCase = (overrides: Partial<any> = {}) =>
+        makeCase({
+          reason_code: AdminReviewReasonCode.unmatched_line_item,
+          hubspot_line_item_snapshot_id: 'li-1',
+          metadata: { line_item_name: 'Rafael Delgado' },
+          ...overrides,
+        });
+
+      it('should link the line item to the chosen Staff and mark it matched on manual_link', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeLineItemCase(),
+        );
+        mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Confirmed this is Rafael',
+          action: 'manual_link',
+          staff_id: 'staff-42',
+        });
+
+        expect(mockPrisma.hubspotLineItemSnapshot.update).toHaveBeenCalledWith({
+          where: { id: 'li-1' },
+          data: {
+            staff_id: 'staff-42',
+            match_status: 'matched',
+            matched_by: 'admin_manual',
+          },
+        });
+      });
+
+      it('should not link when action=manual_link but staff_id is missing', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeLineItemCase(),
+        );
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Missing staff id',
+          action: 'manual_link',
+        });
+
+        expect(
+          mockPrisma.hubspotLineItemSnapshot.update,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('should mark the line item not_applicable and never reopen a case on not_applicable', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeLineItemCase({
+            reason_code: AdminReviewReasonCode.ambiguous_line_item,
+          }),
+        );
+        mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'This is a setup fee, not a collaborator',
+          action: 'not_applicable',
+        });
+
+        expect(mockPrisma.hubspotLineItemSnapshot.update).toHaveBeenCalledWith({
+          where: { id: 'li-1' },
+          data: { match_status: 'not_applicable', matched_by: 'admin_manual' },
+        });
+      });
+
+      it('should write a resolved_manual_link audit log entry on manual_link', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeLineItemCase(),
+        );
+        mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Confirmed',
+          action: 'manual_link',
+          staff_id: 'staff-42',
+        });
+
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'review_case',
+              entity_id: 'case-1',
+              event: 'resolved_manual_link',
+              old_status: 'open',
+              new_status: 'resolved',
+              source: 'admin_action',
+              actor_user_id: 'admin-1',
+            }),
+          }),
+        );
+      });
+
+      it('should write a resolved_not_applicable audit log entry on not_applicable', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeLineItemCase(),
+        );
+        mockPrisma.hubspotLineItemSnapshot.update.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Not a collaborator',
+          action: 'not_applicable',
+        });
+
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              event: 'resolved_not_applicable',
+            }),
+          }),
+        );
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Audit log coverage — every resolution path, not just void_and_recreate
+    // -------------------------------------------------------------------------
+    describe('audit log written for every resolution (§5 coverage gap fix)', () => {
+      it('should write a review_case audit log entry even for a generic close-only resolution', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeCase({
+            reason_code: AdminReviewReasonCode.soft_duplicate_referral,
+          }),
+        );
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Not a duplicate',
+        });
+
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'review_case',
+              entity_id: 'case-1',
+              event: 'resolved_soft_duplicate_referral',
+              old_status: 'open',
+              new_status: 'resolved',
+              reason: 'Not a duplicate',
+            }),
+          }),
+        );
+      });
+
+      it('should write a review_case audit log entry for multiple_hubspot_matches resolution', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeCase(),
+        );
+        mockPrisma.organization.update.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Matched correctly',
+          hubspot_company_id: 'hs-99',
+        });
+
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'review_case',
+              event: 'resolved_multiple_hubspot_matches',
+            }),
+          }),
+        );
+      });
+
+      it('should write a review_case audit log entry for keep_existing reconciliation resolution', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeCase({
+            reason_code: AdminReviewReasonCode.reconciliation_invoice_changed,
+            metadata: { commission_id: 'comm-1' },
+          }),
+        );
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Keeping as-is',
+          action: 'keep_existing',
+        });
+
+        // Exactly one audit entry (the review_case one) — no commission-voiding entry
+        // since keep_existing has no commission side-effect.
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledTimes(1);
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'review_case',
+              event: 'resolved_reconciliation_invoice_changed',
+            }),
+          }),
+        );
+      });
     });
   });
 });

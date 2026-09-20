@@ -476,13 +476,10 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     // --- Compute per-worker line items ---
     const result: ComputedLineItem[] = [];
 
-    // Everyone who logged real Hubstaff activity, UNION everyone the prebill invoice
-    // already charged. The union matters: a worker who was prebilled at the flat
-    // baseline but logged nothing all cycle produces no activity records, and without
-    // them here they'd never be reconciled — the client would keep paying an estimate
-    // for work that never happened. Including them computes their true total (approved
-    // PTO and holidays still count as payable, so this is not automatically $0) and
-    // lets the delta post as a credit.
+    // Only workers who show up in real Hubstaff activity get an "actual" line computed —
+    // a prebilled worker with zero actual tracked hours simply won't appear here, and
+    // the main process() loop above already skips workers with no matching actual line
+    // (logging a warning) rather than assuming a $0 reconciliation for them.
     const workerIdsToProcess = new Set<number>([
       ...userSummary.keys(),
       ...prebilledWorkerIds
@@ -572,9 +569,11 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         positionConfigMap,
         candidatePoolMap,
       );
-
-      // Base hourly bill rate both overtime formulas multiply — same resolution order
-      // InvoiceWorker uses, so prebill and reconciliation price overtime identically.
+      // Base hourly bill rate both overtime formulas multiply — resolved through the
+      // same InvoiceWorker helper the generator uses, so prebill and reconciliation
+      // price a worker identically and a reconciliation delta only ever reflects a
+      // real change in hours, never a formula mismatch. (Both now prorate a monthly
+      // salary as salary/176.)
       const billRate = this.invoiceWorker.resolveBillRate(
         staff,
         candidate,
@@ -644,7 +643,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
               diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
             const deficit = requiredHours - actualHours;
             if (deficit > 10) {
-              const prorationRate = (monthlySalary * 12) / 52 / 40;
+              const prorationRate = monthlySalary / 176;
               lineTotal = new Decimal(totalPayableHours).mul(
                 new Decimal(prorationRate),
               );
@@ -656,7 +655,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
                 ? lineTotal.div(new Decimal(totalPayableHours))
                 : new Decimal(0);
           } else {
-            const prorationRate = (monthlySalary * 12) / 52 / 40;
+            const prorationRate = monthlySalary / 176;
             hourlyRate = new Decimal(prorationRate);
             lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
           }
