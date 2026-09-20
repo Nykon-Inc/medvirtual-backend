@@ -22,6 +22,8 @@
     "dev:debug": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true && rm -f tsconfig.build.tsbuildinfo && node --max-old-space-size=3072 ./node_modules/.bin/nest start --debug --watch",
     "start:debug": "node --max-old-space-size=3072 ./node_modules/.bin/nest start --debug --watch",
     "start:prod": "node --max-old-space-size=3072 dist/main",
+    "start:prod-env": "rm -f tsconfig.build.tsbuildinfo && DOTENV_CONFIG_PATH=.env.prod NODE_OPTIONS=\"-r dotenv/config\" QUEUES_ENABLED=false WEBHOOK_URL= node --max-old-space-size=3072 ./node_modules/.bin/nest start",
+    "start:prod-env:full": "rm -f tsconfig.build.tsbuildinfo && DOTENV_CONFIG_PATH=.env.prod NODE_OPTIONS=\"-r dotenv/config\" node --max-old-space-size=3072 ./node_modules/.bin/nest start",
     "lint": "node --max-old-space-size=8192 ./node_modules/.bin/eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --runInBand",
     "test:watch": "npx jest --watch",
@@ -32,6 +34,9 @@
     "db:sync": "ts-node scripts/sync-database.ts",
     "invoice:init-configs": "ts-node scripts/init-invoice-configs.ts",
     "invoice:test-hubspot-sync": "ts-node scripts/test-hubspot-invoice-sync.ts",
+    "hubstaff:sync-dry-run": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-hubstaff-sync.ts",
+    "hubstaff:export-mapping": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/export-hubstaff-va-mapping.ts",
+    "invoice:diagnose": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-invoice-generation.ts",
     "invoice:test-hubstaff-sync": "ts-node scripts/test-hubstaff-sync.ts"
   },
   "dependencies": {

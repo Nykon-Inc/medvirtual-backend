@@ -3,7 +3,11 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { HubstaffService } from '../hubstaff/hubstaff.service';
-import { InvoiceWorker } from './invoice.worker';
+import {
+  InvoiceWorker,
+  OVERTIME_RATE_MULTIPLIER,
+  HOLIDAY_OVERTIME_RATE_MULTIPLIER,
+} from './invoice.worker';
 import { LedgerDirection, ReconciliationStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { DateTime } from 'luxon';
@@ -22,9 +26,12 @@ interface ComputedLineItem {
   overtime_hours: number;
   hourly_rate: Decimal;
   overtime_hourly_rate: Decimal;
+  holiday_overtime_hours: number;
+  holiday_overtime_hourly_rate: Decimal;
   primary_total: Decimal; // primary line total
   overtime_total: Decimal;
-  grand_total: Decimal; // primary + overtime
+  holiday_overtime_total: Decimal;
+  grand_total: Decimal; // primary + overtime + holiday overtime
 }
 
 /**
@@ -130,6 +137,13 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       organizationId,
       billingStartDate,
       billingEndDate,
+      prebilledWorkerIds: Array.from(
+        new Set(
+          prebillLineItems
+            .map((li) => li.worker_id)
+            .filter((id): id is string => !!id),
+        ),
+      ),
     });
 
     this.logger.log(
@@ -302,6 +316,16 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     organizationId: string;
     billingStartDate: string;
     billingEndDate: string;
+    /**
+     * Workers charged on the prebill invoice. Every one of them must get an actual
+     * total computed even if they logged no Hubstaff time at all, otherwise they'd
+     * never be reconciled and the client would silently keep paying the estimate.
+     * This matters because the prebill is a flat baseline that deliberately ignores
+     * PTO and holidays (see InvoiceWorker's day loop) — a worker who was absent all
+     * cycle is exactly the case that needs a credit, and is also exactly the case
+     * that produces zero activity records.
+     */
+    prebilledWorkerIds: string[];
   }): Promise<ComputedLineItem[]> {
     const {
       org,
@@ -309,6 +333,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       organizationId,
       billingStartDate,
       billingEndDate,
+      prebilledWorkerIds,
     } = params;
 
     // --- Members ---
@@ -451,11 +476,19 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
     // --- Compute per-worker line items ---
     const result: ComputedLineItem[] = [];
 
-    // Only workers who show up in real Hubstaff activity get an "actual" line computed —
-    // a prebilled worker with zero actual tracked hours simply won't appear here, and
-    // the main process() loop above already skips workers with no matching actual line
-    // (logging a warning) rather than assuming a $0 reconciliation for them.
-    const workerIdsToProcess = new Set<number>([...userSummary.keys()]);
+    // Everyone who logged real Hubstaff activity, UNION everyone the prebill invoice
+    // already charged. The union matters: a worker who was prebilled at the flat
+    // baseline but logged nothing all cycle produces no activity records, and without
+    // them here they'd never be reconciled — the client would keep paying an estimate
+    // for work that never happened. Including them computes their true total (approved
+    // PTO and holidays still count as payable, so this is not automatically $0) and
+    // lets the delta post as a credit.
+    const workerIdsToProcess = new Set<number>([
+      ...userSummary.keys(),
+      ...prebilledWorkerIds
+        .map((id) => Number(id))
+        .filter((id) => !Number.isNaN(id)),
+    ]);
 
     for (const userId of workerIdsToProcess) {
       const staff =
@@ -474,7 +507,9 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
       let totalWorkedHours = 0;
       let totalPtoHours = 0;
       let totalHolidayHours = 0;
-      let actualWorkedHoursOnHolidays = 0;
+      // Hours worked on an observed holiday — priced at the 50% holiday-overtime
+      // premium rather than the base rate. See InvoiceWorker's day loop.
+      let holidayWorkedHours = 0;
 
       for (const dayOfPeriod of allDaysList) {
         const dateStr = dayOfPeriod.toFormat('yyyy-MM-dd');
@@ -491,12 +526,10 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         totalWorkedHours += dailyWorked;
 
         if (isHoliday) {
-          let dailyHolidayPayable = dailyBaseline;
+          totalHolidayHours += dailyBaseline;
           if (dailyWorked > 0) {
-            dailyHolidayPayable += dailyWorked * 0.5;
-            actualWorkedHoursOnHolidays += dailyWorked;
+            holidayWorkedHours += dailyWorked;
           }
-          totalHolidayHours += dailyHolidayPayable;
         } else if (isWeekday) {
           const userPtos = approvedPtos.filter(
             (p: any) => p.user_id === userId,
@@ -518,7 +551,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
 
       const totalPayableHours =
         totalWorkedHours -
-        actualWorkedHoursOnHolidays +
+        holidayWorkedHours +
         totalPtoHours +
         totalHolidayHours;
 
@@ -539,6 +572,24 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         positionConfigMap,
         candidatePoolMap,
       );
+
+      // Base hourly bill rate both overtime formulas multiply — same resolution order
+      // InvoiceWorker uses, so prebill and reconciliation price overtime identically.
+      const billRate = this.invoiceWorker.resolveBillRate(
+        staff,
+        candidate,
+        positionConfigMap,
+        candidatePoolMap,
+      );
+
+      // Holiday overtime: an additional 50% of the bill rate on holiday-worked hours.
+      const holidayOvertimeHourlyRate = billRate.mul(
+        HOLIDAY_OVERTIME_RATE_MULTIPLIER,
+      );
+      const holidayOvertimeTotal = new Decimal(holidayWorkedHours).mul(
+        holidayOvertimeHourlyRate,
+      );
+
       let primaryHours = actualHours;
       let overtimeHours = 0;
       let hourlyRate = new Decimal(fallbackRate);
@@ -550,11 +601,12 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         overtimeHours = actualHours - requiredHours;
         primaryHours = requiredHours;
 
+        // Regular overtime is 1.5x the bill rate regardless of pay arrangement.
+        overtimeHourlyRate = billRate.mul(OVERTIME_RATE_MULTIPLIER);
+        overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
+
         if (staff && staff.salary) {
           const monthlySalary = Number(staff.salary);
-          const prorationRate = (monthlySalary * 12) / 52 / 40;
-          overtimeHourlyRate = new Decimal(prorationRate);
-          overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
 
           if (isFullTime) {
             const diffInDays =
@@ -570,20 +622,14 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
                 ? lineTotal.div(new Decimal(primaryHours))
                 : new Decimal(0);
           } else {
-            hourlyRate = new Decimal(prorationRate);
+            hourlyRate = billRate;
             lineTotal = new Decimal(primaryHours).mul(hourlyRate);
           }
-        } else if (candidate && candidate.hourly_pay_rate) {
-          const rate = Number(candidate.hourly_pay_rate);
-          hourlyRate = new Decimal(rate);
-          lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-          overtimeHourlyRate = new Decimal(rate);
-          overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
         } else {
-          hourlyRate = new Decimal(fallbackRate);
+          // No salary on file — primary bills straight hourly at the base rate
+          // (candidate hourly_pay_rate, else the position+BU floor price).
+          hourlyRate = billRate;
           lineTotal = new Decimal(primaryHours).mul(hourlyRate);
-          overtimeHourlyRate = new Decimal(fallbackRate);
-          overtimeTotal = new Decimal(overtimeHours).mul(overtimeHourlyRate);
         }
       } else {
         if (staff && staff.salary) {
@@ -630,9 +676,12 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
         overtime_hours: overtimeHours,
         hourly_rate: hourlyRate,
         overtime_hourly_rate: overtimeHourlyRate,
+        holiday_overtime_hours: holidayWorkedHours,
+        holiday_overtime_hourly_rate: holidayOvertimeHourlyRate,
         primary_total: lineTotal,
         overtime_total: overtimeTotal,
-        grand_total: lineTotal.add(overtimeTotal),
+        holiday_overtime_total: holidayOvertimeTotal,
+        grand_total: lineTotal.add(overtimeTotal).add(holidayOvertimeTotal),
       });
     }
 

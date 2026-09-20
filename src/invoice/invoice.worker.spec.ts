@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { DateTime } from 'luxon';
 
 describe('InvoiceWorker', () => {
   let worker: InvoiceWorker;
@@ -104,6 +105,7 @@ describe('InvoiceWorker', () => {
           },
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
+          status: 'active',
         },
       ]);
 
@@ -147,6 +149,7 @@ describe('InvoiceWorker', () => {
           },
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
+          status: 'active',
         },
       ]);
 
@@ -184,6 +187,7 @@ describe('InvoiceWorker', () => {
           },
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
+          status: 'active',
         },
       ]);
 
@@ -221,6 +225,7 @@ describe('InvoiceWorker', () => {
           },
           salary: '4000',
           hubspot_deployment_type: 'Full-Time',
+          status: 'active',
         },
       ]);
 
@@ -266,6 +271,7 @@ describe('InvoiceWorker', () => {
           },
           salary: null,
           hubspot_deployment_type: 'Full-Time',
+          status: 'active',
         },
       ]);
 
@@ -342,6 +348,419 @@ describe('InvoiceWorker', () => {
           }),
         }),
       });
+    });
+  });
+
+  describe('pre-bill: flat baseline only', () => {
+    const org = {
+      id: 'org_id',
+      invoiceConfiguration: {
+        hubstaff_id: 'hubstaff_project_id',
+        billing_currency: 'USD',
+      },
+    };
+
+    const activeStaff = (hubstaffId: string) => ({
+      id: `staff_${hubstaffId}`,
+      candidate: { hubstaff_id: hubstaffId, hourly_pay_rate: '20' },
+      salary: null,
+      hubspot_deployment_type: 'Full-Time',
+      status: 'active',
+      tickets: [],
+    });
+
+    const primaryLines = () =>
+      prismaMock.invoiceLineItem.create.mock.calls
+        .map((c: any) => c[0].data)
+        .filter((d: any) => d.type === 'primary');
+
+    const categories = () =>
+      prismaMock.invoiceLineItem.create.mock.calls.map(
+        (c: any) => c[0].data.category,
+      );
+
+    it('ignores approved PTO — no PTO hours and no phantom overtime', async () => {
+      // The regression behind Irene Mae Sombilon's invoice: pre-bill already assumes
+      // the VA worked every weekday, so adding approved PTO on top counted Sep 17
+      // twice (8h assumed + 8h PTO) and pushed payable hours past the overtime
+      // threshold, inventing 8hrs of overtime nobody worked.
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Irene' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([activeStaff('123')]);
+      hubstaffMock.getTimeOffRequests.mockResolvedValue([
+        {
+          user_id: 123,
+          status: 'approved',
+          time_off_request_days: [
+            { date: '2026-09-17', amount_used: 8 * 3600 },
+          ],
+        },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      });
+
+      // Sep 16–30 2026 = 11 workdays × 8h = 88h flat, PTO disregarded.
+      const [primary] = primaryLines();
+      expect(primary.effective_worked_hours.toNumber()).toBe(88);
+      expect(primary.total_pto_hours.toNumber()).toBe(0);
+      expect(categories()).not.toContain('overtime');
+    });
+
+    it('ignores holidays — no holiday hours and no holiday-overtime line', async () => {
+      // September 2026 contains Labor Day (Sep 7); pre-bill must still bill a flat
+      // 22 workdays × 8h and leave holiday treatment to the reconciliation.
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Irene' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([activeStaff('123')]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-01',
+        billing_end_date: '2026-09-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      });
+
+      const [primary] = primaryLines();
+      expect(primary.effective_worked_hours.toNumber()).toBe(176);
+      expect(primary.total_holiday_hours.toNumber()).toBe(0);
+      expect(categories()).not.toContain('holiday');
+      expect(categories()).not.toContain('overtime');
+    });
+
+    it('excludes a project member with no staff record for this org', async () => {
+      // Precious Honelette Magnaye's case: still on the client's Hubstaff project but
+      // assigned to a different organization in our database, so she was billed 88
+      // baseline hours at a $0 rate. She should not appear at all.
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Irene' },
+        { user_id: 999, name: 'Precious' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([activeStaff('123')]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      });
+
+      const lines = primaryLines();
+      expect(lines).toHaveLength(1);
+      expect(lines[0].worker_id).toBe('123');
+    });
+
+    it('excludes a project member whose staff record is not active', async () => {
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Irene' },
+        { user_id: 456, name: 'Terminated VA' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([
+        activeStaff('123'),
+        { ...activeStaff('456'), status: 'terminated' },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        is_prebill: true,
+        created_by: 'user_1',
+      });
+
+      const lines = primaryLines();
+      expect(lines).toHaveLength(1);
+      expect(lines[0].worker_id).toBe('123');
+    });
+  });
+
+  describe('post-bill: billed from who logged time', () => {
+    const org = {
+      id: 'org_id',
+      invoiceConfiguration: {
+        hubstaff_id: 'hubstaff_project_id',
+        billing_currency: 'USD',
+      },
+    };
+
+    it('bills someone who logged time but is no longer a project member, at their real rate', async () => {
+      // Project membership is empty — the worker left the project mid-cycle — but they
+      // tracked time in the window, so they must still be billed AND priced (their
+      // staff record has to be looked up by activity, not by membership).
+      hubstaffMock.getProjectMembers.mockResolvedValue([]);
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue([
+        {
+          user_id: 777,
+          user_name: 'Departed VA',
+          day: '2026-09-16',
+          total_time_logged: 8 * 3600,
+          overall: 8 * 3600,
+        },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_777',
+          candidate: { hubstaff_id: '777', hourly_pay_rate: '20' },
+          salary: null,
+          hubspot_deployment_type: 'Full-Time',
+          status: 'active',
+          tickets: [],
+        },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+      const primary = prismaMock.invoiceLineItem.create.mock.calls
+        .map((c: any) => c[0].data)
+        .find((d: any) => d.type === 'primary');
+
+      expect(primary).toBeDefined();
+      expect(primary.worker_id).toBe('777');
+      expect(primary.worker_name_snapshot).toBe('Departed VA');
+      // Priced at their real $20/hr rather than the $0 fallback.
+      expect(primary.hourly_rate.toNumber()).toBe(20);
+      expect(primary.service_amount.toNumber()).toBe(8 * 20);
+    });
+
+    it('does not bill a project member who logged no time', async () => {
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: 123, name: 'Idle VA' },
+      ]);
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue([]);
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_123',
+          candidate: { hubstaff_id: '123', hourly_pay_rate: '20' },
+          salary: null,
+          hubspot_deployment_type: 'Full-Time',
+          status: 'active',
+          tickets: [],
+        },
+      ]);
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+      const primaries = prismaMock.invoiceLineItem.create.mock.calls
+        .map((c: any) => c[0].data)
+        .filter((d: any) => d.type === 'primary');
+      expect(primaries).toHaveLength(0);
+    });
+  });
+
+  describe('overtime pricing', () => {
+    const org = {
+      id: 'org_id',
+      invoiceConfiguration: {
+        hubstaff_id: 'hubstaff_project_id',
+        billing_currency: 'USD',
+      },
+    };
+
+    const USER_ID = 123;
+    // Hourly worker (no salary on file) so the bill rate both overtime formulas
+    // multiply is unambiguously $20/hr, independent of salary proration.
+    const BILL_RATE = 20;
+
+    /** One Hubstaff daily-activity row per weekday in the period, all the same length. */
+    const weekdayActivities = (
+      start: string,
+      end: string,
+      hoursPerDay: number,
+    ) => {
+      const acts: any[] = [];
+      let day = DateTime.fromISO(start, { zone: 'utc' });
+      const last = DateTime.fromISO(end, { zone: 'utc' });
+      while (day <= last) {
+        if (day.weekday <= 5) {
+          acts.push({
+            user_id: USER_ID,
+            user_name: 'John Doe',
+            day: day.toFormat('yyyy-MM-dd'),
+            total_time_logged: hoursPerDay * 3600,
+            overall: hoursPerDay * 3600,
+          });
+        }
+        day = day.plus({ days: 1 });
+      }
+      return acts;
+    };
+
+    const lineOfCategory = (category: string) =>
+      prismaMock.invoiceLineItem.create.mock.calls.find(
+        (c: any) => c[0].data.category === category,
+      )?.[0].data;
+
+    beforeEach(() => {
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: USER_ID, name: 'John Doe' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_1',
+          candidate: {
+            hubstaff_id: String(USER_ID),
+            hourly_pay_rate: String(BILL_RATE),
+          },
+          salary: null,
+          hubspot_deployment_type: 'Full-Time',
+          status: 'active',
+          tickets: [],
+        },
+      ]);
+    });
+
+    it('bills regular overtime at 1.5x the bill rate', async () => {
+      // June 2026 has 22 workdays and no observed holiday, so a full-time VA's
+      // baseline is 22 * 8 = 176hrs. Working 9hrs every weekday gives 198 payable
+      // hours — 22 of them overtime.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        weekdayActivities('2026-06-01', '2026-06-30', 9),
+      );
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-06-01',
+        billing_end_date: '2026-06-30',
+        created_by: 'user_1',
+      });
+
+      const primary = lineOfCategory('hourly_service');
+      expect(primary.effective_worked_hours.toNumber()).toBe(176);
+      expect(primary.service_amount.toNumber()).toBeCloseTo(176 * BILL_RATE, 2);
+
+      const overtime = lineOfCategory('overtime');
+      expect(overtime).toBeDefined();
+      expect(overtime.effective_worked_hours.toNumber()).toBeCloseTo(22, 2);
+      expect(overtime.hourly_rate.toNumber()).toBeCloseTo(BILL_RATE * 1.5, 2);
+      expect(overtime.final_total.toNumber()).toBeCloseTo(
+        22 * BILL_RATE * 1.5,
+        2,
+      );
+    });
+
+    it('bills holiday work at an additional 0.5x on its own line, without triggering regular overtime', async () => {
+      // September 2026 also has 22 workdays, one of which (Sep 7) is Labor Day.
+      // Working the standard 8hrs every weekday means no regular overtime at all —
+      // the holiday premium must not inflate payable hours past the baseline.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        weekdayActivities('2026-09-01', '2026-09-30', 8),
+      );
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-01',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+      const primary = lineOfCategory('hourly_service');
+      expect(primary.effective_worked_hours.toNumber()).toBe(176);
+      // The holiday itself is still billed at the standard 8hr baseline on the primary.
+      expect(primary.total_holiday_hours.toNumber()).toBe(8);
+
+      expect(lineOfCategory('overtime')).toBeUndefined();
+
+      const holiday = lineOfCategory('holiday');
+      expect(holiday).toBeDefined();
+      expect(holiday.effective_worked_hours.toNumber()).toBe(8);
+      expect(holiday.hourly_rate.toNumber()).toBeCloseTo(BILL_RATE * 0.5, 2);
+      expect(holiday.final_total.toNumber()).toBeCloseTo(
+        8 * BILL_RATE * 0.5,
+        2,
+      );
+    });
+
+    it('applies the holiday and regular overtime multipliers independently in the same period', async () => {
+      // 10hrs every weekday in September 2026, including 10hrs on Labor Day:
+      //   payable = 220 worked - 10 holiday-worked + 8 holiday baseline = 218
+      //   regular overtime = 218 - 176 = 42hrs at 1.5x
+      //   holiday overtime = the 10hrs worked on Sep 7, at an additional 0.5x
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        weekdayActivities('2026-09-01', '2026-09-30', 10),
+      );
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-01',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+      const overtime = lineOfCategory('overtime');
+      expect(overtime.effective_worked_hours.toNumber()).toBeCloseTo(42, 2);
+      expect(overtime.final_total.toNumber()).toBeCloseTo(
+        42 * BILL_RATE * 1.5,
+        2,
+      );
+
+      const holiday = lineOfCategory('holiday');
+      expect(holiday.effective_worked_hours.toNumber()).toBe(10);
+      expect(holiday.final_total.toNumber()).toBeCloseTo(
+        10 * BILL_RATE * 0.5,
+        2,
+      );
+    });
+
+    it('charges the holiday premium even for a salaried worker billed a flat monthly amount', async () => {
+      // A full-month salaried VA's primary line is the flat salary regardless of
+      // hours, so the 50% holiday premium is only actually charged because it lives
+      // on its own line priced off the hourly-equivalent bill rate.
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_1',
+          candidate: { hubstaff_id: String(USER_ID) },
+          salary: '4000',
+          hubspot_deployment_type: 'Full-Time',
+          status: 'active',
+          tickets: [],
+        },
+      ]);
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        weekdayActivities('2026-09-01', '2026-09-30', 8),
+      );
+
+      await (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-01',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+      const salariedBillRate = (4000 * 12) / 52 / 40;
+
+      expect(lineOfCategory('hourly_service').service_amount.toNumber()).toBe(
+        4000,
+      );
+
+      const holiday = lineOfCategory('holiday');
+      expect(holiday).toBeDefined();
+      expect(holiday.hourly_rate.toNumber()).toBeCloseTo(
+        salariedBillRate * 0.5,
+        2,
+      );
+      expect(holiday.final_total.toNumber()).toBeCloseTo(
+        8 * salariedBillRate * 0.5,
+        2,
+      );
     });
   });
 });
