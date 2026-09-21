@@ -526,6 +526,38 @@ describe('CommissionDetectionService', () => {
         }),
       );
     });
+
+    // MA-007 regression: a snapshot corrected by InvoiceIngestionService's organization
+    // conflict handling (organization_id reassigned, sync_hash cleared) must be picked up
+    // by run() for the NEW organization on the very next call — no special-casing needed,
+    // since run() only ever filters hubspotInvoiceSnapshot by the current organization_id.
+    it('scopes the paid-invoice query strictly to organization_id, so a snapshot reassociated to a new org is picked up on the next run for that org', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(
+        makeOrg({ id: 'org-new' }),
+      );
+      mockPrisma.affiliateProfile.findFirst.mockResolvedValue(makeProfile());
+      // The snapshot now has organization_id='org-new' (reassigned by
+      // InvoiceIngestionService#handleOrganizationConflict) and an empty sync_hash.
+      mockPrisma.hubspotInvoiceSnapshot.findMany.mockResolvedValue([
+        makeSnapshot({ id: 'snap-1', hubspot_id: 'inv-1' }),
+      ]);
+      mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
+        makeLineItem({ id: 'li-1', staff_id: 'staff-1' }),
+      ]);
+      mockPrisma.affiliateCommission.create.mockResolvedValue({
+        id: 'comm-1',
+      });
+      mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+      const result = await service.run('org-new');
+
+      expect(mockPrisma.hubspotInvoiceSnapshot.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ organization_id: 'org-new' }),
+        }),
+      );
+      expect(result.created).toBe(1);
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -1532,6 +1532,7 @@ enum AdminReviewReasonCode {
   org_deleted_with_pending_payout // Org was deleted in HubSpot while commissions sit in a pending payout request — admin must decide pay vs void
   unmatched_line_item // Invoice line item name didn't match any Staff in the organization — admin must manually link it or mark it not a collaborator
   ambiguous_line_item // Invoice line item name matched 2+ Staff in the organization — admin must pick the correct one
+  invoice_reassociated_in_hubspot // Invoice moved to a different Company in HubSpot and an active commission is attached — admin must decide whether to void or keep it
 }
 
 enum AdminReviewStatus {

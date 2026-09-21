@@ -17,7 +17,7 @@ const mockPrisma = {
   },
   organization: { update: jest.fn() },
   affiliateCommission: { update: jest.fn() },
-  hubspotInvoiceSnapshot: { update: jest.fn() },
+  hubspotInvoiceSnapshot: { update: jest.fn(), findUnique: jest.fn() },
   hubspotLineItemSnapshot: { update: jest.fn() },
   medAllianceAuditLog: { create: jest.fn() },
   $transaction: jest.fn(),
@@ -602,6 +602,162 @@ describe('ReviewCasesService', () => {
             }),
           }),
         );
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // MA-007: invoice_reassociated_in_hubspot resolution
+    // -------------------------------------------------------------------------
+    describe('invoice_reassociated_in_hubspot resolution', () => {
+      const makeReassociationCase = (overrides: Partial<any> = {}) =>
+        makeCase({
+          reason_code: AdminReviewReasonCode.invoice_reassociated_in_hubspot,
+          organization_id: 'org-new',
+          organization: { id: 'org-new', name: 'New Org' },
+          metadata: {
+            snapshot_id: 'snap-1',
+            old_organization_id: 'org-old',
+            commission_id: 'comm-1',
+          },
+          ...overrides,
+        });
+
+      it('reassigns organization_id, clears sync_hash, voids the commission and writes both audit logs on reassociate_and_void', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeReassociationCase(),
+        );
+        mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+          organization_id: 'org-old',
+          hubspot_id: 'inv-1',
+        });
+        mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+        mockPrisma.affiliateCommission.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Confirmed the new owner in HubSpot',
+          action: 'reassociate_and_void',
+        });
+
+        expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+          where: { id: 'snap-1' },
+          data: { organization_id: 'org-new', sync_hash: '' },
+        });
+        expect(mockPrisma.affiliateCommission.update).toHaveBeenCalledWith({
+          where: { id: 'comm-1' },
+          data: { status: 'void' },
+        });
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'referred_company',
+              entity_id: 'org-new',
+              event: 'invoice_reassociated',
+              old_status: 'org-old',
+              new_status: 'org-new',
+              source: 'admin_action',
+            }),
+          }),
+        );
+        expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              entity_type: 'commission',
+              entity_id: 'comm-1',
+              event: 'voided_by_invoice_reassociation',
+              new_status: 'void',
+              source: 'admin_action',
+            }),
+          }),
+        );
+      });
+
+      it('reassigns organization_id but leaves the commission untouched on reassociate_keep_commission', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeReassociationCase(),
+        );
+        mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+          organization_id: 'org-old',
+          hubspot_id: 'inv-1',
+        });
+        mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Commission stays with the original affiliate',
+          action: 'reassociate_keep_commission',
+        });
+
+        expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+          where: { id: 'snap-1' },
+          data: { organization_id: 'org-new', sync_hash: '' },
+        });
+        expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();
+        expect(mockPrisma.medAllianceAuditLog.create).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ entity_type: 'commission' }),
+          }),
+        );
+      });
+
+      it('does not touch the snapshot or the commission on keep_existing', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeReassociationCase(),
+        );
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Leave as-is for now',
+          action: 'keep_existing',
+        });
+
+        expect(mockPrisma.hubspotInvoiceSnapshot.update).not.toHaveBeenCalled();
+        expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();
+        expect(
+          mockPrisma.hubspotInvoiceSnapshot.findUnique,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('does not duplicate the reassociation when the snapshot has already moved (stale/double-resolve guard)', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeReassociationCase(),
+        );
+        // Snapshot's organization_id no longer matches metadata.old_organization_id —
+        // someone already applied this reassociation (or a newer conflict moved it again).
+        mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+          organization_id: 'org-new',
+          hubspot_id: 'inv-1',
+        });
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+
+        await service.resolve('case-1', 'admin-1', {
+          resolution: 'Confirmed',
+          action: 'reassociate_and_void',
+        });
+
+        expect(mockPrisma.hubspotInvoiceSnapshot.update).not.toHaveBeenCalled();
+        expect(mockPrisma.affiliateCommission.update).not.toHaveBeenCalled();
+      });
+
+      it('does not throw when metadata has no snapshot_id', async () => {
+        mockPrisma.medAllianceAdminReviewCase.findUnique.mockResolvedValue(
+          makeReassociationCase({ metadata: {} }),
+        );
+        mockPrisma.medAllianceAdminReviewCase.update.mockResolvedValue({});
+        mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
+
+        await expect(
+          service.resolve('case-1', 'admin-1', {
+            resolution: 'No snapshot reference',
+            action: 'reassociate_and_void',
+          }),
+        ).resolves.not.toThrow();
+
+        expect(mockPrisma.hubspotInvoiceSnapshot.update).not.toHaveBeenCalled();
       });
     });
 

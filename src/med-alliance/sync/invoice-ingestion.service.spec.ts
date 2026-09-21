@@ -21,6 +21,12 @@ const mockPrisma = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  organization: {
+    findUnique: jest.fn(),
+  },
+  medAllianceAuditLog: {
+    create: jest.fn(),
+  },
 };
 
 const mockReviewCases = { openOrSkip: jest.fn() };
@@ -195,6 +201,9 @@ describe('InvoiceIngestionService', () => {
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
         sync_hash: storedHash,
+        organization_id: 'org-1',
+        organization: { name: 'Acme Org' },
+        commissions: [],
       });
 
       const secondRun = await service.run('org-1', 'hs-company-1');
@@ -221,6 +230,9 @@ describe('InvoiceIngestionService', () => {
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
         sync_hash: 'old-hash-that-does-not-match',
+        organization_id: 'org-1',
+        organization: { name: 'Acme Org' },
+        commissions: [],
       });
       mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
 
@@ -250,6 +262,9 @@ describe('InvoiceIngestionService', () => {
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
         sync_hash: 'stale-hash',
+        organization_id: 'org-1',
+        organization: { name: 'Acme Org' },
+        commissions: [],
       });
       mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
 
@@ -518,6 +533,9 @@ describe('InvoiceIngestionService', () => {
       mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
         id: 'snap-1',
         sync_hash: storedHash,
+        organization_id: 'org-1',
+        organization: { name: 'Acme Org' },
+        commissions: [],
       });
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(null);
       mockPrisma.hubspotLineItemSnapshot.create.mockResolvedValue({});
@@ -526,6 +544,178 @@ describe('InvoiceIngestionService', () => {
 
       expect(result.skipped).toBe(1); // invoice itself skipped
       expect(result.lineItems.created).toBe(1); // but its line item was still upserted
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // MA-007: organization conflict detection (invoice re-associated in HubSpot)
+  // -------------------------------------------------------------------------
+  describe('organization conflict detection', () => {
+    it('auto-reassociates the snapshot when organization_id differs and no active commission is attached', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: 'some-hash',
+        organization_id: 'org-old',
+        organization: { name: 'Old Org' },
+        commissions: [],
+      });
+      mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+
+      await service.run('org-new', 'hs-company-new');
+
+      expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+        where: { id: 'snap-1' },
+        data: { organization_id: 'org-new' },
+      });
+      expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          entity_type: 'referred_company',
+          entity_id: 'org-new',
+          event: 'invoice_reassociated',
+          old_status: 'org-old',
+          new_status: 'org-new',
+          source: 'sync',
+          metadata: expect.objectContaining({
+            hubspot_invoice_snapshot_id: 'snap-1',
+            hubspot_invoice_id: 'inv-1',
+          }),
+        }),
+      });
+      expect(mockReviewCases.openOrSkip).not.toHaveBeenCalled();
+    });
+
+    it('opens a review case instead of auto-reassociating when an active commission is attached', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: 'some-hash',
+        organization_id: 'org-old',
+        organization: { name: 'Old Org' },
+        commissions: [{ id: 'comm-1', status: 'eligible' }],
+      });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        name: 'New Org',
+      });
+      mockReviewCases.openOrSkip.mockResolvedValue({ opened: true });
+
+      await service.run('org-new', 'hs-company-new');
+
+      expect(mockReviewCases.openOrSkip).toHaveBeenCalledWith(
+        'org-new',
+        'invoice_reassociated_in_hubspot',
+        expect.objectContaining({
+          snapshot_id: 'snap-1',
+          hubspot_invoice_id: 'inv-1',
+          old_organization_id: 'org-old',
+          old_organization_name: 'Old Org',
+          new_organization_id: 'org-new',
+          new_organization_name: 'New Org',
+          commission_id: 'comm-1',
+          commission_status: 'eligible',
+        }),
+      );
+      // The snapshot must stay on the old organization until an admin resolves the case.
+      expect(mockPrisma.hubspotInvoiceSnapshot.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ organization_id: 'org-new' }),
+        }),
+      );
+      expect(mockPrisma.medAllianceAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger either conflict path when organization_id already matches', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: 'some-hash',
+        organization_id: 'org-1',
+        organization: { name: 'Acme Org' },
+        commissions: [],
+      });
+      mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+
+      await service.run('org-1', 'hs-company-1');
+
+      expect(mockReviewCases.openOrSkip).not.toHaveBeenCalled();
+      expect(mockPrisma.medAllianceAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('detects the conflict even when sync_hash is unchanged (the early skip must not bypass this check)', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      // Pre-compute the hash the same way the "skip" describe block does.
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.hubspotInvoiceSnapshot.create.mockResolvedValueOnce({});
+      await service.run('org-1', 'hs-company-1');
+      const storedHash =
+        mockPrisma.hubspotInvoiceSnapshot.create.mock.calls[0][0].data
+          .sync_hash;
+
+      jest.clearAllMocks();
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: storedHash, // identical hash — would normally short-circuit to "skipped"
+        organization_id: 'org-old',
+        organization: { name: 'Old Org' },
+        commissions: [],
+      });
+      mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+
+      const result = await service.run('org-new', 'hs-company-new');
+
+      expect(mockPrisma.hubspotInvoiceSnapshot.update).toHaveBeenCalledWith({
+        where: { id: 'snap-1' },
+        data: { organization_id: 'org-new' },
+      });
+      expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ event: 'invoice_reassociated' }),
+        }),
+      );
+      // The invoice itself is still reported as "skipped" (financial fields unchanged) —
+      // the conflict correction is a side-effect, not a change to the outcome bucket.
+      expect(result.skipped).toBe(1);
+    });
+
+    it('does not break the normal outcome when openOrSkip reports an already-open case', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce(makeAssociationsResponse(['inv-1']))
+        .mockResolvedValueOnce(makeInvoiceResponse());
+
+      mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue({
+        id: 'snap-1',
+        sync_hash: 'old-hash-that-does-not-match',
+        organization_id: 'org-old',
+        organization: { name: 'Old Org' },
+        commissions: [{ id: 'comm-1', status: 'eligible' }],
+      });
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        name: 'New Org',
+      });
+      mockPrisma.hubspotInvoiceSnapshot.update.mockResolvedValue({});
+      mockReviewCases.openOrSkip.mockResolvedValue({ opened: false });
+
+      const result = await service.run('org-new', 'hs-company-new');
+
+      expect(result.updated).toBe(1);
+      expect(result.created).toBe(0);
+      expect(result.skipped).toBe(0);
     });
   });
 });

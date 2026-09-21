@@ -272,6 +272,8 @@ export class InvoiceIngestionService {
         id: true,
         sync_hash: true,
         invoice_amount: true,
+        organization_id: true,
+        organization: { select: { name: true } },
         // Check if a commission has already been detected for this snapshot
         commissions: {
           where: { status: { notIn: ['void', 'rejected'] } },
@@ -299,6 +301,13 @@ export class InvoiceIngestionService {
         },
       });
       return { outcome: 'created', snapshotId: created.id };
+    }
+
+    // MA-007: the invoice was re-associated to a different Company in HubSpot since our
+    // snapshot was created — must be checked before the sync_hash early-return below, since
+    // sync_hash only covers financial/status fields, never organization_id.
+    if (existing.organization_id !== organizationId) {
+      await this.handleOrganizationConflict(existing, organizationId, invoice);
     }
 
     if (existing.sync_hash === syncHash) {
@@ -338,6 +347,87 @@ export class InvoiceIngestionService {
     }
 
     return { outcome: 'updated', snapshotId: existing.id };
+  }
+
+  /**
+   * MA-007: detects that a HubspotInvoiceSnapshot already exists but is currently linked
+   * to a DIFFERENT organization than the one this sync run is for — meaning the invoice
+   * was re-associated to a different Company in HubSpot after our snapshot was created.
+   *
+   * Two paths, decided by whether a live commission is already attached to this snapshot:
+   * - No active commission: safe to auto-correct — HubSpot is the source of truth for WHICH
+   *   organization is correct, and there is no financial decision to protect. Reassigns
+   *   organization_id immediately and logs it (source='sync').
+   * - Active commission exists: reassigning could mean voiding or preserving a payout —
+   *   that is an explicit admin decision, not something the sync should decide silently.
+   *   Opens (or, if already open, skips) a review case instead
+   *   (reason_code=invoice_reassociated_in_hubspot), resolved via ReviewCasesService#resolve.
+   */
+  private async handleOrganizationConflict(
+    existing: {
+      id: string;
+      organization_id: string;
+      organization: { name: string | null } | null;
+      commissions: { id: string; status: string }[];
+    },
+    newOrganizationId: string,
+    invoice: InvoiceRecord,
+  ): Promise<void> {
+    const linkedCommission = existing.commissions?.[0];
+
+    if (!linkedCommission) {
+      await this.prisma.hubspotInvoiceSnapshot.update({
+        where: { id: existing.id },
+        data: { organization_id: newOrganizationId },
+      });
+
+      await this.prisma.medAllianceAuditLog.create({
+        data: {
+          entity_type: 'referred_company',
+          entity_id: newOrganizationId,
+          event: 'invoice_reassociated',
+          old_status: existing.organization_id,
+          new_status: newOrganizationId,
+          reason: `Invoice ${invoice.hubspot_id} moved to a different company in HubSpot — no active commission was attached, auto-corrected by sync`,
+          source: 'sync',
+          metadata: {
+            hubspot_invoice_snapshot_id: existing.id,
+            hubspot_invoice_id: invoice.hubspot_id,
+          } as any,
+        },
+      });
+
+      this.logger.log(
+        `Auto-reassociated invoice ${invoice.hubspot_id} snapshot from org ${existing.organization_id} to ${newOrganizationId} (no active commission)`,
+      );
+      return;
+    }
+
+    const newOrg = await this.prisma.organization.findUnique({
+      where: { id: newOrganizationId },
+      select: { name: true },
+    });
+
+    await this.reviewCases.openOrSkip(
+      newOrganizationId,
+      'invoice_reassociated_in_hubspot',
+      {
+        snapshot_id: existing.id,
+        hubspot_invoice_id: invoice.hubspot_id,
+        invoice_number: invoice.invoice_number,
+        old_organization_id: existing.organization_id,
+        old_organization_name: existing.organization?.name ?? null,
+        new_organization_id: newOrganizationId,
+        new_organization_name: newOrg?.name ?? null,
+        commission_id: linkedCommission.id,
+        commission_status: linkedCommission.status,
+      },
+    );
+
+    this.logger.warn(
+      `Invoice ${invoice.hubspot_id} snapshot points at org ${existing.organization_id} but HubSpot ` +
+        `now associates it with org ${newOrganizationId}, and an active commission is attached — review case opened/skipped`,
+    );
   }
 
   /**

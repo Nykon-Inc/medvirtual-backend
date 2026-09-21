@@ -131,6 +131,10 @@ export class ReviewCasesService {
    *   on hold is generated retroactively on the next CommissionDetectionService run.
    * - unmatched_line_item / ambiguous_line_item + action=not_applicable: sets match_status
    *   ='not_applicable', permanently excluding the line item from the commission flow.
+   * - invoice_reassociated_in_hubspot + action=reassociate_and_void: reassigns the snapshot's
+   *   organization_id and voids the commission still attached to the old organization.
+   * - invoice_reassociated_in_hubspot + action=reassociate_keep_commission: reassigns the
+   *   snapshot's organization_id but leaves the existing commission untouched.
    * - all other cases: close only
    *
    * Every resolution writes a medAllianceAuditLog entry (entity_type='review_case') — this
@@ -182,6 +186,19 @@ export class ReviewCasesService {
         await this.handleVoidAndRecreate(item);
       }
       // keep_existing: no side-effect, just close the case
+    }
+
+    // --- Side-effect: invoice was re-associated to a different Company in HubSpot ---
+    if (
+      item.reason_code === AdminReviewReasonCode.invoice_reassociated_in_hubspot
+    ) {
+      if (
+        dto.action === 'reassociate_and_void' ||
+        dto.action === 'reassociate_keep_commission'
+      ) {
+        await this.handleInvoiceReassociation(item, dto.action);
+      }
+      // keep_existing: no side-effect, just close the case (snapshot stays on old org)
     }
 
     // --- Side-effect: unmatched/ambiguous line item — admin links a Staff or excludes it ---
@@ -302,5 +319,91 @@ export class ReviewCasesService {
         data: { sync_hash: '' },
       });
     }
+  }
+
+  /**
+   * Applies the organization reassignment an admin confirmed for a snapshot whose HubSpot
+   * company association changed. Optionally voids the commission still pointing at the old
+   * organization (never automatic — always an explicit admin choice). Clears sync_hash so
+   * the next InvoiceIngestionService run (cron or manual "Sync with HubSpot") re-evaluates
+   * this snapshot under the new organization_id and CommissionDetectionService picks it up.
+   *
+   * Expected metadata shape: { snapshot_id, old_organization_id, commission_id }
+   */
+  private async handleInvoiceReassociation(
+    item: { id: string; organization_id: string; metadata: any },
+    action: 'reassociate_and_void' | 'reassociate_keep_commission',
+  ) {
+    const meta = item.metadata as {
+      snapshot_id?: string;
+      old_organization_id?: string;
+      commission_id?: string;
+    } | null;
+
+    if (!meta?.snapshot_id) return;
+
+    const snapshot = await this.prisma.hubspotInvoiceSnapshot.findUnique({
+      where: { id: meta.snapshot_id },
+      select: { organization_id: true, hubspot_id: true },
+    });
+    if (!snapshot) return;
+
+    // Guard against a stale/double-resolved case: only act if the snapshot still points
+    // at the org recorded when the conflict was detected.
+    if (snapshot.organization_id !== meta.old_organization_id) {
+      this.logger.warn(
+        `Skipping reassociation for review case ${item.id} — snapshot already moved`,
+      );
+      return;
+    }
+
+    await this.prisma.hubspotInvoiceSnapshot.update({
+      where: { id: meta.snapshot_id },
+      data: { organization_id: item.organization_id, sync_hash: '' },
+    });
+
+    await this.prisma.medAllianceAuditLog.create({
+      data: {
+        entity_type: 'referred_company',
+        entity_id: item.organization_id,
+        event: 'invoice_reassociated',
+        old_status: meta.old_organization_id ?? null,
+        new_status: item.organization_id,
+        reason: `Invoice ${snapshot.hubspot_id} moved from org ${meta.old_organization_id} to ${item.organization_id} per HubSpot`,
+        source: 'admin_action',
+        metadata: {
+          review_case_id: item.id,
+          hubspot_invoice_snapshot_id: meta.snapshot_id,
+          hubspot_invoice_id: snapshot.hubspot_id,
+          action,
+        } as any,
+      },
+    });
+
+    if (action === 'reassociate_and_void' && meta.commission_id) {
+      await this.prisma.affiliateCommission.update({
+        where: { id: meta.commission_id },
+        data: { status: 'void' },
+      });
+
+      await this.prisma.medAllianceAuditLog.create({
+        data: {
+          entity_type: 'commission',
+          entity_id: meta.commission_id,
+          event: 'voided_by_invoice_reassociation',
+          old_status: 'eligible',
+          new_status: 'void',
+          source: 'admin_action',
+          metadata: {
+            review_case_id: item.id,
+            organization_id: item.organization_id,
+          },
+        },
+      });
+    }
+
+    this.logger.log(
+      `Reassociated snapshot ${meta.snapshot_id} to org ${item.organization_id} via review case ${item.id} (action=${action})`,
+    );
   }
 }

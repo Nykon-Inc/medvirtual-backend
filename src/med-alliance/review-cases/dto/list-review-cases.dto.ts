@@ -31,6 +31,7 @@ export class ListReviewCasesDto {
       'multiple_hubspot_matches',
       'reconciliation_invoice_changed',
       'soft_duplicate_referral',
+      'invoice_reassociated_in_hubspot',
     ],
   })
   @IsOptional()
@@ -38,6 +39,7 @@ export class ListReviewCasesDto {
     'multiple_hubspot_matches',
     'reconciliation_invoice_changed',
     'soft_duplicate_referral',
+    'invoice_reassociated_in_hubspot',
   ])
   reason_code?: string;
 
