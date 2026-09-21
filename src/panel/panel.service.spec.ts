@@ -88,13 +88,16 @@ describe('PanelService', () => {
   it('should compute and return full dashboard data including new metrics', async () => {
     // ---- Mocking return values for the sequence of calls in getPanelData ----
 
-    // 1. activeClientUsers (uSER.count)
+    // 1. createdClientUsers (uSER.count)
+    (prisma.uSER.count as jest.Mock).mockResolvedValueOnce(95);
+
+    // 2. activeClientUsers (uSER.count)
     (prisma.uSER.count as jest.Mock).mockResolvedValueOnce(50);
 
-    // 2. invitedClientUsers (uSER.count)
+    // 3. invitedClientUsers (uSER.count)
     (prisma.uSER.count as jest.Mock).mockResolvedValueOnce(45);
 
-    // 3. verifiedClientUsers (uSER.count)
+    // 4. verifiedClientUsers (uSER.count)
     (prisma.uSER.count as jest.Mock).mockResolvedValueOnce(15);
 
     // 3b. activeClientUsersWithStaff / activeProspectUsersWithoutStaff (uSER.count)
@@ -295,6 +298,7 @@ describe('PanelService', () => {
     expect(result.moreThan5Interviews[0].interviewCount).toBe(6);
 
     // Verify New Metrics
+    expect(result.createdClientUsers).toBe(95);
     expect(result.activeClientUsers).toBe(50);
     expect(result.invitedClientUsers).toBe(45);
     expect(result.activeClientUsersWithStaff).toBe(8);
