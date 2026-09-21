@@ -18,6 +18,7 @@ const mockPrisma = {
   affiliateCommission: { create: jest.fn() },
   medAllianceAuditLog: { create: jest.fn() },
   uSER: { findUnique: jest.fn() },
+  staff: { update: jest.fn() },
 };
 
 const mockAllianceNotifications = {
@@ -74,7 +75,11 @@ const makeLineItem = (overrides: Partial<any> = {}) => ({
     due_date: new Date('2026-02-10'),
     paid_at: new Date('2026-02-10'),
   },
-  staff: { id: 'staff-1', start_date: new Date('2026-02-01') }, // 9 days before due_date, well within window
+  staff: {
+    id: 'staff-1',
+    hubspot_id: 'staff-1',
+    hubspot_commission_start_date: new Date('2026-02-01'),
+  }, // 9 days before due_date, well within window
   ...overrides,
 });
 
@@ -373,13 +378,21 @@ describe('CommissionDetectionService', () => {
           id: 'li-expired',
           amount: '2000.00',
           staff_id: 'staff-expired',
-          staff: { id: 'staff-expired', start_date: expiredStaffStart },
+          staff: {
+            id: 'staff-expired',
+            hubspot_id: 'staff-expired',
+            hubspot_commission_start_date: expiredStaffStart,
+          },
         }),
         makeLineItem({
           id: 'li-recent',
           amount: '3000.00',
           staff_id: 'staff-recent',
-          staff: { id: 'staff-recent', start_date: recentStaffStart },
+          staff: {
+            id: 'staff-recent',
+            hubspot_id: 'staff-recent',
+            hubspot_commission_start_date: recentStaffStart,
+          },
         }),
       ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({ id: 'comm-1' });
@@ -441,7 +454,11 @@ describe('CommissionDetectionService', () => {
           id: 'li-expired',
           invoice_id: 'snap-1',
           staff_id: 'staff-expired',
-          staff: { id: 'staff-expired', start_date: expiredStaffStart },
+          staff: {
+            id: 'staff-expired',
+            hubspot_id: 'staff-expired',
+            hubspot_commission_start_date: expiredStaffStart,
+          },
         }),
       ]);
       mockPrisma.medAllianceAuditLog.create.mockResolvedValue({});
@@ -474,7 +491,13 @@ describe('CommissionDetectionService', () => {
         makeSnapshot(),
       ]);
       mockPrisma.hubspotLineItemSnapshot.findMany.mockResolvedValue([
-        makeLineItem({ staff: { id: 'staff-1', start_date: null } }),
+        makeLineItem({
+          staff: {
+            id: 'staff-1',
+            hubspot_id: null,
+            hubspot_commission_start_date: null,
+          },
+        }),
       ]);
 
       const result = await service.run('org-1');
@@ -548,12 +571,20 @@ describe('CommissionDetectionService', () => {
         makeLineItem({
           id: 'li-1',
           staff_id: 'staff-1',
-          staff: { id: 'staff-1', start_date: new Date('2026-02-01') },
+          staff: {
+            id: 'staff-1',
+            hubspot_id: 'staff-1',
+            hubspot_commission_start_date: new Date('2026-02-01'),
+          },
         }),
         makeLineItem({
           id: 'li-2',
           staff_id: 'staff-2',
-          staff: { id: 'staff-2', start_date: new Date('2026-02-01') },
+          staff: {
+            id: 'staff-2',
+            hubspot_id: 'staff-2',
+            hubspot_commission_start_date: new Date('2026-02-01'),
+          },
         }),
       ]);
       mockPrisma.affiliateCommission.create.mockResolvedValue({});
@@ -792,12 +823,20 @@ describe('CommissionDetectionService', () => {
         makeLineItem({
           id: 'li-1',
           staff_id: 'staff-1',
-          staff: { id: 'staff-1', start_date: new Date('2026-02-01') },
+          staff: {
+            id: 'staff-1',
+            hubspot_id: 'staff-1',
+            hubspot_commission_start_date: new Date('2026-02-01'),
+          },
         }),
         makeLineItem({
           id: 'li-2',
           staff_id: 'staff-2',
-          staff: { id: 'staff-2', start_date: new Date('2026-02-01') },
+          staff: {
+            id: 'staff-2',
+            hubspot_id: 'staff-2',
+            hubspot_commission_start_date: new Date('2026-02-01'),
+          },
         }),
       ]);
       mockPrisma.affiliateCommission.create

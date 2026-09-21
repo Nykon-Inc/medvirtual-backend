@@ -1,7 +1,12 @@
+import axios from 'axios';
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
+  resolveStaffCommissionStartDate,
 } from './commission-eligibility.util';
+
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('computeLineItemCommissionEligibility', () => {
   it('is not eligible when the staff has no start_date yet', () => {
@@ -84,5 +89,114 @@ describe('resolveCommissionAnchorDate', () => {
     expect(result).toEqual(new Date('2026-05-01T00:00:00.000Z'));
 
     jest.useRealTimers();
+  });
+});
+
+describe('resolveStaffCommissionStartDate', () => {
+  const mockPrisma = {
+    staff: { update: jest.fn() },
+  } as any;
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('returns null without calling axios when staff is null/undefined', async () => {
+    expect(await resolveStaffCommissionStartDate(mockPrisma, null)).toBeNull();
+    expect(
+      await resolveStaffCommissionStartDate(mockPrisma, undefined),
+    ).toBeNull();
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it('returns the local value without calling axios when already set', async () => {
+    const localDate = new Date('2026-01-01');
+
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: 'deal-1',
+      hubspot_commission_start_date: localDate,
+    });
+
+    expect(result).toBe(localDate);
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockPrisma.staff.update).not.toHaveBeenCalled();
+  });
+
+  it('returns null without calling axios when hubspot_id is missing', async () => {
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: null,
+      hubspot_commission_start_date: null,
+    });
+
+    expect(result).toBeNull();
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it('fetches from HubSpot, persists, and returns the parsed date when local value is null', async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { properties: { alliance_commission_start_date: '1735689600000' } },
+    });
+    mockPrisma.staff.update.mockResolvedValue({});
+
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: 'deal-1',
+      hubspot_commission_start_date: null,
+    });
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://api.hubapi.com/crm/v3/objects/deals/deal-1?properties=alliance_commission_start_date',
+      expect.any(Object),
+    );
+    expect(mockPrisma.staff.update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { hubspot_commission_start_date: new Date(1735689600000) },
+    });
+    expect(result).toEqual(new Date(1735689600000));
+  });
+
+  it('parses HubSpot\'s "YYYY-MM-DD" date-property format (the actual format the read/search API returns, not epoch-millis)', async () => {
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { properties: { alliance_commission_start_date: '2025-11-16' } },
+    });
+    mockPrisma.staff.update.mockResolvedValue({});
+
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: 'deal-1',
+      hubspot_commission_start_date: null,
+    });
+
+    expect(mockPrisma.staff.update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { hubspot_commission_start_date: new Date('2025-11-16') },
+    });
+    expect(result).toEqual(new Date('2025-11-16'));
+  });
+
+  it('returns null and does not persist when HubSpot also has no value', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: { properties: {} } });
+
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: 'deal-1',
+      hubspot_commission_start_date: null,
+    });
+
+    expect(result).toBeNull();
+    expect(mockPrisma.staff.update).not.toHaveBeenCalled();
+  });
+
+  it('returns null without throwing when the HubSpot call fails', async () => {
+    mockedAxios.get.mockRejectedValueOnce(new Error('Network error'));
+
+    const result = await resolveStaffCommissionStartDate(mockPrisma, {
+      id: 'staff-1',
+      hubspot_id: 'deal-1',
+      hubspot_commission_start_date: null,
+    });
+
+    expect(result).toBeNull();
+    expect(mockPrisma.staff.update).not.toHaveBeenCalled();
   });
 });

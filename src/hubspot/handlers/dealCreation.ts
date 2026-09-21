@@ -73,6 +73,10 @@ export class HandlerDealCreation {
       dealData.start_date = dealData.start_date
         ? new Date(dealData.start_date)
         : null;
+      dealData.hubspot_commission_start_date =
+        dealData.hubspot_commission_start_date
+          ? new Date(dealData.hubspot_commission_start_date)
+          : null;
 
       if (organization) {
         //organization cames from syncOrganizationDeals

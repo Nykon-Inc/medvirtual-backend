@@ -22,6 +22,7 @@ import { AllianceNotificationsService } from '../notifications/notifications.ser
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
+  resolveStaffCommissionStartDate,
 } from '../shared/commission-eligibility.util';
 
 // Terminal statuses — transitions out of these are not allowed.
@@ -668,7 +669,13 @@ export class CommissionsService {
           amount: true,
           match_status: true,
           staff_id: true,
-          staff: { select: { id: true, start_date: true } },
+          staff: {
+            select: {
+              id: true,
+              hubspot_id: true,
+              hubspot_commission_start_date: true,
+            },
+          },
           invoice: {
             select: {
               id: true,
@@ -791,9 +798,13 @@ export class CommissionsService {
 
       // Per-collaborator 365-day window (§4) — the same eligibility computation
       // CommissionDetectionService and the invoice-paid webhook use, now enforced here too.
+      const staffCommissionStartDate = await resolveStaffCommissionStartDate(
+        this.prisma,
+        lineItem.staff,
+      );
       const eligibility = computeLineItemCommissionEligibility({
         lineItemAmount: lineItem.amount ?? 0,
-        staffStartDate: lineItem.staff?.start_date ?? null,
+        staffStartDate: staffCommissionStartDate,
         commissionPercent: profile.commission_percent_default,
         now: resolveCommissionAnchorDate(snapshot),
       });

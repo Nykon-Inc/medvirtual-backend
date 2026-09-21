@@ -1,10 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import axios from 'axios';
 import { HandlerComissionCreation } from './comissionCreation';
 import { PrismaService } from '../../prisma/prisma.service';
+
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const mockPrisma = {
   hubspotInvoiceSnapshot: { findUnique: jest.fn() },
   affiliateCommission: { upsert: jest.fn() },
+  staff: { update: jest.fn() },
 };
 
 describe('HandlerComissionCreation', () => {
@@ -53,11 +58,20 @@ describe('HandlerComissionCreation', () => {
     },
   });
 
-  const lineItem = (id: string, amount: number, staffId: string) => ({
+  const lineItem = (
+    id: string,
+    amount: number,
+    staffId: string,
+    commissionStartDate: Date | null = new Date('2026-01-01'),
+  ) => ({
     id,
     amount,
     staff_id: staffId,
-    staff: { id: staffId, start_date: new Date('2026-01-01') },
+    staff: {
+      id: staffId,
+      hubspot_id: `deal-${staffId}`,
+      hubspot_commission_start_date: commissionStartDate,
+    },
   });
 
   it('does not let one line item upsert failure block the other line items on the same invoice', async () => {
@@ -145,6 +159,44 @@ describe('HandlerComissionCreation', () => {
     mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
       buildInvoice([li], new Date('2027-02-05')),
     );
+
+    await expect(handler.execute(baseEvent)).resolves.toBe(true);
+
+    expect(mockPrisma.affiliateCommission.upsert).not.toHaveBeenCalled();
+  });
+
+  it('live-fetches hubspot_commission_start_date from HubSpot when not yet synced locally', async () => {
+    const li = lineItem('li-1', 1500, 'staff-1', null);
+    mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+      buildInvoice([li], new Date('2026-01-31')),
+    );
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { properties: { alliance_commission_start_date: '1764558000000' } }, // 2025-12-01
+    });
+    mockPrisma.staff.update.mockResolvedValue({});
+    mockPrisma.affiliateCommission.upsert.mockResolvedValue({
+      id: 'commission-1',
+    });
+
+    await expect(handler.execute(baseEvent)).resolves.toBe(true);
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://api.hubapi.com/crm/v3/objects/deals/deal-staff-1?properties=alliance_commission_start_date',
+      expect.any(Object),
+    );
+    expect(mockPrisma.staff.update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { hubspot_commission_start_date: new Date(1764558000000) },
+    });
+    expect(mockPrisma.affiliateCommission.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a line item as staff_not_deployed when hubspot_commission_start_date is null both locally and in HubSpot', async () => {
+    const li = lineItem('li-1', 1500, 'staff-1', null);
+    mockPrisma.hubspotInvoiceSnapshot.findUnique.mockResolvedValue(
+      buildInvoice([li]),
+    );
+    mockedAxios.get.mockResolvedValueOnce({ data: { properties: {} } });
 
     await expect(handler.execute(baseEvent)).resolves.toBe(true);
 

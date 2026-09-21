@@ -1102,7 +1102,8 @@ export class StaffService {
 
         if (
           (dbKey === 'hubspot_close_date' && value) ||
-          (dbKey === 'start_date' && value)
+          (dbKey === 'start_date' && value) ||
+          (dbKey === 'hubspot_commission_start_date' && value)
         ) {
           const dateValue = new Date(value);
           value = isNaN(dateValue.getTime()) ? null : dateValue;

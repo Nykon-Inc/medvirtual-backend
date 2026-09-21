@@ -160,7 +160,8 @@ export class HandlerDealPropertyChange {
 
     if (
       fieldUpdated === 'hubspot_close_date' ||
-      fieldUpdated === 'start_date'
+      fieldUpdated === 'start_date' ||
+      fieldUpdated === 'hubspot_commission_start_date'
     ) {
       const timestamp = Number(event.propertyValue);
       if (!isNaN(timestamp)) {

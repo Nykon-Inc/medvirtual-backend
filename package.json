@@ -39,7 +39,8 @@
     "backfill:hubstaff-id": "ts-node scripts/backfill-hubstaff-id.ts",
     "hubstaff:sync-dry-run": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-hubstaff-sync.ts",
     "hubstaff:export-mapping": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/export-hubstaff-va-mapping.ts",
-    "invoice:diagnose": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-invoice-generation.ts"
+    "invoice:diagnose": "QUEUES_ENABLED=false WEBHOOK_URL= ts-node -r dotenv/config scripts/diagnose-invoice-generation.ts",
+    "backfill:commission-start-date": "ts-node scripts/backfill-commission-start-date.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.858.0",

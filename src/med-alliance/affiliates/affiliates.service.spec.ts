@@ -60,6 +60,9 @@ const mockPrisma = {
   medAllianceAuditLog: {
     create: jest.fn(),
   },
+  staff: {
+    update: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -1073,7 +1076,11 @@ describe('AffiliatesService', () => {
             due_date: null,
             paid_at: snap.paid_at,
           },
-          staff: { id: 'staff-1', start_date: daysAgo(30) },
+          staff: {
+            id: 'staff-1',
+            hubspot_id: 'staff-1',
+            hubspot_commission_start_date: daysAgo(30),
+          },
         },
       ]);
 
@@ -1120,7 +1127,11 @@ describe('AffiliatesService', () => {
             due_date: null,
             paid_at: snap.paid_at,
           },
-          staff: { id: 'staff-expired', start_date: daysAgo(400) },
+          staff: {
+            id: 'staff-expired',
+            hubspot_id: 'staff-expired',
+            hubspot_commission_start_date: daysAgo(400),
+          },
         },
       ]);
 
@@ -1153,7 +1164,11 @@ describe('AffiliatesService', () => {
             due_date: null,
             paid_at: snap.paid_at,
           },
-          staff: { id: 'staff-1', start_date: daysAgo(10) },
+          staff: {
+            id: 'staff-1',
+            hubspot_id: 'staff-1',
+            hubspot_commission_start_date: daysAgo(10),
+          },
         },
       ]);
 

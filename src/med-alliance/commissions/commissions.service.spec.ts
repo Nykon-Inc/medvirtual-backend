@@ -41,6 +41,9 @@ const mockPrisma = {
     create: jest.fn(),
     findMany: jest.fn(),
   },
+  staff: {
+    update: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -1051,7 +1054,11 @@ describe('CommissionsService', () => {
       amount: '500.00',
       match_status: 'matched',
       staff_id: 'staff-1',
-      staff: { id: 'staff-1', start_date: new Date('2026-02-01') }, // recent, within window
+      staff: {
+        id: 'staff-1',
+        hubspot_id: 'staff-1',
+        hubspot_commission_start_date: new Date('2026-02-01'), // recent, within window
+      },
       invoice: {
         id: 'snap-1',
         hubspot_id: 'hs-inv-1',
@@ -1243,7 +1250,13 @@ describe('CommissionsService', () => {
         makeLineItem().invoice.due_date.getTime() - 400 * 24 * 60 * 60 * 1000,
       );
       mockPrisma.hubspotLineItemSnapshot.findUnique.mockResolvedValue(
-        makeLineItem({ staff: { id: 'staff-1', start_date: expiredStart } }),
+        makeLineItem({
+          staff: {
+            id: 'staff-1',
+            hubspot_id: 'staff-1',
+            hubspot_commission_start_date: expiredStart,
+          },
+        }),
       );
       mockPrisma.organization.findUnique.mockResolvedValue(makeOrg());
 

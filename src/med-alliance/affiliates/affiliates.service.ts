@@ -16,6 +16,7 @@ import { buildCommissionIdempotencyKey } from '../../common/utils/commission-ide
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
+  resolveStaffCommissionStartDate,
 } from '../shared/commission-eligibility.util';
 import { CreateAffiliateProfileDto } from './dto/create-affiliate-profile.dto';
 import {
@@ -1711,15 +1712,25 @@ export class AffiliatesService {
           invoice: {
             select: { hubspot_id: true, due_date: true, paid_at: true },
           },
-          staff: { select: { id: true, start_date: true } },
+          staff: {
+            select: {
+              id: true,
+              hubspot_id: true,
+              hubspot_commission_start_date: true,
+            },
+          },
         },
       },
     );
 
     for (const lineItem of matchedLineItems) {
+      const staffCommissionStartDate = await resolveStaffCommissionStartDate(
+        this.prisma,
+        lineItem.staff,
+      );
       const eligibility = computeLineItemCommissionEligibility({
         lineItemAmount: lineItem.amount ?? 0,
-        staffStartDate: lineItem.staff?.start_date ?? null,
+        staffStartDate: staffCommissionStartDate,
         commissionPercent: affiliateProfile.commission_percent_default,
         now: resolveCommissionAnchorDate(lineItem.invoice),
       });

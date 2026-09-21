@@ -5,11 +5,12 @@ import { AllianceNotificationsService } from '../notifications/notifications.ser
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
+  resolveStaffCommissionStartDate,
 } from '../shared/commission-eligibility.util';
 
 // One year in milliseconds — the COMPANY-level deployment expiry backstop only
 // (see expireEligibility below). Per-collaborator eligibility windows are computed by
-// computeLineItemCommissionEligibility, anchored on each Staff row's own start_date.
+// computeLineItemCommissionEligibility, anchored on each Staff row's own hubspot_commission_start_date.
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -220,7 +221,7 @@ export class CommissionDetectionService {
 
     // The unit of work is now the MATCHED line item, not the whole invoice — each
     // collaborator's payment gets its own commission, anchored on that collaborator's
-    // own Staff.start_date, not the company's deployment_date. Unmatched line items
+    // own Staff.hubspot_commission_start_date, not the company's deployment_date. Unmatched line items
     // (staff_id IS NULL) are skipped here — they already have an open review case from
     // StaffMatchingService and are surfaced separately in the sync summary, not silently
     // dropped.
@@ -241,7 +242,13 @@ export class CommissionDetectionService {
           invoice: {
             select: { hubspot_id: true, due_date: true, paid_at: true },
           },
-          staff: { select: { id: true, start_date: true } },
+          staff: {
+            select: {
+              id: true,
+              hubspot_id: true,
+              hubspot_commission_start_date: true,
+            },
+          },
         },
       },
     );
@@ -251,9 +258,13 @@ export class CommissionDetectionService {
 
     for (const lineItem of matchedLineItems) {
       const anchorDate = resolveCommissionAnchorDate(lineItem.invoice);
+      const staffCommissionStartDate = await resolveStaffCommissionStartDate(
+        this.prisma,
+        lineItem.staff,
+      );
       const eligibility = computeLineItemCommissionEligibility({
         lineItemAmount: lineItem.amount ?? 0,
-        staffStartDate: lineItem.staff?.start_date ?? null,
+        staffStartDate: staffCommissionStartDate,
         commissionPercent: profile.commission_percent_default,
         now: anchorDate,
       });
@@ -278,7 +289,7 @@ export class CommissionDetectionService {
                 hubspot_invoice_snapshot_id: lineItem.invoice_id,
                 hubspot_line_item_snapshot_id: lineItem.id,
                 staff_id: lineItem.staff_id,
-                staff_start_date: lineItem.staff?.start_date?.toISOString(),
+                staff_start_date: staffCommissionStartDate?.toISOString(),
                 days_since_start: eligibility.daysSinceStart,
               } as any,
             },

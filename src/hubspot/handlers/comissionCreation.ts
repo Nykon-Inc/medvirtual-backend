@@ -5,6 +5,7 @@ import { buildCommissionIdempotencyKey } from '../../common/utils/commission-ide
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
+  resolveStaffCommissionStartDate,
 } from '../../med-alliance/shared/commission-eligibility.util';
 
 @Injectable()
@@ -38,7 +39,13 @@ export class HandlerComissionCreation {
                 id: true,
                 amount: true,
                 staff_id: true,
-                staff: { select: { id: true, start_date: true } },
+                staff: {
+                  select: {
+                    id: true,
+                    hubspot_id: true,
+                    hubspot_commission_start_date: true,
+                  },
+                },
               },
             },
             organization: {
@@ -116,9 +123,13 @@ export class HandlerComissionCreation {
       const anchorDate = resolveCommissionAnchorDate(invoiceExists);
 
       for (const lineItem of invoiceExists.lineItems) {
+        const staffCommissionStartDate = await resolveStaffCommissionStartDate(
+          this.prisma,
+          lineItem.staff,
+        );
         const eligibility = computeLineItemCommissionEligibility({
           lineItemAmount: lineItem.amount ?? 0,
-          staffStartDate: lineItem.staff?.start_date ?? null,
+          staffStartDate: staffCommissionStartDate,
           commissionPercent,
           now: anchorDate,
         });
