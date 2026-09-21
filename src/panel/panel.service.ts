@@ -302,7 +302,20 @@ export class PanelService {
 
     // New Metrics Implementation
 
-    // 1. Number of Active Client users (system users excluded)
+    // 1a. Total Client users created in the period (any status) — denominator
+    // for activeClientUsers/invitedClientUsers below, so those two read as a
+    // breakdown of this total rather than two disconnected snapshots.
+    const createdClientUsers = await this.prisma.uSER.count({
+      where: {
+        role: {
+          in: ['organization_admin', 'organization_super_admin'],
+        },
+        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
+      },
+    });
+    result.createdClientUsers = createdClientUsers;
+
+    // 1b. Number of Active Client users (system users excluded)
     const activeClientUsers = await this.prisma.uSER.count({
       where: {
         role: {
