@@ -1429,6 +1429,7 @@ export class OrganizationService {
         status: true,
         salary: true,
         start_date: true,
+        hubspot_commission_start_date: true,
         created_at: true,
         updated_at: true,
         hubspot_id: true,
