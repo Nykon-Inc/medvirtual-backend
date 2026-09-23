@@ -121,6 +121,24 @@ export class OpenaiService {
   }
 
   /**
+   * Axios only puts the generic "Request failed with status code N" on
+   * `error.message` — the actual reason OpenRouter gives (e.g. which spend
+   * limit was hit) lives in `error.response.data`. Without this, a 402 tells
+   * us nothing beyond the status code.
+   */
+  private describeOpenRouterError(error: any): string {
+    const body = error?.response?.data;
+    if (body) {
+      try {
+        return typeof body === 'string' ? body : JSON.stringify(body);
+      } catch {
+        // Fall through to the generic message below.
+      }
+    }
+    return error?.message ?? String(error);
+  }
+
+  /**
    * Runs `primary` against OpenAI and, only when the account is out of credit,
    * retries through OpenRouter. Rate limits and every other error keep their
    * existing behaviour — the fallback is deliberately narrow.
@@ -166,7 +184,7 @@ export class OpenaiService {
         return result;
       } catch (fallbackError: any) {
         this.logger.error(
-          `[OpenRouter] fallback failed for ${label}: ${fallbackError?.message}`,
+          `[OpenRouter] fallback failed for ${label}: ${this.describeOpenRouterError(fallbackError)}`,
         );
         await this.notifyFallbackFailed(label, fallbackError);
         throw new BadRequestException(

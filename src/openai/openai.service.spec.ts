@@ -528,7 +528,7 @@ describe('OpenaiService', () => {
       mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
       mockOpenrouterService.editImage.mockResolvedValue({
         imagePath: '/tmp/123_avatarOR.png',
-        cost: 0.00003,
+        cost: 0.0392,
         model: 'google/gemini-2.5-flash-image',
         latencyMs: 3000,
       });
@@ -540,7 +540,7 @@ describe('OpenaiService', () => {
 
       expect(result).toEqual({
         imagePath: '/tmp/123_avatarOR.png',
-        cost: 0.00003,
+        cost: 0.0392,
       });
       expect(mockOpenrouterService.editImage).toHaveBeenCalled();
     });

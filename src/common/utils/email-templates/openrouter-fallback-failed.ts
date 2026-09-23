@@ -22,9 +22,25 @@ export default function openrouterFallbackFailed(
 
   const escapeHtml = escapeEmailHtml;
 
-  const errorMessage = escapeHtml(
-    error instanceof Error ? error.message : String(error),
-  );
+  // Axios only puts the generic "Request failed with status code N" on
+  // `error.message` — the actual reason (e.g. which OpenRouter spend limit
+  // was hit) lives in `error.response.data`, so prefer that when present.
+  const responseBody = (error as any)?.response?.data;
+  const rawErrorMessage = responseBody
+    ? (() => {
+        try {
+          return typeof responseBody === 'string'
+            ? responseBody
+            : JSON.stringify(responseBody);
+        } catch {
+          return error instanceof Error ? error.message : String(error);
+        }
+      })()
+    : error instanceof Error
+      ? error.message
+      : String(error);
+
+  const errorMessage = escapeHtml(rawErrorMessage);
 
   const errorStack = escapeHtml(
     error instanceof Error && error.stack

@@ -17,11 +17,16 @@ export const DEFAULT_VISION_MODELS = [
 export const DEFAULT_TEXT_MODELS = [...DEFAULT_VISION_MODELS];
 
 /**
- * No image-output model on OpenRouter is free. This is the cheapest one that
- * accepts a reference image: $0.00003/image against gpt-image-1's $0.04.
+ * No image-output model on OpenRouter is free — every free-tier model is
+ * text-output only, even the ones that accept an image as input.
+ * `openai/gpt-5-image-mini` is cheaper (~$0.01/image) but was tried and
+ * produced unsatisfactory avatar quality — reverted to this one, ~$0.04/image
+ * (image_output is billed per token, not per image: OpenRouter's own
+ * /models pricing lists $0.00003/token, and a 1024x1024 edit runs ~1300
+ * output tokens), on par with gpt-image-1's own $0.04/image.
  */
 export const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
-export const IMAGE_MODEL_COST = 0.00003;
+export const IMAGE_MODEL_COST = 0.0392;
 
 /** Free models are slow and queued; cap the wait so one cannot eat the Lambda budget. */
 export const OPENROUTER_TIMEOUT_MS = 90_000;

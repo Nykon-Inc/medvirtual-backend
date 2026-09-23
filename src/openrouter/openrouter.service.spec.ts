@@ -260,7 +260,7 @@ describe('OpenrouterService', () => {
       expect(body.input_references[0].image_url.url).toContain(
         'data:image/png;base64,',
       );
-      expect(result.cost).toBe(0.00003);
+      expect(result.cost).toBe(0.0392);
       expect(result.imagePath).toMatch(/_avatarOR\.png$/);
       expect(fs.writeFileSync).toHaveBeenCalled();
     });
