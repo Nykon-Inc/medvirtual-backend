@@ -417,6 +417,7 @@ export class StaffService {
         status: true,
         salary: true,
         start_date: true,
+        hubspot_commission_start_date: true,
         terminated_date: true,
         organization_id: true,
         created_at: true,
