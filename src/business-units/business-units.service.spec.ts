@@ -839,6 +839,65 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
     expect(result.affiliates).toBe(1);
   });
 
+  it('sets pipeline_status_origin on create only when the candidate is already in an "available" stage', async () => {
+    const prisma = makePrisma({
+      businessUnit: {
+        findUnique: jest.fn().mockResolvedValue(MMVA_BU),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const service = new (BusinessUnitsService as any)(
+      prisma,
+      makeAudit(),
+      makeBuContext(),
+      candidateAuditMock,
+    ) as BusinessUnitsService;
+
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: { results: [] } }) // companies
+      .mockResolvedValueOnce({ data: { results: [] } }) // contacts
+      .mockResolvedValueOnce({
+        data: {
+          results: [
+            {
+              id: 'va-available',
+              properties: {
+                hs_object_id: 'va-available',
+                email: 'available@b.com',
+                business_unit: 'MMVA',
+                hs_pipeline_stage: '261075105', // "Available Candidates"
+              },
+            },
+            {
+              id: 'va-new',
+              properties: {
+                hs_object_id: 'va-new',
+                email: 'new@b.com',
+                business_unit: 'MMVA',
+                hs_pipeline_stage: '942502182', // "New Candidates"
+              },
+            },
+          ],
+        },
+      }) // candidates (VA custom object)
+      .mockResolvedValueOnce({ data: { results: [] } }); // affiliates
+
+    await service.backfillFromHubspot('mmva');
+
+    const upsertCalls = (prisma.candidate.upsert as jest.Mock).mock.calls;
+    const availableCall = upsertCalls.find(
+      (call) => call[0].where.hubspot_id === 'va-available',
+    );
+    const newCandidateCall = upsertCalls.find(
+      (call) => call[0].where.hubspot_id === 'va-new',
+    );
+
+    expect(availableCall[0].create.pipeline_status_origin).toBe('261075105');
+    expect(newCandidateCall[0].create.pipeline_status_origin).toBeNull();
+  });
+
   it('is non-destructive — never calls deleteMany/delete for any of the 4 object types', async () => {
     const prisma = makePrisma({
       businessUnit: {

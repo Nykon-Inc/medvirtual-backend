@@ -23,6 +23,7 @@ import {
   mapContactToDb,
 } from '../common/utils/hubspot.util';
 import { candidadeToDbDictionary } from '../common/dictionaries/candidate-dictionary';
+import { availableStages } from '../common/dictionaries/stage-dictionary';
 import { contactToDbDictionary } from '../common/dictionaries/contact-dictionary';
 import { pace } from '../common/utils/pacing.util';
 
@@ -850,7 +851,10 @@ export class HubspotService {
         );
         const candidateData = mapHubspotToDb(result.properties);
 
-        if (candidateData.pipeline_status) {
+        if (
+          candidateData.pipeline_status &&
+          availableStages.includes(String(candidateData.pipeline_status))
+        ) {
           candidateData.pipeline_status_origin = candidateData.pipeline_status;
         }
 

@@ -24,3 +24,8 @@ export const stageToDbDictionary: Record<string, number> = Object.entries(
   },
   {} as Record<string, number>,
 );
+
+// Stages a candidate is considered "available" for placement — the only
+// stages pipeline_status_origin should ever be set to, since it's the stage
+// candidates are returned to when pulled out of a panel/hire request.
+export const availableStages = ['261075105', '1087596819'];

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { candidadeToDbDictionary } from '../../common/dictionaries/candidate-dictionary';
+import { availableStages } from '../../common/dictionaries/stage-dictionary';
 import { HandlerObjectCreation } from './objectCreation';
 import { CandidatesService } from '../../candidate/candidates.service';
 import {
@@ -109,6 +110,19 @@ export class HandlerObjectPropertyChange {
         },
         {} as Record<string, any>,
       );
+
+      // Candidates created while still in a non-available stage (e.g. "New
+      // Candidates") get pipeline_status_origin=null — backfill it the first
+      // time they're actually moved into an available stage, so returning
+      // them to origin later sends them to the right track (full-time vs
+      // part-time) instead of relying on a generic fallback.
+      if (
+        event.propertyName === 'hs_pipeline_stage' &&
+        !candidate.pipeline_status_origin &&
+        availableStages.includes(String(event.propertyValue))
+      ) {
+        updateData.pipeline_status_origin = event.propertyValue;
+      }
 
       await this.prisma.candidate.update({
         where: { id: candidate.id },

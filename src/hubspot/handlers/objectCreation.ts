@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import axios from 'axios';
 
 import { candidadeToDbDictionary } from '../../common/dictionaries/candidate-dictionary';
+import { availableStages } from '../../common/dictionaries/stage-dictionary';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CandidatesService } from '../../candidate/candidates.service';
 import {
@@ -58,7 +59,11 @@ export class HandlerObjectCreation {
         candidateData.pipeline_status = String(candidateData.pipeline_status)
           .split(';')[0]
           .trim();
-        candidateData.pipeline_status_origin = candidateData.pipeline_status;
+        // Origin must only ever be an "available" stage — it's where the
+        // candidate gets sent back to when pulled out of a panel/hire request.
+        if (availableStages.includes(candidateData.pipeline_status)) {
+          candidateData.pipeline_status_origin = candidateData.pipeline_status;
+        }
       }
       if (candidateData.employment_type) {
         candidateData.employment_type = String(candidateData.employment_type)

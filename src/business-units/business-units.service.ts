@@ -24,6 +24,7 @@ import {
 import { organizationToDbDictionary } from '../common/dictionaries/organization-dictionary';
 import { contactToDbDictionary } from '../common/dictionaries/contact-dictionary';
 import { candidadeToDbDictionary } from '../common/dictionaries/candidate-dictionary';
+import { availableStages } from '../common/dictionaries/stage-dictionary';
 import { affiliateToDbDictionary } from '../common/dictionaries/affiliate-dictionary';
 import {
   OrganizationStatus,
@@ -790,7 +791,13 @@ export class BusinessUnitsService {
           // makes for webhook-driven candidate creation.
           email: candidateData.email ?? `unknown+${hubspotId}@medvirtual.ai`,
           processing_status: 'pending',
-          pipeline_status_origin: candidateData.pipeline_status,
+          // Origin must only ever be an "available" stage — it's where the
+          // candidate gets sent back to when pulled out of a panel/hire request.
+          pipeline_status_origin: availableStages.includes(
+            String(candidateData.pipeline_status),
+          )
+            ? candidateData.pipeline_status
+            : null,
         } as Prisma.CandidateCreateInput,
         update: { ...candidateData },
       });

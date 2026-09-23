@@ -1624,6 +1624,119 @@ describe('HubspotService => createCandidates', () => {
     expect(fakePrisma.candidateLanguage.create).toHaveBeenCalledTimes(2);
   });
 
+  it('should set pipeline_status_origin when the candidate is created already in an "available" stage', async () => {
+    const fakePrisma = {
+      candidate: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'new-id' }),
+        update: jest.fn(),
+        findMany: jest.fn(),
+      },
+      candidateSkill: { create: jest.fn(), deleteMany: jest.fn() },
+      candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
+      organization: { findMany: jest.fn(), update: jest.fn() },
+      contact: { findUnique: jest.fn(), create: jest.fn() },
+      uSER: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    };
+
+    const { Client } = jest.requireMock('@hubspot/api-client');
+    Client.mockImplementation(() => ({
+      crm: {
+        objects: {
+          searchApi: {
+            doSearch: jest.fn().mockResolvedValue({
+              results: [
+                {
+                  properties: {
+                    hs_object_id: '111',
+                    name: 'Available VA',
+                    pipeline_status: '261075105', // "Available Candidates"
+                  },
+                },
+              ],
+              total: 1,
+            }),
+          },
+          batchApi: { update: jest.fn() },
+          basicApi: { update: jest.fn() },
+        },
+      },
+    }));
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
+        { provide: PrismaService, useValue: fakePrisma },
+      ],
+    }).compile();
+    const svc = module.get<HubspotService>(HubspotService);
+
+    await svc.createCandidates('stage1');
+
+    expect(fakePrisma.candidate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pipeline_status: '261075105',
+          pipeline_status_origin: '261075105',
+        }),
+      }),
+    );
+  });
+
+  it('should not set pipeline_status_origin when the candidate is created outside an "available" stage', async () => {
+    const fakePrisma = {
+      candidate: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'new-id' }),
+        update: jest.fn(),
+        findMany: jest.fn(),
+      },
+      candidateSkill: { create: jest.fn(), deleteMany: jest.fn() },
+      candidateLanguage: { create: jest.fn(), deleteMany: jest.fn() },
+      organization: { findMany: jest.fn(), update: jest.fn() },
+      contact: { findUnique: jest.fn(), create: jest.fn() },
+      uSER: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    };
+
+    const { Client } = jest.requireMock('@hubspot/api-client');
+    Client.mockImplementation(() => ({
+      crm: {
+        objects: {
+          searchApi: {
+            doSearch: jest.fn().mockResolvedValue({
+              results: [
+                {
+                  properties: {
+                    hs_object_id: '111',
+                    name: 'New VA',
+                    pipeline_status: '942502182', // "New Candidates"
+                  },
+                },
+              ],
+              total: 1,
+            }),
+          },
+          batchApi: { update: jest.fn() },
+          basicApi: { update: jest.fn() },
+        },
+      },
+    }));
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ...buildProviders().filter((p) => p.provide !== PrismaService),
+        { provide: PrismaService, useValue: fakePrisma },
+      ],
+    }).compile();
+    const svc = module.get<HubspotService>(HubspotService);
+
+    await svc.createCandidates('stage1');
+
+    const createArgs = fakePrisma.candidate.create.mock.calls[0][0];
+    expect(createArgs.data.pipeline_status).toBe('942502182');
+    expect(createArgs.data.pipeline_status_origin).toBeUndefined();
+  });
+
   it('should skip creation when candidate already exists in DB', async () => {
     const fakePrisma = {
       candidate: {

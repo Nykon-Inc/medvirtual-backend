@@ -91,4 +91,69 @@ describe('HandlerObjectPropertyChange', () => {
 
     expect(candidateAuditMock.log).not.toHaveBeenCalled();
   });
+
+  it('should backfill pipeline_status_origin when a candidate with no origin moves into an "available" stage', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      email: 'jane@example.com',
+      name: 'Jane Doe',
+      pipeline_status_origin: null,
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '1087596819', // "Available Candidates - Part Time"
+    });
+
+    expect(prismaMock.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pipeline_status: '1087596819',
+          pipeline_status_origin: '1087596819',
+        }),
+      }),
+    );
+  });
+
+  it('should NOT overwrite an existing pipeline_status_origin when the candidate moves into an "available" stage again', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      email: 'jane@example.com',
+      name: 'Jane Doe',
+      pipeline_status_origin: '261075105',
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '1087596819', // "Available Candidates - Part Time"
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+    expect(updateArgs.data.pipeline_status).toBe('1087596819');
+    expect(updateArgs.data.pipeline_status_origin).toBeUndefined();
+  });
+
+  it('should NOT set pipeline_status_origin when the candidate moves into a non-available stage', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      email: 'jane@example.com',
+      name: 'Jane Doe',
+      pipeline_status_origin: null,
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '942502182', // "New Candidates"
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+    expect(updateArgs.data.pipeline_status).toBe('942502182');
+    expect(updateArgs.data.pipeline_status_origin).toBeUndefined();
+  });
 });
