@@ -85,131 +85,6 @@ describe('OpenaiService', () => {
 
   describe('extractDataFromResumeImages', () => {
     const mockImagePaths = ['/path/to/image1.png'];
-    const mockExtractedData = {
-      bio: 'Test Bio',
-      experience: [],
-      education: [],
-      skills: [],
-    };
-
-    beforeEach(() => {
-      (fs.readFileSync as jest.Mock).mockReturnValue(
-        Buffer.from('mock-image-data'),
-      );
-    });
-
-    it('should successfully extract data from images', async () => {
-      mockChatCreate.mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify(mockExtractedData),
-            },
-          },
-        ],
-      });
-
-      const result = await service.extractDataFromResumeImages(mockImagePaths);
-
-      expect(result).toEqual({ data: mockExtractedData, cost: 0 });
-      expect(fs.readFileSync).toHaveBeenCalledWith(mockImagePaths[0]);
-      expect(mockChatCreate).toHaveBeenCalled();
-    });
-
-    it('should handle insufficient quota error and send email', async () => {
-      const error = { type: 'insufficient_quota' };
-      mockChatCreate.mockRejectedValue(error);
-
-      // Mock no email sent today
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockMailService.sendMail.mockResolvedValue(true);
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
-
-      expect(mockPrismaService.mail_Settings.findFirst).toHaveBeenCalled();
-      expect(mockMailService.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: 'shayan@regenta.ai',
-          subject: 'Insufficient Quota from OpenAI',
-        }),
-      );
-      expect(mockPrismaService.mail_Settings.create).toHaveBeenCalledWith({
-        data: { title: 'insufficient_quota' },
-      });
-    });
-
-    it('should not send email if already sent today for insufficient quota', async () => {
-      const error = { type: 'insufficient_quota' };
-      mockChatCreate.mockRejectedValue(error);
-
-      // Mock email already sent
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue({ id: '1' });
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
-
-      expect(mockPrismaService.mail_Settings.findFirst).toHaveBeenCalled();
-      expect(mockMailService.sendMail).not.toHaveBeenCalled();
-      expect(mockPrismaService.mail_Settings.create).not.toHaveBeenCalled();
-    });
-
-    it('should handle rate limit error without falling back', async () => {
-      mockChatCreate.mockRejectedValue({
-        status: 429,
-        code: 'rate_limit_exceeded',
-      });
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('Rate limit exceeded. Please try again later.');
-      expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
-    });
-
-    it('should handle unexpected errors without falling back', async () => {
-      mockChatCreate.mockRejectedValue(new Error('Unexpected error'));
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow(
-        'Unexpected error requesting OpenAI on extractDataFromResumeImages.',
-      );
-      expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
-    });
-
-    it('should NOT fall back on a 5xx error', async () => {
-      mockChatCreate.mockRejectedValue({ status: 503 });
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
-    });
-
-    it('should fall back to OpenRouter on insufficient quota', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockOpenrouterService.chatJson.mockResolvedValue({
-        data: { bio: 'from openrouter', experience: [{ company: 'X' }] },
-        cost: 0,
-        model: 'google/gemma-4-26b-a4b-it:free',
-        latencyMs: 1200,
-      });
-
-      const result = await service.extractDataFromResumeImages(mockImagePaths);
-
-      // Contract preserved exactly, so processData needs no changes.
-      expect(result.cost).toBe(0);
-      expect(result.data.bio).toBe('from openrouter');
-      expect(result.data.experience).toHaveLength(1);
-      expect(result.data.experience[0].company).toBe('X');
-      expect(mockOpenrouterService.chatJson).toHaveBeenCalled();
-      // The alert still fires even though the fallback succeeded.
-      expect(mockMailService.sendMail).toHaveBeenCalled();
-    });
 
     /**
      * Mirrors the real chatJson, which runs `validate` inside the model
@@ -227,10 +102,34 @@ describe('OpenaiService', () => {
         }),
       );
 
-    it('should unwrap a fallback payload nested under a "0" key', async () => {
+    beforeEach(() => {
+      (fs.readFileSync as jest.Mock).mockReturnValue(
+        Buffer.from('mock-image-data'),
+      );
+      // OpenRouter is primary for this pipeline — it's free — so it must be
+      // enabled by default here, unlike the rest of the suite.
       process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+    });
+
+    it('should successfully extract data via OpenRouter without touching OpenAI', async () => {
+      mockOpenrouterService.chatJson.mockResolvedValue({
+        data: { bio: 'from openrouter', experience: [{ company: 'X' }] },
+        cost: 0,
+        model: 'google/gemma-4-26b-a4b-it:free',
+        latencyMs: 1200,
+      });
+
+      const result = await service.extractDataFromResumeImages(mockImagePaths);
+
+      expect(result.cost).toBe(0);
+      expect(result.data.bio).toBe('from openrouter');
+      expect(result.data.experience[0].company).toBe('X');
+      expect(mockOpenrouterService.chatJson).toHaveBeenCalled();
+      expect(mockChatCreate).not.toHaveBeenCalled();
+      expect(mockMailService.sendMail).not.toHaveBeenCalled();
+    });
+
+    it('should unwrap an OpenRouter payload nested under a "0" key', async () => {
       // The exact schema violation seen in production.
       chatJsonHonouringValidate({
         '0': {
@@ -249,66 +148,132 @@ describe('OpenaiService', () => {
       expect(result.data.experience).toHaveLength(1);
       expect(result.data.education).toHaveLength(1);
       expect(result.data['0']).toBeUndefined();
+      expect(mockChatCreate).not.toHaveBeenCalled();
     });
 
-    it('should reject an empty fallback extraction instead of returning it', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      // Must reject: updateFromJson deletes education/experience before
-      // reinserting, so returning this would wipe the candidate's real data
-      // and still mark them `completed`.
+    it('should fall back to OpenAI when OpenRouter returns an empty extraction', async () => {
+      // Must reject rather than return: updateFromJson deletes the
+      // candidate's education/experience before reinserting, so an empty
+      // result would wipe real data and still mark them `completed`.
       chatJsonHonouringValidate({});
+      mockChatCreate.mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                bio: 'from openai',
+                experience: [],
+                education: [],
+                skills: [],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      });
 
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow();
+      const result = await service.extractDataFromResumeImages(mockImagePaths);
+
+      expect(result.data.bio).toBe('from openai');
+      expect(mockChatCreate).toHaveBeenCalled();
     });
 
-    it('should not fall back when OPENROUTER_API_KEY is absent', async () => {
-      delete process.env.OPENROUTER_API_KEY;
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+    it('should fall back to OpenAI on ANY OpenRouter error, not just quota', async () => {
+      mockOpenrouterService.chatJson.mockRejectedValue(
+        new Error('free model timed out'),
+      );
+      mockChatCreate.mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                bio: 'from openai',
+                experience: [],
+                education: [],
+                skills: [],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      });
 
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
+      const result = await service.extractDataFromResumeImages(mockImagePaths);
+
+      expect(result.data.bio).toBe('from openai');
+      expect(mockChatCreate).toHaveBeenCalled();
+      // No quota/credits alert — OpenRouter failing is not an OpenAI billing event.
+      expect(mockMailService.sendMail).not.toHaveBeenCalled();
+    });
+
+    it('should compute OpenAI fallback cost from usage', async () => {
+      mockOpenrouterService.chatJson.mockRejectedValue(new Error('or down'));
+      mockChatCreate.mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                bio: 'from openai',
+                experience: [],
+                education: [],
+                skills: [],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 1000, completion_tokens: 1000 },
+      });
+
+      const result = await service.extractDataFromResumeImages(mockImagePaths);
+
+      expect(result.cost).toBeCloseTo(0.00015 + 0.0006, 6);
+    });
+
+    it('should go straight to OpenAI when OPENROUTER_API_KEY is absent', async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      mockChatCreate.mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                bio: 'from openai',
+                experience: [],
+                education: [],
+                skills: [],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      });
+
+      const result = await service.extractDataFromResumeImages(mockImagePaths);
+
+      expect(result.data.bio).toBe('from openai');
       expect(mockOpenrouterService.chatJson).not.toHaveBeenCalled();
     });
 
-    it('should surface the credits message when the fallback also fails', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockOpenrouterService.chatJson.mockRejectedValue(new Error('or down'));
-
-      await expect(
-        service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
-    });
-
-    it('should alert paulo@regenta.ai when the fallback also fails', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+    it('should throw and alert paulo@regenta.ai when both providers fail', async () => {
       mockOpenrouterService.chatJson.mockRejectedValue(
         new Error('openrouter exploded'),
       );
+      mockChatCreate.mockRejectedValue(new Error('openai also down'));
+      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+      mockMailService.sendMail.mockResolvedValue(true);
 
       await expect(
         service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('openai also down');
 
-      // Both alerts fire: the quota one, then the fallback-failure one.
-      expect(mockMailService.sendMail).toHaveBeenCalledTimes(2);
-
-      const failureMail = mockMailService.sendMail.mock.calls[1][0];
+      expect(mockMailService.sendMail).toHaveBeenCalledTimes(1);
+      const failureMail = mockMailService.sendMail.mock.calls[0][0];
       expect(failureMail.to).toBe('paulo@regenta.ai');
       expect(failureMail.subject).toBe(
         'OpenRouter Fallback Failed - Both AI Providers Down',
       );
-      expect(failureMail.html).toContain('openrouter exploded');
+      expect(failureMail.html).toContain('openai also down');
       expect(failureMail.html).toContain('extractDataFromResumeImages');
+      expect(failureMail.html).toContain('OpenAI Error');
 
       expect(mockPrismaService.mail_Settings.create).toHaveBeenCalledWith({
         data: { title: 'openrouter_fallback_failed' },
@@ -316,51 +281,41 @@ describe('OpenaiService', () => {
     });
 
     it('should dedupe the fallback failure alert within the same day', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      // Quota alert not yet sent, fallback-failure alert already sent today.
-      mockPrismaService.mail_Settings.findFirst
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'already-sent' });
       mockOpenrouterService.chatJson.mockRejectedValue(new Error('or down'));
+      mockChatCreate.mockRejectedValue(new Error('openai also down'));
+      mockPrismaService.mail_Settings.findFirst.mockResolvedValue({
+        id: 'already-sent',
+      });
 
       await expect(
         service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow('openai also down');
 
-      // Only the quota alert went out.
-      expect(mockMailService.sendMail).toHaveBeenCalledTimes(1);
+      expect(mockMailService.sendMail).not.toHaveBeenCalled();
     });
 
-    it('should not alert about the fallback when it succeeds', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockOpenrouterService.chatJson.mockResolvedValue({
-        data: { bio: 'ok' },
-        cost: 0,
-        model: 'google/gemma-4-26b-a4b-it:free',
-        latencyMs: 100,
-      });
-
-      await service.extractDataFromResumeImages(mockImagePaths);
-
-      expect(mockMailService.sendMail).toHaveBeenCalledTimes(1);
-      expect(mockMailService.sendMail.mock.calls[0][0].subject).toBe(
-        'Insufficient Quota from OpenAI',
-      );
-    });
-
-    it('should still throw the credits error if the alert itself fails', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValue(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+    it('should still throw the underlying OpenAI error if the alert itself fails', async () => {
       mockOpenrouterService.chatJson.mockRejectedValue(new Error('or down'));
+      mockChatCreate.mockRejectedValue(new Error('openai also down'));
+      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
       mockMailService.sendMail.mockRejectedValue(new Error('resend down'));
 
       await expect(
         service.extractDataFromResumeImages(mockImagePaths),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
+      ).rejects.toThrow('openai also down');
+    });
+
+    it('should throw when OPENAI_API_KEY is missing and OpenRouter also failed', async () => {
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_API_KEY_RESUME_EXTRACTION;
+      mockOpenrouterService.chatJson.mockRejectedValue(new Error('or down'));
+      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.extractDataFromResumeImages(mockImagePaths),
+      ).rejects.toThrow(
+        'OPENAI_API_KEY is not defined in environment variables',
+      );
     });
   });
 

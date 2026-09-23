@@ -85,6 +85,7 @@ export class OpenaiService {
   private async notifyFallbackFailed(
     operation: string,
     error: unknown,
+    primaryProvider: 'openai' | 'openrouter' = 'openai',
   ): Promise<void> {
     try {
       const start = new Date();
@@ -104,7 +105,12 @@ export class OpenaiService {
         from: 'MedVirtual <noreply@medvirtual.ai>',
         to: 'paulo@regenta.ai',
         subject: 'OpenRouter Fallback Failed - Both AI Providers Down',
-        html: openrouter_fallback_failed(operation, error, new Date()),
+        html: openrouter_fallback_failed(
+          operation,
+          error,
+          new Date(),
+          primaryProvider,
+        ),
       });
       if (!mailSent) {
         this.logger.warn('Failed to send OpenRouter fallback failure email.');
@@ -137,6 +143,27 @@ export class OpenaiService {
     }
     return error?.message ?? String(error);
   }
+
+  /**
+   * Provider order is deliberately NOT the same for every pipeline:
+   *
+   * - Avatar generation (`generateAvatarWithScreenshoot`) → OpenAI first,
+   *   OpenRouter as fallback (`withQuotaFallback`, only on insufficient_quota).
+   *   OpenRouter's cheapest working image model was tried as primary and
+   *   produced unsatisfactory avatar quality in production, so OpenAI stays
+   *   primary here even though it's the paid option — see
+   *   `openrouter.config.ts` for that history.
+   * - Resume extraction (`extractDataFromResumeImages`) → OpenRouter first,
+   *   OpenAI as fallback (`withOpenRouterFirst`, on ANY OpenRouter error).
+   *   OpenRouter's free models are good enough for structured text
+   *   extraction, so they run first to avoid OpenAI cost; OpenAI is the paid
+   *   safety net when every free model in the cascade fails.
+   *
+   * Do not merge these into one helper — the two use opposite primaries and
+   * opposite error-classification strictness (narrow quota-only vs. any
+   * error), so a shared implementation would have to smuggle that difference
+   * back in via a flag anyway.
+   */
 
   /**
    * Runs `primary` against OpenAI and, only when the account is out of credit,
@@ -190,6 +217,44 @@ export class OpenaiService {
         throw new BadRequestException(
           'You dont have credits. Check your plan/billing.',
         );
+      }
+    }
+  }
+
+  /**
+   * Runs `primary` against OpenRouter first — it's free — and falls back to
+   * OpenAI on ANY failure, not just quota errors. Unlike `withQuotaFallback`,
+   * this is used where OpenRouter is the preferred provider and OpenAI is the
+   * paid safety net, so the error classification is intentionally broad: a
+   * free model timing out, returning malformed JSON, or OpenRouter itself
+   * being down must all still produce a result via OpenAI.
+   */
+  private async withOpenRouterFirst<T>(
+    label: string,
+    primary: () => Promise<T>,
+    fallback: () => Promise<T>,
+  ): Promise<T> {
+    if (!isOpenRouterEnabled()) {
+      return fallback();
+    }
+
+    try {
+      return await primary();
+    } catch (primaryError: any) {
+      this.logger.warn(
+        `[OpenRouter] primary failed for ${label}: ${this.describeOpenRouterError(primaryError)} — falling back to OpenAI`,
+      );
+
+      try {
+        const result = await fallback();
+        this.logger.warn(`[OpenAI] fallback succeeded for ${label}`);
+        return result;
+      } catch (fallbackError: any) {
+        this.logger.error(
+          `[OpenAI] fallback failed for ${label}: ${fallbackError?.message}`,
+        );
+        await this.notifyFallbackFailed(label, fallbackError, 'openrouter');
+        throw fallbackError;
       }
     }
   }
@@ -496,20 +561,51 @@ export class OpenaiService {
   async extractDataFromResumeImages(
     imagePaths: string[],
   ): Promise<{ data: any; cost: number }> {
-    const apiKey =
-      process.env.OPENAI_API_KEY_RESUME_EXTRACTION ||
-      process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'OPENAI_API_KEY is not defined in environment variables',
-      );
-    }
     // Built once so both providers receive byte-identical input.
     const contentPayload = buildResumeExtractionPayload(imagePaths);
 
-    return this.withQuotaFallback(
+    return this.withOpenRouterFirst(
       'extractDataFromResumeImages',
       async () => {
+        const result = await this.openrouter.chatJson<any>(contentPayload, {
+          temperature: 0.1,
+          maxTokens: 4500,
+          // Runs per model inside the cascade: free models often break the
+          // schema (e.g. wrapping the payload in a "0" key), and an empty
+          // result must be rejected rather than returned — updateFromJson
+          // deletes the candidate's education/experience before reinserting,
+          // so returning it wipes real data and still marks them `completed`.
+          // Throwing here advances to the next free model; exhausting them all
+          // falls through to the OpenAI fallback below.
+          validate: (raw) => {
+            const data = normalizeResumeExtraction(raw);
+            if (
+              imagePaths.length > 0 &&
+              !data?.bio &&
+              !data?.experience?.length
+            ) {
+              throw new BadRequestException(
+                `OpenRouter returned an empty resume extraction for ${imagePaths.length} page(s).`,
+              );
+            }
+            return data;
+          },
+        });
+        this.logger.warn(
+          `[OpenRouter] resume extraction served by ${result.model}`,
+        );
+        return { data: result.data, cost: result.cost };
+      },
+      async () => {
+        const apiKey =
+          process.env.OPENAI_API_KEY_RESUME_EXTRACTION ||
+          process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new BadRequestException(
+            'OPENAI_API_KEY is not defined in environment variables',
+          );
+        }
+
         const openai = new OpenAI({ apiKey });
         const response = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
@@ -531,36 +627,6 @@ export class OpenaiService {
           data: result ? normalizeResumeExtraction(parseJsonLoose(result)) : {},
           cost,
         };
-      },
-      async () => {
-        const result = await this.openrouter.chatJson<any>(contentPayload, {
-          temperature: 0.1,
-          maxTokens: 4500,
-          // Runs per model inside the cascade: free models often break the
-          // schema (e.g. wrapping the payload in a "0" key), and an empty
-          // result must be rejected rather than returned — updateFromJson
-          // deletes the candidate's education/experience before reinserting,
-          // so returning it wipes real data and still marks them `completed`.
-          // Throwing here advances to the next free model; exhausting them all
-          // leaves the candidate `failed` for the daily cron to retry.
-          validate: (raw) => {
-            const data = normalizeResumeExtraction(raw);
-            if (
-              imagePaths.length > 0 &&
-              !data?.bio &&
-              !data?.experience?.length
-            ) {
-              throw new BadRequestException(
-                `OpenRouter returned an empty resume extraction for ${imagePaths.length} page(s).`,
-              );
-            }
-            return data;
-          },
-        });
-        this.logger.warn(
-          `[OpenRouter] resume extraction served by ${result.model}`,
-        );
-        return { data: result.data, cost: result.cost };
       },
     );
   }

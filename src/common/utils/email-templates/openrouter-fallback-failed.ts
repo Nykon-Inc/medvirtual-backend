@@ -2,14 +2,19 @@ import { EmailHeader, EmailFooter } from './components';
 import { escapeEmailHtml } from './escape';
 
 /**
- * Sent when OpenAI is out of credit AND the OpenRouter fallback also failed,
- * meaning nothing processed the request. Error text is escaped because provider
- * messages can contain markup that would otherwise break the email body.
+ * Sent when a primary AI provider fails AND its fallback also failed, meaning
+ * nothing processed the request. Used both when OpenAI is primary (quota
+ * exhausted, OpenRouter fallback fails too) and when OpenRouter is primary
+ * (any error, OpenAI fallback fails too) — `primaryProvider` picks the copy so
+ * the alert always names who failed first. Error text is escaped because
+ * provider messages can contain markup that would otherwise break the email
+ * body.
  */
 export default function openrouterFallbackFailed(
   operation: string,
   error: unknown,
   failedAt: Date,
+  primaryProvider: 'openai' | 'openrouter' = 'openai',
 ) {
   const formatDate = (d: Date) =>
     d.toLocaleDateString('en-US', {
@@ -48,6 +53,23 @@ export default function openrouterFallbackFailed(
       : 'No stack trace available',
   );
 
+  const isOpenRouterPrimary = primaryProvider === 'openrouter';
+  const failureSummary = isOpenRouterPrimary
+    ? `OpenRouter failed and the OpenAI fallback also failed on <strong>${formatDate(failedAt)}</strong>. The operation <strong>${escapeHtml(operation)}</strong> did not complete.`
+    : `OpenAI reported <strong>insufficient quota</strong> and the OpenRouter fallback also failed on <strong>${formatDate(failedAt)}</strong>. The operation <strong>${escapeHtml(operation)}</strong> did not complete.`;
+  const errorSectionTitle = isOpenRouterPrimary
+    ? 'OpenAI Error'
+    : 'OpenRouter Error';
+  const checklist = isOpenRouterPrimary
+    ? `<li>Whether <strong>OPENAI_API_KEY_RESUME_EXTRACTION</strong> / <strong>OPENAI_API_KEY</strong> is still valid and has credit.</li>
+        <li>Whether the OpenRouter account still has free-tier requests available for today.</li>
+        <li>Whether <strong>OPENROUTER_API_KEY</strong> is still valid.</li>
+        <li>Whether the configured models in <strong>OPENROUTER_VISION_MODELS</strong> / <strong>OPENROUTER_TEXT_MODELS</strong> are still available.</li>`
+    : `<li>Whether the OpenRouter account still has free-tier requests available for today.</li>
+        <li>Whether <strong>OPENROUTER_API_KEY</strong> is still valid.</li>
+        <li>Whether the configured models in <strong>OPENROUTER_VISION_MODELS</strong> are still available.</li>
+        <li>Restoring OpenAI credits, which removes the dependency on the fallback entirely.</li>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,10 +88,10 @@ export default function openrouterFallbackFailed(
     <div style="padding:24px 24px 8px;">
       <div style="background-color:#fdecea;border-left:4px solid #c62828;padding:16px;border-radius:4px;margin-bottom:20px;">
         <p style="color:#c62828;font-size:16px;font-weight:700;margin:0 0 4px;">Both AI providers failed</p>
-        <p style="color:#333;font-size:14px;margin:0;">OpenAI reported <strong>insufficient quota</strong> and the OpenRouter fallback also failed on <strong>${formatDate(failedAt)}</strong>. The operation <strong>${escapeHtml(operation)}</strong> did not complete.</p>
+        <p style="color:#333;font-size:14px;margin:0;">${failureSummary}</p>
       </div>
 
-      <h3 style="color:#181D27;margin-bottom:8px;">OpenRouter Error</h3>
+      <h3 style="color:#181D27;margin-bottom:8px;">${errorSectionTitle}</h3>
       <div style="background-color:#f5f5f5;border:1px solid #ccc;border-radius:4px;padding:14px;margin-bottom:20px;">
         <p style="color:#c62828;font-size:14px;margin:0;word-break:break-word;">${errorMessage}</p>
       </div>
@@ -81,10 +103,7 @@ export default function openrouterFallbackFailed(
 
       <h3 style="color:#181D27;margin-bottom:8px;">What to check</h3>
       <ul style="color:#555;font-size:14px;line-height:1.6;margin:0 0 24px;padding-left:20px;">
-        <li>Whether the OpenRouter account still has free-tier requests available for today.</li>
-        <li>Whether <strong>OPENROUTER_API_KEY</strong> is still valid.</li>
-        <li>Whether the configured models in <strong>OPENROUTER_VISION_MODELS</strong> are still available.</li>
-        <li>Restoring OpenAI credits, which removes the dependency on the fallback entirely.</li>
+        ${checklist}
       </ul>
 
       <p style="color:#555;font-size:14px;">Affected candidates are left in a <strong>failed</strong> state and will be retried by the daily cron job.</p>
