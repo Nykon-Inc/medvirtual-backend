@@ -177,6 +177,17 @@ describe('PanelService', () => {
       mockCandidateNoHeadshot,
     ]);
 
+    // 13b. pendingAvatarGeneration (candidate.findMany)
+    const mockCandidatePendingAvatar = {
+      ...mockCandidateFailed,
+      id: 4,
+      headshot_url: 'https://example.com/headshot.png',
+      avatar_url: null,
+    };
+    (prisma.candidate.findMany as jest.Mock).mockResolvedValueOnce([
+      mockCandidatePendingAvatar,
+    ]);
+
     // Prefetch for the admin/client deployment split (once for the whole range, before the loop):
     // panelCandidate.findMany (deployed candidates), candidateAuditLog.findMany (correlated audit rows)
     (prisma.panelCandidate.findMany as jest.Mock).mockResolvedValueOnce([]);
@@ -262,6 +273,9 @@ describe('PanelService', () => {
 
     // without headshot
     expect(result.withoutHeadshot).toHaveLength(1);
+
+    // pending avatar generation (has headshot, avatar not generated yet)
+    expect(result.pendingAvatarGeneration).toHaveLength(1);
 
     // monthly stats
     expect(result.monthlyData).toHaveLength(12);

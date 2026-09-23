@@ -632,6 +632,59 @@ export class PanelService {
     });
     result.withoutHeadshot = CandwithoutHeadshot;
 
+    // Candidates with a real headshot but no avatar generated yet — the same
+    // set processAllAvatars() targets. A growing list here usually means the
+    // OpenRouter/OpenAI avatar generation is failing on credits, not that the
+    // candidates are missing a photo (see withoutHeadshot for that case).
+    const pendingAvatarGeneration = await this.prisma.candidate.findMany({
+      where: {
+        pipeline_status: {
+          in: ['261075105', '1087596819'],
+        },
+        headshot_url: { contains: 'http' },
+        avatar_url: null,
+        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
+      },
+      select: selectCandidates,
+    });
+
+    const pendingAvatarGenerationPoolMap = await this.buildCandidatePoolMap(
+      pendingAvatarGeneration,
+    );
+    const CandPendingAvatarGeneration = pendingAvatarGeneration.map(
+      (candidate) => {
+        const rates = computeCandidateRates(
+          candidate,
+          configByPosition,
+          pendingAvatarGenerationPoolMap.get(candidate.business_unit ?? '') ??
+            'medical',
+        );
+        return {
+          ...candidate,
+          employment_type:
+            changeLabelAvailability(
+              dbToStageDictionary[Number(candidate.employment_type)],
+            ) || candidate.employment_type,
+          approved_positions_pairing:
+            candidate.approved_positions_pairing?.map(
+              getApprovedPositionLabel,
+            ) || [],
+          ...rates,
+          avatar: candidate.avatar_url
+            ? `${process.env.AVATAR_URL}${candidate.avatar_url}`
+            : null,
+          panelCandidates: candidate.panelCandidates
+            ? candidate.panelCandidates.map((pc) => ({
+                title: pc.panel.hireRequest.title,
+                organization_name: pc.panel.hireRequest.organization.name,
+                status: 'test',
+              }))
+            : [],
+        };
+      },
+    );
+    result.pendingAvatarGeneration = CandPendingAvatarGeneration;
+
     // Monthly data: dynamic range based on dateFrom/dateTo, defaults to last 12 months
     const today = new Date();
     const currentYear = today.getFullYear();
