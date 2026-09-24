@@ -32,6 +32,23 @@ import { AuthResendCodeReturnDto } from './dto/authResendCodeReturn.dto';
 import { AuthUpdatePasswordDto } from './dto/authSetPassword.dto';
 import { AffiliateUpdateService } from '../hubspot/update/affiliate';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { USER, UserAuditSource } from '@prisma/client';
+import {
+  AuditRequestContext,
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+  auditActor,
+  changedSlice,
+} from '../user-audit/user-audit.service';
+
+type LoginFailureReason =
+  | 'user_not_found'
+  | 'not_active'
+  | 'no_organization'
+  | 'org_inactive'
+  | 'wrong_auth_method'
+  | 'unverified'
+  | 'bad_password';
 
 @Injectable()
 export class AuthService {
@@ -42,16 +59,48 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly affiliateUpdateService: AffiliateUpdateService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
-  async signIn(data: AuthSignInDto): Promise<object> {
+  /**
+   * Records a rejected login and hands the exception back to be thrown. Nothing else persists
+   * a failed login (and a successful one revokes every other session), so this row is the only
+   * trace of a brute-force attempt.
+   */
+  private async loginFailure(
+    email: string,
+    user: USER | null,
+    reason: LoginFailureReason,
+    error: Error,
+    ctx?: AuditRequestContext,
+  ): Promise<Error> {
+    await this.userAudit.log({
+      subject: user ?? { email },
+      event: USER_AUDIT_EVENTS.LOGIN_FAILED,
+      source: UserAuditSource.user,
+      reason,
+      metadata: { ...ctx, user_status: user?.status ?? null },
+    });
+    return error;
+  }
+
+  async signIn(
+    data: AuthSignInDto,
+    ctx?: AuditRequestContext,
+  ): Promise<object> {
     const timeToExpires = data.rememberMe
       ? 7 * 24 * 60 * 60 * 1000
       : 8 * 60 * 60 * 1000;
     const authenticationMethod = 'OwnSign';
     const user = await this.userService.findByEmail(data.email);
     if (!user) {
-      throw new UnauthorizedException('User not found with this email');
+      throw await this.loginFailure(
+        data.email,
+        null,
+        'user_not_found',
+        new UnauthorizedException('User not found with this email'),
+        ctx,
+      );
     }
     // Check user status - only allow active users to login
     if (user.status !== 'active') {
@@ -86,15 +135,27 @@ export class AuthService {
           errorMessage = 'This user does not have permission to log in.';
       }
 
-      throw new UnauthorizedException(errorMessage);
+      throw await this.loginFailure(
+        data.email,
+        user,
+        'not_active',
+        new UnauthorizedException(errorMessage),
+        ctx,
+      );
     }
     // System admins don't need to belong to an organization
     if (
       !user.organization_id &&
       !['system_super_admin', 'system_admin', 'affiliate'].includes(user.role)
     ) {
-      throw new UnauthorizedException(
-        'User does not belong to any organization. Please contact support.',
+      throw await this.loginFailure(
+        data.email,
+        user,
+        'no_organization',
+        new UnauthorizedException(
+          'User does not belong to any organization. Please contact support.',
+        ),
+        ctx,
       );
     }
 
@@ -109,27 +170,51 @@ export class AuthService {
         },
       });
       if (!organization || organization.status === 'inactive') {
-        throw new UnauthorizedException(
-          'User organization not found or inactive. Please contact support.',
+        throw await this.loginFailure(
+          data.email,
+          user,
+          'org_inactive',
+          new UnauthorizedException(
+            'User organization not found or inactive. Please contact support.',
+          ),
+          ctx,
         );
       }
       business_unit = organization.business_unit;
     }
 
     if (user.authentication_method !== authenticationMethod) {
-      throw new UnauthorizedException(
-        'User does not use this authentication method. You need to Sign in with the first method you have used',
+      throw await this.loginFailure(
+        data.email,
+        user,
+        'wrong_auth_method',
+        new UnauthorizedException(
+          'User does not use this authentication method. You need to Sign in with the first method you have used',
+        ),
+        ctx,
       );
     }
 
     if (!user.verified) {
-      throw new UnauthorizedException('User not verified');
+      throw await this.loginFailure(
+        data.email,
+        user,
+        'unverified',
+        new UnauthorizedException('User not verified'),
+        ctx,
+      );
     }
 
     const isMatch = await bcrypt.compare(data.password, user.password);
 
     if (!isMatch) {
-      throw new BadRequestException('Invalid password');
+      throw await this.loginFailure(
+        data.email,
+        user,
+        'bad_password',
+        new BadRequestException('Invalid password'),
+        ctx,
+      );
     }
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
@@ -153,6 +238,14 @@ export class AuthService {
     if (!session) {
       throw new BadRequestException('Failed to create session');
     }
+
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.LOGIN_SUCCEEDED,
+      source: UserAuditSource.user,
+      ...auditActor(user),
+      metadata: { ...ctx, remember_me: !!data.rememberMe },
+    });
 
     let affiliateId;
     // lets check if the affiliate is active. If not, we cannot send the affiliate profile id in the response, because the frontend need to know if the affiliate is active or not
@@ -232,6 +325,18 @@ export class AuthService {
     if (!newUser) {
       throw new BadRequestException('Failed to create user');
     }
+
+    await this.userAudit.log({
+      subject: newUser,
+      event: USER_AUDIT_EVENTS.CREATED,
+      source: UserAuditSource.user,
+      ...auditActor(newUser),
+      after: { status: newUser.status, role: newUser.role, verified: false },
+      metadata: {
+        origin: 'self_signup',
+        organization_created: organization.id,
+      },
+    });
 
     const code = generateVerificationCode(6);
     if (!code) {
@@ -346,6 +451,15 @@ export class AuthService {
       data: {
         verified: true,
       },
+    });
+
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.EMAIL_VERIFIED,
+      source: UserAuditSource.user,
+      ...auditActor(user),
+      before: { verified: user.verified },
+      after: { verified: true },
     });
 
     //Create a new JWT for keep the user logged in
@@ -473,6 +587,14 @@ export class AuthService {
       throw new BadRequestException('Failed to send verification email');
     }
 
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.VERIFICATION_CODE_RESENT,
+      source: UserAuditSource.user,
+      ...auditActor(user),
+      metadata: { code_expires_at: codeExpiresAt.toISOString() },
+    });
+
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
       expiresIn: '1h',
     });
@@ -492,7 +614,7 @@ export class AuthService {
       throw new BadRequestException('Failed to revoke token');
     }
 
-    await this.prisma.uSER.update({
+    const user = await this.prisma.uSER.update({
       where: { id: userId },
       data: {
         billcom_session_id: null,
@@ -500,10 +622,27 @@ export class AuthService {
       },
     });
 
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.LOGOUT,
+      source: UserAuditSource.user,
+      ...auditActor(user),
+      metadata: { sessions_revoked: revokeToken.count },
+    });
+
     return true;
   }
 
-  async inviteUser(data: AuthInviteUserDto): Promise<string> {
+  /**
+   * @param actor the authenticated user sending the invite. Recorded on the audit trail — kept
+   *   separate from `data.createdByUserId`, which comes from the request body.
+   * @param origin which flow invited the user (e.g. 'organization_create_new_owner').
+   */
+  async inviteUser(
+    data: AuthInviteUserDto,
+    actor?: USER | null,
+    origin = 'auth_invite',
+  ): Promise<string> {
     const authenticationMethod = 'OwnSign';
 
     if (
@@ -536,6 +675,19 @@ export class AuthService {
       verified: false, // Initially set to false until the user verifies their email
       createdByMethod: 'admin_invite',
       createdByUserId: data.createdByUserId || null,
+    });
+
+    await this.userAudit.log({
+      subject: newUser,
+      event: USER_AUDIT_EVENTS.INVITED,
+      source: UserAuditSource.admin,
+      ...auditActor(actor),
+      after: { status: newUser.status, role: newUser.role },
+      metadata: {
+        origin,
+        createdByMethod: 'admin_invite',
+        createdByUserId: data.createdByUserId || null,
+      },
     });
 
     const code = jwt.sign({ id: newUser.id }, process.env.JWT_SECRET, {
@@ -603,7 +755,7 @@ export class AuthService {
     return `Invitation sent successfully to ${data.email}`;
   }
 
-  async reInviteUser(id: string): Promise<string> {
+  async reInviteUser(id: string, actor?: USER | null): Promise<string> {
     const userToReInvite = await this.userService.findById(id);
     if (!userToReInvite) {
       throw new NotFoundException('User not found');
@@ -683,6 +835,17 @@ export class AuthService {
     if (!storeCode) {
       throw new BadRequestException('Failed to store invite code');
     }
+
+    await this.userAudit.log({
+      subject: userToReInvite,
+      event: USER_AUDIT_EVENTS.INVITE_RESENT,
+      source: UserAuditSource.admin,
+      ...auditActor(actor),
+      metadata: {
+        origin: 'auth_re_invite',
+        invitation_expires_at: codeExpiresAt.toISOString(),
+      },
+    });
 
     return `Invitation sent successfully to ${userToReInvite.email}`;
   }
@@ -833,6 +996,20 @@ export class AuthService {
       throw new BadRequestException('Error in set user password');
     }
 
+    await this.userAudit.log({
+      subject: updatePass,
+      event: USER_AUDIT_EVENTS.INVITE_ACCEPTED,
+      source: UserAuditSource.user,
+      ...auditActor(updatePass),
+      oldStatus: user.status,
+      newStatus: updatePass.status,
+      ...changedSlice(user, updatePass),
+      metadata: {
+        invitation_created_at: emailInvitation.createdAt ?? null,
+        affiliate_profile_activated: !!existingAffiliate,
+      },
+    });
+
     //Create a new JWT for keep the user logged in
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
       expiresIn: '1h',
@@ -877,9 +1054,16 @@ export class AuthService {
     if (!isMatch) throw new BadRequestException('Invalid old password');
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const updatedUser = await this.prisma.uSER.update({
+    await this.prisma.uSER.update({
       where: { id: user.id },
       data: { password: hashedPassword },
+    });
+
+    await this.userAudit.log({
+      subject: userDB,
+      event: USER_AUDIT_EVENTS.PASSWORD_CHANGED,
+      source: UserAuditSource.user,
+      ...auditActor(userDB),
     });
     return true;
   }

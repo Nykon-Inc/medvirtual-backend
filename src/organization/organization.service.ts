@@ -51,7 +51,16 @@ import { SqsService } from '../sqs/sqs.service';
 import { activePipelines } from '../common/constant/activeDealPipelines';
 import { ContactService } from '../contacts/contacts.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
-import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import {
+  CandidateAuditFieldGroup,
+  CandidateAuditSource,
+  UserAuditSource,
+} from '@prisma/client';
+import {
+  UserAuditLogParams,
+  UserAuditService,
+  auditActor,
+} from '../user-audit/user-audit.service';
 import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,
@@ -74,6 +83,7 @@ export class OrganizationService {
     private readonly contactService: ContactService,
     private readonly businessUnitContext: BusinessUnitContext,
     private readonly candidateAudit: CandidateAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   /**
@@ -981,16 +991,30 @@ export class OrganizationService {
 
       // Handle owner creation/invitation
       if (data.owner_type === 'existing' && ownerId) {
+        const ownerBefore = await this.prisma.uSER.findUnique({
+          where: { id: ownerId },
+        });
         // Update existing user to be owner of this organization
+        const ownerPatch = {
+          organization_id: organization.id,
+          organization_name: organization.name,
+          role: 'organization_super_admin',
+          is_organization_owner: true,
+        };
         await this.prisma.uSER.update({
           where: { id: ownerId },
-          data: {
-            organization_id: organization.id,
-            organization_name: organization.name,
-            role: 'organization_super_admin',
-            is_organization_owner: true,
-          },
+          data: ownerPatch,
         });
+        if (ownerBefore) {
+          await this.userAudit.logUpdate({
+            before: ownerBefore,
+            after: ownerPatch,
+            source: UserAuditSource.admin,
+            ...auditActor(user),
+            reason: 'assigned_as_organization_owner',
+            metadata: { origin: 'organization_create_existing_owner' },
+          });
+        }
       } else if (data.owner_type === 'new' && ownerEmail) {
         // Invite new user as owner
         const inviteData = {
@@ -1003,7 +1027,11 @@ export class OrganizationService {
           job_title: data.owner_job_title || '',
           phone: data.owner_phone || '',
         };
-        await this.auth.inviteUser(inviteData);
+        await this.auth.inviteUser(
+          inviteData,
+          user,
+          'organization_create_new_owner',
+        );
       }
 
       // Create initial InvoiceConfiguration record
@@ -1099,6 +1127,24 @@ export class OrganizationService {
         console.log('Status not updated, invalid value:', data.status);
       }
 
+      // Users the cascade below is about to flip — read first, since $executeRaw returns no rows.
+      const cascadeUsers =
+        updateData.status === OrganizationStatus.inactive
+          ? await this.prisma.uSER.findMany({
+              where: {
+                organization_id: id,
+                status: { notIn: ['invited', 'suspended', 'incomplete'] },
+              },
+            })
+          : updateData.status === OrganizationStatus.active
+            ? await this.prisma.uSER.findMany({
+                where: {
+                  organization_id: id,
+                  status_before_deactivation: 'active',
+                },
+              })
+            : [];
+
       const res = await this.prisma.$transaction(async (tx) => {
         const updated = await tx.organization.update({
           where: { id },
@@ -1133,6 +1179,29 @@ export class OrganizationService {
         }
         return updated;
       });
+
+      if (cascadeUsers.length > 0) {
+        const deactivating = updateData.status === OrganizationStatus.inactive;
+        await this.userAudit.logMany(
+          cascadeUsers.flatMap((before): UserAuditLogParams[] =>
+            this.userAudit.buildUpdateEntries({
+              before,
+              after: deactivating
+                ? {
+                    status: 'inactive',
+                    status_before_deactivation: before.status,
+                  }
+                : { status: 'active', status_before_deactivation: null },
+              source: UserAuditSource.admin,
+              actorUserId: actorUserId ?? null,
+              reason: deactivating
+                ? 'organization_deactivated'
+                : 'organization_reactivated',
+              metadata: { origin: 'organization_update', organization_id: id },
+            }),
+          ),
+        );
+      }
 
       //updateOrganizationInHubspot
       await this.hubspot.updateOrganizationInHubspot(

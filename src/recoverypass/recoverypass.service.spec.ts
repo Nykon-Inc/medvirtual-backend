@@ -6,6 +6,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 
 import * as bcrypt from 'bcryptjs';
+import { UserAuditService } from '../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 jest.mock('bcryptjs', () => ({
   hash: jest.fn(),
@@ -43,6 +53,7 @@ describe('RecoverypassService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         RecoverypassService,
         { provide: UserService, useValue: userServiceMock },
         { provide: PrismaService, useValue: prismaServiceMock },

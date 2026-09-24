@@ -502,8 +502,8 @@ export class AffiliatesController {
     status: 403,
     description: 'Access denied: insufficient permissions',
   })
-  async deactivate(@Param('id') id: string) {
-    await this.affiliatesService.deactivate(id);
+  async deactivate(@Param('id') id: string, @CurrentUser() admin: USER) {
+    await this.affiliatesService.deactivate(id, admin);
     return { status: 200, message: 'Affiliate deactivated successfully' };
   }
 
@@ -525,8 +525,8 @@ export class AffiliatesController {
     status: 403,
     description: 'Access denied: insufficient permissions',
   })
-  async reactivate(@Param('id') id: string) {
-    await this.affiliatesService.reactivate(id);
+  async reactivate(@Param('id') id: string, @CurrentUser() admin: USER) {
+    await this.affiliatesService.reactivate(id, admin);
     return { status: 200, message: 'Affiliate reactivated successfully' };
   }
 
@@ -548,8 +548,8 @@ export class AffiliatesController {
     status: 403,
     description: 'Access denied: insufficient permissions',
   })
-  async deleteInvited(@Param('id') id: string) {
-    await this.affiliatesService.deleteInvited(id);
+  async deleteInvited(@Param('id') id: string, @CurrentUser() admin: USER) {
+    await this.affiliatesService.deleteInvited(id, admin);
     return { status: 200, message: 'Affiliate deleted successfully' };
   }
 
@@ -753,8 +753,9 @@ export class AffiliatesController {
   async linkOrganization(
     @Param('id') id: string,
     @Body() dto: LinkOrganizationDto,
+    @CurrentUser() admin: USER,
   ) {
-    const data = await this.affiliatesService.linkOrganization(id, dto);
+    const data = await this.affiliatesService.linkOrganization(id, dto, admin);
     return { status: 200, message: 'Organization linked successfully', data };
   }
 

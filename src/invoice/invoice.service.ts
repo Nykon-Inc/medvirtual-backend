@@ -17,6 +17,7 @@ import {
   InvoiceStatus,
   Prisma,
   TicketStatus,
+  UserAuditSource,
 } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { queuesEnabled } from '../common/app-config';
@@ -57,6 +58,11 @@ import * as path from 'path';
  *   template page) and emailing invoices to clients/superadmins.
  * - Reporting: CSV export and the org-level billing ledger view.
  */
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+} from '../user-audit/user-audit.service';
+
 @Injectable()
 export class InvoiceService {
   private readonly logger = new Logger(InvoiceService.name);
@@ -74,6 +80,7 @@ export class InvoiceService {
     private readonly configService: ConfigService,
     private readonly stripeService: StripeService,
     private readonly mailService: MailService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   /**
@@ -954,6 +961,17 @@ export class InvoiceService {
               workos_id: baseUser.workos_id || '',
               authentication_method:
                 baseUser.authentication_method || 'OwnSign',
+            },
+          });
+          await this.userAudit.log({
+            subject: user,
+            event: USER_AUDIT_EVENTS.CREATED,
+            source: UserAuditSource.system,
+            actorLabel: 'Invoice PDF generator',
+            after: { status: user.status, role: user.role },
+            metadata: {
+              origin: 'invoice_pdf_service_account',
+              cloned_from_user_id: baseUser.id,
             },
           });
         }

@@ -4,6 +4,16 @@ import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { HubspotService } from '../hubspot/hubspot.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 describe('UserService', () => {
   let service: UserService;
@@ -68,6 +78,7 @@ describe('UserService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         UserService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: MailService, useValue: mailServiceMock },
@@ -437,6 +448,48 @@ describe('UserService', () => {
         data: { status: 'pending' },
       });
       expect(prismaMock.uSER.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes the deleted tombstone inside the transaction, before the delete', async () => {
+      const order: string[] = [];
+      prismaMock.uSER.findUnique.mockResolvedValue(baseUser);
+      prismaMock.uSER.delete.mockImplementation((() => {
+        order.push('delete');
+        return Promise.resolve(baseUser);
+      }) as any);
+      userAuditServiceMock.logOrThrow.mockImplementation(() => {
+        order.push('audit');
+        return Promise.resolve();
+      });
+
+      await service.delete('user-1', 'actor-1');
+
+      expect(userAuditServiceMock.logOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'deleted',
+          actorUserId: 'actor-1',
+          subject: baseUser,
+          before: expect.objectContaining({
+            id: 'user-1',
+            email: 'affiliate@test.com',
+          }),
+        }),
+        prismaMock,
+      );
+      expect(order).toEqual(['audit', 'delete']);
+    });
+
+    it('does not delete the user when the tombstone cannot be written', async () => {
+      prismaMock.uSER.findUnique.mockResolvedValue(baseUser);
+      userAuditServiceMock.logOrThrow.mockRejectedValueOnce(
+        new Error('audit down'),
+      );
+
+      await expect(service.delete('user-1', 'actor-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prismaMock.uSER.delete).not.toHaveBeenCalled();
+      userAuditServiceMock.logOrThrow.mockReset();
     });
 
     it('should throw NotFoundException when the user does not exist', async () => {

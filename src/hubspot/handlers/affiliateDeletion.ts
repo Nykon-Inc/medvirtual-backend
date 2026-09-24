@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AffiliateStatus } from '@prisma/client';
+import { AffiliateStatus, UserAuditSource } from '@prisma/client';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerAffiliateDeletion {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userAudit: UserAuditService,
+  ) {}
 
   async execute(event) {
     try {
@@ -36,6 +40,18 @@ export class HandlerAffiliateDeletion {
           },
           data: {
             status: 'inactive',
+          },
+        });
+
+        await this.userAudit.logUpdate({
+          before: affiliateExists.user,
+          after: { status: 'inactive' },
+          source: UserAuditSource.webhook,
+          actorLabel: 'HubSpot',
+          reason: 'growth_partner_deleted_in_hubspot',
+          metadata: {
+            origin: 'hubspot_affiliate_deletion',
+            affiliate_profile_id: affiliateExists.id,
           },
         });
       } else {

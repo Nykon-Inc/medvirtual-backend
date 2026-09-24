@@ -3,15 +3,18 @@ import {
   HubspotAuditAction,
   HubspotAuditSource,
   HubspotEntityType,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerContactDeletion {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async execute(
@@ -47,6 +50,19 @@ export class HandlerContactDeletion {
         await this.prisma.uSER.update({
           where: { id: user.id },
           data: { hubspot_contact_id: null },
+        });
+        await this.userAudit.logUpdate({
+          before: user,
+          after: { hubspot_contact_id: null },
+          source:
+            source === HubspotAuditSource.webhook
+              ? UserAuditSource.webhook
+              : source === HubspotAuditSource.cron
+                ? UserAuditSource.cron
+                : UserAuditSource.system,
+          actorLabel: 'HubSpot',
+          reason: 'hubspot_contact_deleted',
+          metadata: { origin: 'hubspot_contact_deletion' },
         });
       }
 

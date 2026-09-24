@@ -4,15 +4,18 @@ import {
   HubspotAuditAction,
   HubspotAuditSource,
   HubspotEntityType,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class ContactCreationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async getOwnerId(userId: string): Promise<string | null> {
@@ -94,6 +97,14 @@ export class ContactCreationService {
       await this.prisma.uSER.update({
         where: { id: data.id },
         data: { hubspot_contact_id: response.data.id },
+      });
+
+      await this.userAudit.logUpdate({
+        before: data,
+        after: { hubspot_contact_id: String(response.data.id) },
+        source: actorUserId ? UserAuditSource.admin : UserAuditSource.system,
+        actorUserId: actorUserId ?? null,
+        metadata: { origin: 'hubspot_contact_created' },
       });
 
       void this.audit.log({

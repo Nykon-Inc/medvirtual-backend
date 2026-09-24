@@ -4,6 +4,7 @@ import { OrganizationStatus } from '@prisma/client';
 import { HandlerOrganizationDeletion } from './organizationDeletion';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OrgDeletionService } from '../../med-alliance/org-deletion/org-deletion.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 const prismaMock = {
   organization: {
@@ -11,6 +12,7 @@ const prismaMock = {
     update: jest.fn(),
   },
   uSER: {
+    findMany: jest.fn().mockResolvedValue([]),
     updateMany: jest.fn(),
   },
 };
@@ -19,12 +21,22 @@ const orgDeletionServiceMock = {
   onOrganizationDeleted: jest.fn(),
 };
 
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
+
 describe('HandlerOrganizationDeletion', () => {
   let handler: HandlerOrganizationDeletion;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         HandlerOrganizationDeletion,
         { provide: PrismaService, useValue: prismaMock },
         { provide: OrgDeletionService, useValue: orgDeletionServiceMock },

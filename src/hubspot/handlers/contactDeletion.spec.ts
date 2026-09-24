@@ -4,6 +4,7 @@ import { HubspotAuditSource } from '@prisma/client';
 import { HandlerContactDeletion } from './contactDeletion';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 const prismaMock = {
   contact: {
@@ -18,12 +19,22 @@ const prismaMock = {
 
 const auditMock = { log: jest.fn() };
 
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
+
 describe('HandlerContactDeletion', () => {
   let handler: HandlerContactDeletion;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         HandlerContactDeletion,
         { provide: PrismaService, useValue: prismaMock },
         { provide: HubspotAuditService, useValue: auditMock },

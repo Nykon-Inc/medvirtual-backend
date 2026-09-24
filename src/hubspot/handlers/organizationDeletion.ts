@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { OrganizationStatus } from '@prisma/client';
+import { OrganizationStatus, UserAuditSource } from '@prisma/client';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 import { getNowInTimezone } from '../../common/utils/formatDate';
 import { OrgDeletionService } from '../../med-alliance/org-deletion/org-deletion.service';
 
@@ -9,6 +10,7 @@ export class HandlerOrganizationDeletion {
   constructor(
     private readonly prisma: PrismaService,
     private readonly orgDeletion: OrgDeletionService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async execute(event) {
@@ -23,6 +25,9 @@ export class HandlerOrganizationDeletion {
       });
       if (!organizationExists) return;
 
+      const usersBefore = await this.prisma.uSER.findMany({
+        where: { organization_id: organizationExists.id },
+      });
       await this.prisma.uSER.updateMany({
         where: {
           organization_id: organizationExists.id,
@@ -31,6 +36,23 @@ export class HandlerOrganizationDeletion {
           status: 'inactive',
         },
       });
+      await this.userAudit.logBulkUpdate(
+        usersBefore,
+        { status: 'inactive' },
+        {
+          source: UserAuditSource.webhook,
+          actorLabel: 'HubSpot',
+          reason:
+            event.propertyName === 'business_unit'
+              ? 'organization_moved_to_hidden_business_unit'
+              : 'organization_deleted_in_hubspot',
+          metadata: {
+            origin: 'hubspot_company_deletion',
+            organization_id: organizationExists.id,
+            hubspot_company_id: String(event.objectId),
+          },
+        },
+      );
 
       // When the deletion is triggered by a business_unit change (org moved to a
       // BU that is not visible on our side), persist the NEW business_unit too so

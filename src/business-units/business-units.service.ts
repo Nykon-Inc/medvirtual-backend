@@ -10,12 +10,15 @@ import {
   HubspotAuditSource,
   HubspotEntityType,
   Prisma,
+  USER,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBusinessUnitDto } from './dto/create-business-unit.dto';
 import { UpdateBusinessUnitDto } from './dto/update-business-unit.dto';
 import { UpdateBrandingDto } from './dto/update-branding.dto';
 import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
+import { UserAuditService, auditActor } from '../user-audit/user-audit.service';
 import { BusinessUnitContext } from './business-unit-context.service';
 import {
   mapOrganizationToDb,
@@ -72,6 +75,7 @@ export class BusinessUnitsService {
     private readonly hubspotAudit: HubspotAuditService,
     private readonly businessUnitContext: BusinessUnitContext,
     private readonly candidateAudit: CandidateAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   // ── List ──────────────────────────────────────────────────────────────────
@@ -146,7 +150,7 @@ export class BusinessUnitsService {
 
   // ── Update ────────────────────────────────────────────────────────────────
 
-  async update(slug: string, dto: UpdateBusinessUnitDto) {
+  async update(slug: string, dto: UpdateBusinessUnitDto, actor?: USER) {
     const before = await this.findOneOrThrow(slug);
 
     const updated = await this.prisma.businessUnit.update({
@@ -179,7 +183,11 @@ export class BusinessUnitsService {
       before.is_visible === true && updated.is_visible === false;
     if (wasDeactivated) {
       try {
-        await this.deactivateByBu(slug, updated.hubspot_value ?? updated.name);
+        await this.deactivateByBu(
+          slug,
+          updated.hubspot_value ?? updated.name,
+          actor,
+        );
         void this.hubspotAudit.log({
           entityType: HubspotEntityType.organization,
           entityId: slug,
@@ -220,6 +228,7 @@ export class BusinessUnitsService {
       await this.reactivateDeactivatedByBu(
         slug,
         updated.hubspot_value ?? updated.name,
+        actor,
       );
 
       this.backfillFromHubspot(slug)
@@ -887,7 +896,12 @@ export class BusinessUnitsService {
    * can later restore exactly this set (round-trip symmetry). Busts the
    * BusinessUnitContext cache at the end so visibility checks re-read the DB.
    */
-  async deactivateByBu(slug: string, businessUnitValue: string): Promise<void> {
+  /** @param actor the admin who hid the BU; omitted when the decommission cron runs it. */
+  async deactivateByBu(
+    slug: string,
+    businessUnitValue: string,
+    actor?: USER | null,
+  ): Promise<void> {
     await this.prisma.businessUnit.update({
       where: { slug },
       data: { is_visible: false },
@@ -908,10 +922,23 @@ export class BusinessUnitsService {
     // Users belong to organizations (no direct business_unit field on USER) —
     // deactivate every user of every affected organization.
     if (affectedOrgIds.length > 0) {
+      const usersBefore = await this.prisma.uSER.findMany({
+        where: { organization_id: { in: affectedOrgIds } },
+      });
       await this.prisma.uSER.updateMany({
         where: { organization_id: { in: affectedOrgIds } },
         data: { status: 'inactive', deactivated_by_bu: slug },
       });
+      await this.userAudit.logBulkUpdate(
+        usersBefore,
+        { status: 'inactive', deactivated_by_bu: slug },
+        {
+          source: actor ? UserAuditSource.admin : UserAuditSource.cron,
+          ...auditActor(actor),
+          reason: 'business_unit_deactivated',
+          metadata: { origin: 'business_unit_deactivate', business_unit: slug },
+        },
+      );
     }
 
     // updateMany only returns a count — fetch the affected rows first so the
@@ -973,6 +1000,7 @@ export class BusinessUnitsService {
   private async reactivateDeactivatedByBu(
     slug: string,
     businessUnitValue: string,
+    actor?: USER | null,
   ): Promise<void> {
     // Organizations: union of cron-marked and webhook-deleted rows, scoped to
     // this BU. Restore to `inactive` and clear both the marker and `deletedAt`
@@ -1008,10 +1036,23 @@ export class BusinessUnitsService {
     // users remain `inactive` (their correct post-restore state) and are
     // re-activated by the normal login/deal flow, exactly like a freshly
     // reactivated org from organizationReactivation.ts.
+    const usersBefore = await this.prisma.uSER.findMany({
+      where: { deactivated_by_bu: slug },
+    });
     await this.prisma.uSER.updateMany({
       where: { deactivated_by_bu: slug },
       data: { status: 'inactive', deactivated_by_bu: null },
     });
+    await this.userAudit.logBulkUpdate(
+      usersBefore,
+      { status: 'inactive', deactivated_by_bu: null },
+      {
+        source: actor ? UserAuditSource.admin : UserAuditSource.cron,
+        ...auditActor(actor),
+        reason: 'business_unit_reactivated',
+        metadata: { origin: 'business_unit_reactivate', business_unit: slug },
+      },
+    );
 
     // updateMany only returns a count — fetch the affected rows first so the
     // audit log can capture per-candidate before/after state.

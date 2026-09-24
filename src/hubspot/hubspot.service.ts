@@ -14,8 +14,10 @@ import {
   HubspotEntityType,
   OrganizationRole,
   Prisma,
+  UserAuditSource,
 } from '@prisma/client';
 import { HubspotAuditService } from './hubspot-audit.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
 
 import {
   mapHubspotToDb,
@@ -162,6 +164,7 @@ export class HubspotService {
 
     private readonly audit: HubspotAuditService,
     private readonly candidateAudit: CandidateAuditService,
+    private readonly userAudit: UserAuditService,
 
     @Inject(forwardRef(() => CandidatesService))
     private readonly candidate: CandidatesService,
@@ -1410,6 +1413,13 @@ export class HubspotService {
           data: {
             hubspot_id: String(owner.id),
           },
+        });
+        await this.userAudit.logUpdate({
+          before: ownerExists,
+          after: { hubspot_id: String(owner.id) },
+          source: UserAuditSource.system,
+          actorLabel: 'HubSpot align-owners',
+          metadata: { origin: 'hubspot_align_owners' },
         });
         console.log('Owner updated with hubspot id:', owner.email);
       }

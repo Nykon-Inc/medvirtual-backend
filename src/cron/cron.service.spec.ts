@@ -18,6 +18,7 @@ import { BusinessUnitContext } from '../business-units/business-unit-context.ser
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
 import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -40,6 +41,7 @@ describe('CronService', () => {
   let emailTemplatesServiceMock: { getTemplateContent: jest.Mock };
   let candidateAuditServiceMock: Record<string, jest.Mock>;
   let hubspotAuditServiceMock: Record<string, jest.Mock>;
+  let userAuditServiceMock: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     emailTemplatesServiceMock = {
@@ -169,6 +171,14 @@ describe('CronService', () => {
       log: jest.fn(),
     };
 
+    userAuditServiceMock = {
+      log: jest.fn(),
+      logOrThrow: jest.fn(),
+      logMany: jest.fn(),
+      logUpdate: jest.fn(),
+      logBulkUpdate: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CronService,
@@ -197,6 +207,7 @@ describe('CronService', () => {
         { provide: BusinessUnitsService, useValue: businessUnitsServiceMock },
         { provide: CandidateAuditService, useValue: candidateAuditServiceMock },
         { provide: HubspotAuditService, useValue: hubspotAuditServiceMock },
+        { provide: UserAuditService, useValue: userAuditServiceMock },
       ],
     }).compile();
 
@@ -635,7 +646,10 @@ describe('CronService', () => {
 
     it('skips hire requests whose title already has 5+ segments', async () => {
       prismaServiceMock.hireRequest.findMany.mockResolvedValue([
-        { ...baseHr, title: 'UPS TEST HR - Acme Health - 2 - Scribe - Full-Time' },
+        {
+          ...baseHr,
+          title: 'UPS TEST HR - Acme Health - 2 - Scribe - Full-Time',
+        },
       ]);
       prismaServiceMock.staff.groupBy.mockResolvedValue([]);
 
@@ -708,13 +722,18 @@ describe('CronService', () => {
             first_name: 'Invited',
             last_name: 'User',
             organization_id: 'org-1',
+            status: 'invited',
+            createdAt: new Date('2026-01-01T00:00:00Z'),
           },
         ]);
       prismaServiceMock.uSER.updateMany = jest.fn().mockResolvedValue({});
 
       const txMock = {
         emailVerification: { deleteMany: jest.fn().mockResolvedValue({}) },
-        emailInvitation: { deleteMany: jest.fn().mockResolvedValue({}) },
+        emailInvitation: {
+          findMany: jest.fn().mockResolvedValue([]),
+          deleteMany: jest.fn().mockResolvedValue({}),
+        },
         uSER: { delete: jest.fn().mockResolvedValue({}) },
       };
       prismaServiceMock.$transaction.mockImplementation(async (fn: any) =>
@@ -738,6 +757,151 @@ describe('CronService', () => {
           subject: 'Client Users Deactivation Report',
         }),
       );
+    });
+
+    describe('user audit trail', () => {
+      const invitedUser = {
+        id: 'u-invited',
+        email: 'invited@test.com',
+        first_name: 'Invited',
+        last_name: 'User',
+        organization_id: 'org-1',
+        organization_name: 'Clinic A',
+        role: 'organization_admin',
+        status: 'invited',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        createdByMethod: 'admin_invite',
+        createdByUserId: 'admin-1',
+      };
+      const activeUser = {
+        id: 'u-active',
+        email: 'active@test.com',
+        first_name: 'Active',
+        last_name: 'User',
+        organization_id: 'org-1',
+        status: 'active',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      };
+
+      let txMock: Record<string, Record<string, jest.Mock>>;
+      let callOrder: string[];
+
+      beforeEach(() => {
+        callOrder = [];
+        prismaServiceMock.organization.findMany.mockResolvedValue([
+          { id: 'org-1', name: 'Clinic A' },
+        ]);
+        prismaServiceMock.uSER.findMany
+          .mockResolvedValueOnce([activeUser])
+          .mockResolvedValueOnce([invitedUser]);
+        prismaServiceMock.uSER.updateMany = jest.fn().mockResolvedValue({});
+        txMock = {
+          emailVerification: { deleteMany: jest.fn().mockResolvedValue({}) },
+          emailInvitation: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                createdAt: new Date('2026-01-01T00:00:00Z'),
+                expiresAt: new Date('2026-01-03T00:00:00Z'),
+              },
+            ]),
+            deleteMany: jest.fn().mockResolvedValue({}),
+          },
+          uSER: {
+            delete: jest.fn().mockImplementation(() => {
+              callOrder.push('delete');
+              return Promise.resolve({});
+            }),
+          },
+        };
+        userAuditServiceMock.logOrThrow.mockImplementation(() => {
+          callOrder.push('audit');
+          return Promise.resolve();
+        });
+        prismaServiceMock.$transaction.mockImplementation((fn: any) =>
+          fn(txMock),
+        );
+        mailServiceMock.sendMail.mockResolvedValue(true);
+      });
+
+      it('logs the deactivation of active users as a cron bulk update', async () => {
+        await service.deactivateClientUsersWithNoStaff();
+
+        expect(userAuditServiceMock.logBulkUpdate).toHaveBeenCalledWith(
+          [activeUser],
+          { status: 'inactive', status_before_deactivation: 'active' },
+          expect.objectContaining({
+            source: 'cron',
+            reason: 'org_without_staff_60d',
+          }),
+        );
+      });
+
+      it('writes the invite_expired_deleted tombstone inside the delete transaction, before the delete', async () => {
+        await service.deactivateClientUsersWithNoStaff();
+
+        expect(userAuditServiceMock.logOrThrow).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'invite_expired_deleted',
+            source: 'cron',
+            subject: expect.objectContaining({
+              id: 'u-invited',
+              email: 'invited@test.com',
+            }),
+            before: expect.objectContaining({
+              id: 'u-invited',
+              email: 'invited@test.com',
+              createdByMethod: 'admin_invite',
+              createdByUserId: 'admin-1',
+            }),
+            metadata: expect.objectContaining({
+              rule: '60d_since_createdAt_org_without_staff',
+              organization_name: 'Clinic A',
+              invitations: [
+                {
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                  expiresAt: '2026-01-03T00:00:00.000Z',
+                },
+              ],
+            }),
+          }),
+          txMock,
+        );
+        expect(callOrder).toEqual(['audit', 'delete']);
+      });
+
+      it('does not delete the user when the audit write fails', async () => {
+        userAuditServiceMock.logOrThrow.mockRejectedValue(
+          new Error('audit down'),
+        );
+
+        const result = await service.deactivateClientUsersWithNoStaff();
+
+        expect(result).toBe(true);
+        expect(txMock.uSER.delete).not.toHaveBeenCalled();
+      });
+
+      it('keeps processing the remaining users when one deletion fails, and reports it', async () => {
+        const second = {
+          ...invitedUser,
+          id: 'u-invited-2',
+          email: 'second@test.com',
+        };
+        prismaServiceMock.uSER.findMany.mockReset();
+        prismaServiceMock.uSER.findMany
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([invitedUser, second]);
+        txMock.uSER.delete
+          .mockRejectedValueOnce(new Error('FK restrict'))
+          .mockResolvedValueOnce({});
+
+        const result = await service.deactivateClientUsersWithNoStaff();
+
+        expect(result).toBe(true);
+        expect(txMock.uSER.delete).toHaveBeenCalledTimes(2);
+        const html = mailServiceMock.sendMail.mock.calls[0][0].html as string;
+        expect(html).toContain('Failed Removals (1)');
+        expect(html).toContain('invited@test.com');
+      });
     });
 
     it('should handle no active or invited users gracefully and send report', async () => {

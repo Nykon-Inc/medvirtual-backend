@@ -11,6 +11,7 @@ export default function clientUsersDeactivationReport(
   deactivatedUsers: ReportUser[],
   deletedUsers: ReportUser[],
   runAt: Date,
+  failedDeletions: ReportUser[] = [],
 ) {
   const formatDate = (d: Date) =>
     d.toLocaleDateString('en-US', {
@@ -104,6 +105,25 @@ export default function clientUsersDeactivationReport(
         <tbody>${buildRows(deletedUsers)}</tbody>
       </table>
     </div>
+
+    ${
+      failedDeletions.length > 0
+        ? `<div style="padding:0 24px 32px;">
+      <h3 style="color:#c62828;margin-bottom:8px;">Failed Removals (${failedDeletions.length})</h3>
+      <p style="color:#555;font-size:14px;margin-top:0;">These invited users could not be removed and will be retried on the next run.</p>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background-color:#f4f4f4;">
+            <th style="border:1px solid #ccc;padding:8px;text-align:left;">Name</th>
+            <th style="border:1px solid #ccc;padding:8px;text-align:left;">Email</th>
+            <th style="border:1px solid #ccc;padding:8px;text-align:left;">Organization</th>
+          </tr>
+        </thead>
+        <tbody>${buildRows(failedDeletions)}</tbody>
+      </table>
+    </div>`
+        : ''
+    }
 
     ${EmailFooter}
   </div>

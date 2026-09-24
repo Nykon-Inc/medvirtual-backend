@@ -4,15 +4,18 @@ import {
   HubspotAuditAction,
   HubspotAuditSource,
   HubspotEntityType,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class AffiliateCreationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async getOwnerId(userId: string): Promise<string | null> {
@@ -66,10 +69,11 @@ export class AffiliateCreationService {
       );
 
       if (contactId && existingContactId) {
-        await this.prisma.uSER.update({
-          where: { id: userId },
-          data: { hubspot_contact_id: contactId },
-        });
+        await this.setUserHubspotContact(
+          userId,
+          contactId,
+          'affiliate_contact_link',
+        );
         await this.prisma.contact.updateMany({
           where: { user_id: userId, hubspot_id: null },
           data: { hubspot_id: contactId },
@@ -121,14 +125,37 @@ export class AffiliateCreationService {
     );
   }
 
-  private async relinkContact(
+  /** Writes USER.hubspot_contact_id and records the link change on the user audit trail. */
+  private async setUserHubspotContact(
     userId: string,
     contactId: string,
+    origin: string,
   ): Promise<void> {
+    const before = await this.prisma.uSER.findUnique({ where: { id: userId } });
     await this.prisma.uSER.update({
       where: { id: userId },
       data: { hubspot_contact_id: contactId },
     });
+    if (before) {
+      await this.userAudit.logUpdate({
+        before,
+        after: { hubspot_contact_id: contactId },
+        source: UserAuditSource.system,
+        actorLabel: 'HubSpot sync',
+        metadata: { origin },
+      });
+    }
+  }
+
+  private async relinkContact(
+    userId: string,
+    contactId: string,
+  ): Promise<void> {
+    await this.setUserHubspotContact(
+      userId,
+      contactId,
+      'affiliate_contact_relink',
+    );
 
     // Always overwrite (not just when null) — a non-null hubspot_id here can
     // itself be stale (contact deleted/merged in HubSpot), and leaving it in

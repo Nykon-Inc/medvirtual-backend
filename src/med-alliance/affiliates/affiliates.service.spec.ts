@@ -14,6 +14,7 @@ import { HubspotService } from '../../hubspot/hubspot.service';
 import { InvoiceIngestionService } from '../sync/invoice-ingestion.service';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
 import { EmailTemplatesService } from '../../email-templates/email-templates.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 const mockAllianceNotifications: Partial<AllianceNotificationsService> = {
   notifyAdminPartnerRegistered: jest.fn(),
@@ -127,12 +128,22 @@ const mockProfile = {
   banking_complete: false,
 };
 
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
+
 describe('AffiliatesService', () => {
   let service: AffiliatesService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AffiliatesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: MailService, useValue: { sendMail: jest.fn() } },

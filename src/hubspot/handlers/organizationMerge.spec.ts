@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { HandlerOrganizationMerge } from './organizationMerge';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 const txMock = {
   organization: {
@@ -17,6 +18,7 @@ const txMock = {
     updateMany: jest.fn(),
   },
   uSER: {
+    findMany: jest.fn().mockResolvedValue([]),
     updateMany: jest.fn(),
   },
   hireRequest: {
@@ -74,6 +76,7 @@ function resetAllMocks() {
 function mockHappyPathDefaults() {
   txMock.staff.updateMany.mockResolvedValue({ count: 0 });
   txMock.candidate.updateMany.mockResolvedValue({ count: 0 });
+  txMock.uSER.findMany.mockResolvedValue([]);
   txMock.uSER.updateMany.mockResolvedValue({ count: 0 });
   txMock.hireRequest.updateMany.mockResolvedValue({ count: 0 });
   txMock.ticket.updateMany.mockResolvedValue({ count: 0 });
@@ -92,12 +95,22 @@ function mockHappyPathDefaults() {
   txMock.organization.update.mockResolvedValue({});
 }
 
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
+
 describe('HandlerOrganizationMerge', () => {
   let handler: HandlerOrganizationMerge;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         HandlerOrganizationMerge,
         { provide: PrismaService, useValue: prismaMock },
       ],

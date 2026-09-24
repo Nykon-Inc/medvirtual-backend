@@ -5,10 +5,15 @@ import {
   mapOrganizationToDb,
 } from '../../common/utils/hubspot.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { USER, UserAuditSource } from '@prisma/client';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerOrganizationMerge {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userAudit: UserAuditService,
+  ) {}
 
   private mergeOrganizationData(primary: any, merged: any): Partial<any> {
     const mergedAsHubspot = mapDbToOrganization(merged);
@@ -32,6 +37,12 @@ export class HandlerOrganizationMerge {
   }
 
   async execute(event) {
+    // Users moved to the primary org — collected inside the tx, audited after it commits.
+    const movedUsers: {
+      before: USER;
+      organization_id: string;
+      organization_name: string;
+    }[] = [];
     try {
       await this.prisma.$transaction(
         async (tx) => {
@@ -116,6 +127,16 @@ export class HandlerOrganizationMerge {
             });
 
             //update users from merged companies to primary company
+            const usersOfMerged = await tx.uSER.findMany({
+              where: { organization_id: merged.id },
+            });
+            movedUsers.push(
+              ...usersOfMerged.map((before) => ({
+                before,
+                organization_id: primaryOrganization.id,
+                organization_name: primaryOrganization.name,
+              })),
+            );
             await tx.uSER.updateMany({
               where: { organization_id: merged.id },
               data: {
@@ -238,6 +259,22 @@ export class HandlerOrganizationMerge {
         // queries — the 5s default interactive-transaction timeout can be too
         // short once there is more than a couple of merged companies/related rows.
         { timeout: 30000, maxWait: 10000 },
+      );
+
+      await this.userAudit.logMany(
+        movedUsers.flatMap(({ before, organization_id, organization_name }) =>
+          this.userAudit.buildUpdateEntries({
+            before,
+            after: { organization_id, organization_name },
+            source: UserAuditSource.webhook,
+            actorLabel: 'HubSpot',
+            reason: 'organization_merged',
+            metadata: {
+              origin: 'hubspot_company_merge',
+              merged_from_organization_id: before.organization_id,
+            },
+          }),
+        ),
       );
     } catch (error) {
       throw new BadRequestException(

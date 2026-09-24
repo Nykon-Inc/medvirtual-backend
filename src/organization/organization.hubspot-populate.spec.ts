@@ -11,6 +11,16 @@ import { SqsService } from '../sqs/sqs.service';
 import { ContactService } from '../contacts/contacts.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -52,6 +62,7 @@ describe('OrganizationService — HubSpot BU-driven filterGroups', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         OrganizationService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: AuthService, useValue: mockAuthService },

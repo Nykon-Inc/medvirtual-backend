@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TicketAuditSource, USER } from '@prisma/client';
+import { Prisma, TicketAuditSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListTicketAuditLogsDto } from './dto/list-ticket-audit-logs.dto';
 
@@ -55,17 +55,7 @@ export interface TicketAuditLogParams {
   metadata?: Record<string, any> | null;
 }
 
-/**
- * Builds the denormalized actor label. USER has no `name` column, so the display name is
- * composed from first/last name with the email as fallback.
- */
-export function buildActorLabel(
-  user?: Pick<USER, 'first_name' | 'last_name' | 'email'> | null,
-): string | null {
-  if (!user) return null;
-  const full = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
-  return full || user.email || null;
-}
+export { buildActorLabel } from '../common/utils/actor-label';
 
 @Injectable()
 export class TicketAuditService {

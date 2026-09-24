@@ -56,6 +56,16 @@ import { HandlerContactDeletion } from './handlers/contactDeletion';
 import { HandlerContactMerge } from './handlers/contactMerge';
 import { HubspotAuditService } from './hubspot-audit.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 jest.mock('axios', () => ({
   __esModule: true,
@@ -315,6 +325,7 @@ describe('HubspotService => GetCandidates', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         HubspotService,
         { provide: GoogledriveService, useValue: googleMock },
         { provide: PrismaService, useValue: prismaMock },
@@ -499,6 +510,7 @@ describe('HubspotService => changeDataToHubspot', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         HubspotService,
         { provide: GoogledriveService, useValue: googleMock },
         { provide: PrismaService, useValue: prismaMock },
@@ -815,6 +827,7 @@ function buildProviders(): any[] {
     { provide: HandlerContactMerge, useValue: handlerContactMergeMock },
     { provide: HubspotAuditService, useValue: auditServiceMock },
     { provide: CandidateAuditService, useValue: candidateAuditMock },
+    { provide: UserAuditService, useValue: userAuditServiceMock },
   ];
 }
 
@@ -1533,6 +1546,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders(),
         {
           provide: PrismaService,
@@ -1611,6 +1625,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1665,6 +1680,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1724,6 +1740,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1770,6 +1787,7 @@ describe('HubspotService => createCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1831,6 +1849,7 @@ describe('HubspotService => updateCandidates', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1875,6 +1894,7 @@ describe('HubspotService => updateCandidates', () => {
 
     const module2: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -1920,6 +1940,7 @@ describe('HubspotService => alignOwners', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -2004,6 +2025,7 @@ describe('HubspotService => populateContactsFromHubspot', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -2190,6 +2212,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -2250,6 +2273,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module2: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],
@@ -2286,6 +2310,7 @@ describe('HubspotService => updateOrganizations', () => {
 
     const module3: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ...buildProviders().filter((p) => p.provide !== PrismaService),
         { provide: PrismaService, useValue: fakePrisma },
       ],

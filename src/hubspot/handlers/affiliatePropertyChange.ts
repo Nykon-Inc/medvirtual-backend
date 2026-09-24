@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HandlerAffiliateCreation } from './affiliateCreation';
 import { affiliateToDbDictionary } from '../../common/dictionaries/affiliate-dictionary';
+import { UserAuditSource } from '@prisma/client';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerAffiliatePropertyChange {
   constructor(
     private readonly prisma: PrismaService,
     private readonly affiliateCreation: HandlerAffiliateCreation,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async execute(event) {
@@ -50,10 +53,6 @@ export class HandlerAffiliatePropertyChange {
             hubspot_id: String(event.objectId),
           },
         },
-        select: {
-          id: true,
-          role: true,
-        },
       });
       if (user?.role === 'affiliate') {
         await this.prisma.uSER.update({
@@ -62,6 +61,18 @@ export class HandlerAffiliatePropertyChange {
           },
           data: {
             status: event.propertyValue,
+          },
+        });
+
+        await this.userAudit.logUpdate({
+          before: user,
+          after: { status: event.propertyValue },
+          source: UserAuditSource.webhook,
+          actorLabel: 'HubSpot',
+          reason: 'growth_partner_earning_status_changed',
+          metadata: {
+            origin: 'hubspot_affiliate_property_change',
+            affiliate_profile_id: existingAffiliate.id,
           },
         });
       }

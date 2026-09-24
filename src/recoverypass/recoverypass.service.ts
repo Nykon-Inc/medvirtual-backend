@@ -15,6 +15,12 @@ import getResetPasswordTemplate from '../common/utils/email-templates/reset-pass
 import { getUserEmailTheme } from '../common/utils/email-templates/theme-helper';
 import { RecoveryResetPasswordDto } from './dto/recoveryResetPassword.dto';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { UserAuditSource } from '@prisma/client';
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+  auditActor,
+} from '../user-audit/user-audit.service';
 
 @Injectable()
 export class RecoverypassService {
@@ -25,6 +31,7 @@ export class RecoverypassService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async forgotPassword(data: RecoveryForgotPasswordDto): Promise<boolean> {
@@ -116,6 +123,14 @@ export class RecoverypassService {
     if (!mailSent)
       throw new BadRequestException('Error sending recovery email');
 
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.PASSWORD_RESET_REQUESTED,
+      source: UserAuditSource.user,
+      ...auditActor(user),
+      metadata: { token_expires_at: expiresAt.toISOString() },
+    });
+
     return true;
   }
 
@@ -164,6 +179,13 @@ export class RecoverypassService {
         },
       }),
     ]);
+
+    await this.userAudit.log({
+      subject: resetToken.user,
+      event: USER_AUDIT_EVENTS.PASSWORD_RESET_COMPLETED,
+      source: UserAuditSource.user,
+      ...auditActor(resetToken.user),
+    });
 
     return true;
   }

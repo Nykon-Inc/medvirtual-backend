@@ -18,6 +18,7 @@ import { SqsService } from '../sqs/sqs.service';
 import { ContactService } from '../contacts/contacts.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
+import { UserAuditService } from '../user-audit/user-audit.service';
 
 const userfake = {
   id: '1',
@@ -51,6 +52,15 @@ const userfake = {
   billcom_device: null,
   deactivated_by_bu: null,
   onboarding_tour_dismissed: false,
+};
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
 };
 
 describe('OrganizationService', () => {
@@ -138,6 +148,7 @@ describe('OrganizationService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         OrganizationService,
         {
           provide: PrismaService,
@@ -378,8 +389,25 @@ describe('OrganizationService', () => {
         cb(mockPrismaService),
       );
 
+      const cascaded = [{ id: 'u1', email: 'a@b.com', status: 'active' }];
+      mockPrismaService.uSER.findMany.mockResolvedValue(cascaded);
+
       await service.update('1', { status: 'inactive' });
 
+      // The users the raw cascade flips are read first and audited one by one.
+      expect(mockPrismaService.uSER.findMany).toHaveBeenCalledWith({
+        where: {
+          organization_id: '1',
+          status: { notIn: ['invited', 'suspended', 'incomplete'] },
+        },
+      });
+      expect(userAuditServiceMock.buildUpdateEntries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          before: cascaded[0],
+          after: { status: 'inactive', status_before_deactivation: 'active' },
+          reason: 'organization_deactivated',
+        }),
+      );
       expect(mockPrismaService.$executeRaw).toHaveBeenCalledTimes(1);
       const rawStrings: ReadonlyArray<string> =
         mockPrismaService.$executeRaw.mock.calls[0][0];
@@ -404,8 +432,13 @@ describe('OrganizationService', () => {
         cb(mockPrismaService),
       );
 
+      mockPrismaService.uSER.findMany.mockResolvedValue([]);
+
       await service.update('1', { status: 'active' });
 
+      expect(mockPrismaService.uSER.findMany).toHaveBeenCalledWith({
+        where: { organization_id: '1', status_before_deactivation: 'active' },
+      });
       expect(mockPrismaService.$executeRaw).toHaveBeenCalledTimes(1);
       const rawStrings: ReadonlyArray<string> =
         mockPrismaService.$executeRaw.mock.calls[0][0];

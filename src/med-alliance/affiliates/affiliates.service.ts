@@ -10,7 +10,13 @@ import axios from 'axios';
 import { mapContactToDb } from '../../common/utils/hubspot.util';
 import { contactToDbDictionary } from '../../common/dictionaries/contact-dictionary';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CommissionStatus, USER } from '@prisma/client';
+import { CommissionStatus, USER, UserAuditSource } from '@prisma/client';
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+  auditActor,
+  snapshotUser,
+} from '../../user-audit/user-audit.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
 import {
@@ -70,6 +76,7 @@ export class AffiliatesService {
     private readonly invoiceIngestion: InvoiceIngestionService,
     private readonly allianceNotifications: AllianceNotificationsService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   // Shared helper: ensure a user has an active AffiliateProfile.
@@ -167,6 +174,18 @@ export class AffiliatesService {
       );
     }
 
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.AFFILIATE_PROFILE_CHANGED,
+      source: UserAuditSource.admin,
+      ...auditActor(adminUser),
+      after: { affiliate_profile_status: profile.status },
+      metadata: {
+        origin: 'affiliate_profile_create',
+        affiliate_profile_id: profile.id,
+      },
+    });
+
     const partnerName =
       `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.email;
     void this.allianceNotifications.notifyAdminPartnerRegistered({
@@ -197,6 +216,20 @@ export class AffiliatesService {
         password: '',
         authentication_method: 'OwnSign',
         status: 'invited',
+        createdByMethod: 'admin_invite',
+        createdByUserId: adminUser.id,
+      },
+    });
+
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.INVITED,
+      source: UserAuditSource.admin,
+      ...auditActor(adminUser),
+      after: { status: user.status, role: user.role },
+      metadata: {
+        origin: 'affiliate_create_user_and_profile',
+        createdByMethod: 'admin_invite',
       },
     });
 
@@ -370,6 +403,21 @@ export class AffiliatesService {
         password: '',
         authentication_method: 'OwnSign',
         status: 'invited',
+        createdByMethod: 'admin_invite',
+        createdByUserId: adminUserId,
+      },
+    });
+
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.INVITED,
+      source: UserAuditSource.admin,
+      actorUserId: adminUserId,
+      after: { status: user.status, role: user.role },
+      metadata: {
+        origin: 'affiliate_invite_user',
+        createdByMethod: 'admin_invite',
+        affiliate_profile_id: id,
       },
     });
 
@@ -522,12 +570,25 @@ export class AffiliatesService {
     if (!mailSent)
       throw new BadRequestException('Failed to send re-invitation email');
 
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     await this.prisma.emailInvitation.create({
       data: {
         userId: user.id,
         email_from: user.email,
         code,
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        expiresAt,
+      },
+    });
+
+    await this.userAudit.log({
+      subject: user,
+      event: USER_AUDIT_EVENTS.INVITE_RESENT,
+      source: UserAuditSource.admin,
+      actorUserId: adminUserId,
+      metadata: {
+        origin: 'affiliate_re_invite',
+        affiliate_profile_id: affiliateId,
+        invitation_expires_at: expiresAt.toISOString(),
       },
     });
 
@@ -1292,7 +1353,7 @@ export class AffiliatesService {
   // Admin: deactivate an affiliate profile (and optionally the user account).
   // - If the user's role is 'affiliate': deactivates both the user account and the profile.
   // - If the user's role is 'organization_admin' or 'organization_super_admin': deactivates only the profile.
-  async deactivate(id: string) {
+  async deactivate(id: string, adminUser?: USER) {
     const profile = await this.findOne(id);
     const user = profile.user as any;
 
@@ -1301,13 +1362,38 @@ export class AffiliatesService {
       data: { status: 'inactive' },
     });
 
+    const auditCommon = {
+      source: UserAuditSource.admin,
+      ...auditActor(adminUser),
+      metadata: { origin: 'affiliate_deactivate', affiliate_profile_id: id },
+    };
+
     if (profile.user_id && user?.role === 'affiliate') {
+      const before = await this.prisma.uSER.findUnique({
+        where: { id: profile.user_id },
+      });
+      const patch = {
+        status: 'inactive',
+        status_before_deactivation: user.status,
+      };
       await this.prisma.uSER.update({
         where: { id: profile.user_id },
-        data: {
-          status: 'inactive',
-          status_before_deactivation: user.status,
-        },
+        data: patch,
+      });
+      if (before) {
+        await this.userAudit.logUpdate({
+          ...auditCommon,
+          before,
+          after: patch,
+        });
+      }
+    } else if (user?.email) {
+      await this.userAudit.log({
+        ...auditCommon,
+        subject: user,
+        event: USER_AUDIT_EVENTS.AFFILIATE_PROFILE_CHANGED,
+        before: { affiliate_profile_status: profile.status },
+        after: { affiliate_profile_status: 'inactive' },
       });
     }
 
@@ -1324,7 +1410,7 @@ export class AffiliatesService {
   // Admin: delete an invited affiliate profile (only allowed for status='invited').
   // - If the user's role is 'affiliate': soft-deletes the user account AND hard-deletes the profile.
   // - If the user's role is 'organization_admin' or 'organization_super_admin': deletes only the profile.
-  async deleteInvited(id: string) {
+  async deleteInvited(id: string, adminUser?: USER) {
     const profile = await this.findOne(id);
     const user = profile.user as any;
 
@@ -1332,11 +1418,32 @@ export class AffiliatesService {
       throw new BadRequestException('Only invited affiliates can be deleted');
     }
 
+    const fullUser =
+      profile.user_id && user?.id
+        ? await this.prisma.uSER.findUnique({ where: { id: user.id } })
+        : null;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.affiliateProfile.delete({ where: { id } });
-      if (profile.user_id && user?.id) {
-        await tx.emailInvitation.deleteMany({ where: { userId: user.id } });
-        await tx.uSER.delete({ where: { id: user.id } });
+      if (fullUser) {
+        // Tombstone commits atomically with the delete.
+        await this.userAudit.logOrThrow(
+          {
+            subject: fullUser,
+            event: USER_AUDIT_EVENTS.DELETED,
+            source: UserAuditSource.admin,
+            ...auditActor(adminUser),
+            oldStatus: fullUser.status,
+            before: snapshotUser(fullUser),
+            metadata: {
+              origin: 'affiliate_delete_invited',
+              affiliate_profile_id: id,
+            },
+          },
+          tx,
+        );
+        await tx.emailInvitation.deleteMany({ where: { userId: fullUser.id } });
+        await tx.uSER.delete({ where: { id: fullUser.id } });
       }
     });
   }
@@ -1344,7 +1451,7 @@ export class AffiliatesService {
   // Admin: reactivate an inactive affiliate profile (and user account if role is 'affiliate').
   // - If the user's role is 'affiliate': restores user status (from status_before_deactivation or 'active') AND profile status → 'active'.
   // - If the user's role is 'organization_admin' or 'organization_super_admin': reactivates profile only.
-  async reactivate(id: string) {
+  async reactivate(id: string, adminUser?: USER) {
     const profile = await this.findOne(id);
     const user = profile.user as any;
 
@@ -1360,14 +1467,39 @@ export class AffiliatesService {
       data: { status: 'active' },
     });
 
+    const auditCommon = {
+      source: UserAuditSource.admin,
+      ...auditActor(adminUser),
+      metadata: { origin: 'affiliate_reactivate', affiliate_profile_id: id },
+    };
+
     // If user role is 'affiliate', restore the user account status
     if (profile.user_id && user?.role === 'affiliate') {
+      const before = await this.prisma.uSER.findUnique({
+        where: { id: profile.user_id },
+      });
+      const patch = {
+        status: user.status_before_deactivation ?? 'active',
+        status_before_deactivation: null,
+      };
       await this.prisma.uSER.update({
         where: { id: profile.user_id },
-        data: {
-          status: user.status_before_deactivation ?? 'active',
-          status_before_deactivation: null,
-        },
+        data: patch,
+      });
+      if (before) {
+        await this.userAudit.logUpdate({
+          ...auditCommon,
+          before,
+          after: patch,
+        });
+      }
+    } else if (user?.email) {
+      await this.userAudit.log({
+        ...auditCommon,
+        subject: user,
+        event: USER_AUDIT_EVENTS.AFFILIATE_PROFILE_CHANGED,
+        before: { affiliate_profile_status: 'inactive' },
+        after: { affiliate_profile_status: 'active' },
       });
     }
 
@@ -1394,7 +1526,11 @@ export class AffiliatesService {
   }
 
   // Admin: link the affiliate's connected user to an existing organization.
-  async linkOrganization(id: string, dto: LinkOrganizationDto) {
+  async linkOrganization(
+    id: string,
+    dto: LinkOrganizationDto,
+    adminUser?: USER,
+  ) {
     const profile = await this.findOne(id); // ensures profile exists
     if (!profile.user_id)
       throw new BadRequestException('Affiliate has no connected user');
@@ -1405,10 +1541,25 @@ export class AffiliatesService {
     });
     if (!org) throw new NotFoundException('Organization not found');
 
+    const before = await this.prisma.uSER.findUnique({
+      where: { id: profile.user_id },
+    });
     await this.prisma.uSER.update({
       where: { id: profile.user_id },
       data: { organization_id: dto.organization_id },
     });
+    if (before) {
+      await this.userAudit.logUpdate({
+        before,
+        after: { organization_id: dto.organization_id },
+        source: UserAuditSource.admin,
+        ...auditActor(adminUser),
+        metadata: {
+          origin: 'affiliate_link_organization',
+          affiliate_profile_id: id,
+        },
+      });
+    }
 
     return this.findOne(id);
   }

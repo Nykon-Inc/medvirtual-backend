@@ -3,10 +3,18 @@ import axios from 'axios';
 import { ownerToDbDictionary } from '../../common/dictionaries/owner-dictionary';
 import { mapOwnerToDb } from '../../common/utils/hubspot.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserAuditSource } from '@prisma/client';
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+} from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerOwnerCreation {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userAudit: UserAuditService,
+  ) {}
 
   async execute(event) {
     const properties = Object.keys(ownerToDbDictionary).join(',');
@@ -43,6 +51,22 @@ export class HandlerOwnerCreation {
       if (!ownerOrganization) {
         throw new BadRequestException('Error creating Owner in the database');
       }
+
+      await this.userAudit.log({
+        subject: ownerOrganization,
+        event: USER_AUDIT_EVENTS.CREATED,
+        source: UserAuditSource.webhook,
+        actorLabel: 'HubSpot',
+        after: {
+          status: ownerOrganization.status,
+          role: ownerOrganization.role,
+        },
+        metadata: {
+          origin: 'hubspot_owner_creation',
+          createdByMethod: 'hubspot',
+          hubspot_owner_id: String(event.id),
+        },
+      });
 
       return true;
     } catch (error) {

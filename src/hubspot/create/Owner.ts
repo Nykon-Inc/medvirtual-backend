@@ -4,15 +4,18 @@ import {
   HubspotAuditAction,
   HubspotAuditSource,
   HubspotEntityType,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class OwnerCreationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async execute(data: any, actorUserId?: string): Promise<any> {
@@ -42,6 +45,14 @@ export class OwnerCreationService {
       await this.prisma.uSER.update({
         where: { id: data.id },
         data: { hubspot_id: response.data.id },
+      });
+
+      await this.userAudit.logUpdate({
+        before: data,
+        after: { hubspot_id: String(response.data.id) },
+        source: actorUserId ? UserAuditSource.admin : UserAuditSource.system,
+        actorUserId: actorUserId ?? null,
+        metadata: { origin: 'hubspot_owner_created' },
       });
 
       void this.audit.log({

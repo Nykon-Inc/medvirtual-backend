@@ -26,6 +26,8 @@ import { UpdateBrandingDto } from './dto/update-branding.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { USER } from '@prisma/client';
 
 @ApiTags('business-units')
 @ApiBearerAuth()
@@ -137,8 +139,12 @@ export class BusinessUnitsController {
       'is still running in the background at the time this response is sent.',
   })
   @ApiResponse({ status: 404, description: 'Business unit not found' })
-  update(@Param('slug') slug: string, @Body() dto: UpdateBusinessUnitDto) {
-    return this.service.update(slug, dto);
+  update(
+    @Param('slug') slug: string,
+    @Body() dto: UpdateBusinessUnitDto,
+    @CurrentUser() currentUser: USER,
+  ) {
+    return this.service.update(slug, dto, currentUser);
   }
 
   @Delete(':slug')

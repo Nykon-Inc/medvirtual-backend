@@ -132,6 +132,8 @@ model USER {
   candidateAuditActorLogs   CandidateAuditLog[]          @relation("CandidateAuditActor")
   // Offer panel audit log entries where this user was the acting subject
   offerPanelAuditLogs       OfferPanelAuditLog[]         @relation("OfferPanelAuditActor")
+  // User audit log entries where this user was the acting subject
+  userAuditActorLogs        UserAuditLog[]               @relation("UserAuditActor")
   // Tickets this user soft-deleted
   ticketsDeleted            Ticket[]                     @relation("TicketDeletedBy")
   // MA-006 review cases resolved by this admin user
@@ -1638,6 +1640,58 @@ model TicketAuditLog {
 
 enum TicketAuditSource {
   user
+  system
+  cron
+  webhook
+}
+
+// Append-only audit trail for the USER lifecycle — creation to removal. Never update/delete rows.
+//
+// subject_user_id is deliberately NOT a foreign key: USER rows are hard-deleted (DELETE /user/:id,
+// the invite-expiry cron, HubSpot owner deletion) and the log must prove the user existed after
+// that. The subject's email/name/role/org are denormalized for the same reason, and so the log
+// stays searchable by email once the row is gone.
+//
+// `event` is a plain String (see USER_AUDIT_EVENTS in user-audit.service.ts) — same rationale as
+// TicketAuditLog. `source` stays an enum because that set is closed.
+//
+// PII: `before`/`after` only ever hold the allowlisted USER columns (USER_AUDIT_TRACKED_FIELDS) —
+// never password hashes, tokens or bill.com session data.
+model UserAuditLog {
+  id                String          @id @default(uuid())
+  // null only for failed logins where the attempted email matches no user.
+  subject_user_id   String?
+  subject_email     String
+  subject_label     String?
+  subject_role      String?
+  organization_id   String?
+  organization_name String?
+  event             String
+  old_status        String?
+  new_status        String?
+  reason            String?
+  source            UserAuditSource @default(user)
+  actor_user_id     String?
+  // Denormalized actor display name, so the log stays readable after the actor is hard-deleted.
+  actor_label       String?
+  before            Json?
+  after             Json?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+
+  actorUser USER? @relation("UserAuditActor", fields: [actor_user_id], references: [id], onDelete: SetNull)
+
+  @@index([subject_user_id, createdAt], map: "idx_user_audit_timeline")
+  @@index([subject_email], map: "idx_user_audit_email")
+  @@index([organization_id], map: "idx_user_audit_org")
+  @@index([actor_user_id], map: "idx_user_audit_actor")
+  @@index([event], map: "idx_user_audit_event")
+  @@index([createdAt], map: "idx_user_audit_created_at")
+}
+
+enum UserAuditSource {
+  user
+  admin
   system
   cron
   webhook

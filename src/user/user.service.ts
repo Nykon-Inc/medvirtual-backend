@@ -3,7 +3,12 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { OrganizationStatus, Prisma, USER } from '@prisma/client';
+import {
+  OrganizationStatus,
+  Prisma,
+  USER,
+  UserAuditSource,
+} from '@prisma/client';
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 
@@ -17,6 +22,12 @@ import { getUserEmailTheme } from '../common/utils/email-templates/theme-helper'
 import { InviteUserToOrganizationDto } from './dto/inviteUserToOrganization.dto';
 import { organizationIndustryToDbDictionary } from '../common/dictionaries/organizationIndustry-dictionary';
 import { HubspotService } from '../hubspot/hubspot.service';
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+  auditActor,
+  snapshotUser,
+} from '../user-audit/user-audit.service';
 import { admin } from 'googleapis/build/src/apis/admin';
 
 @Injectable()
@@ -25,6 +36,7 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly hubspotService: HubspotService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async create(userData: Prisma.USERUncheckedCreateInput): Promise<USER> {
@@ -448,6 +460,14 @@ export class UserService {
         },
       });
 
+      await this.userAudit.logUpdate({
+        before: currentUser,
+        after: updatedUser,
+        source: UserAuditSource.user,
+        ...auditActor(currentUser),
+        metadata: { origin: 'profile_self_update' },
+      });
+
       // Transform to GetProfileDto format
       const profileResponse: GetProfileDto = {
         id: updatedUser.id,
@@ -540,10 +560,23 @@ export class UserService {
         );
       }
 
-      return await this.prisma.uSER.update({
+      const updated = await this.prisma.uSER.update({
         where: { id },
         data: user,
       });
+
+      await this.userAudit.logUpdate({
+        before: currentUser,
+        after: updated,
+        source:
+          actorUserId && actorUserId === id
+            ? UserAuditSource.user
+            : UserAuditSource.admin,
+        actorUserId: actorUserId ?? null,
+        metadata: { origin: 'user_update' },
+      });
+
+      return updated;
     } catch (error) {
       throw new BadRequestException(`Failed to update user: ${error}`);
     }
@@ -662,7 +695,25 @@ export class UserService {
           data: { status: 'pending' },
         });
 
-        // 9. Finally, delete the user
+        // 9. Tombstone — commits atomically with the delete, so a user can never vanish
+        // without a trace (a failed audit write rolls the whole delete back).
+        await this.userAudit.logOrThrow(
+          {
+            subject: user,
+            event: USER_AUDIT_EVENTS.DELETED,
+            source: UserAuditSource.admin,
+            actorUserId: actorUserId ?? null,
+            oldStatus: user.status,
+            before: snapshotUser(user),
+            metadata: {
+              origin: 'user_delete',
+              owned_organization_ids: ownedOrganizations.map((o) => o.id),
+            },
+          },
+          tx,
+        );
+
+        // 10. Finally, delete the user
         return await tx.uSER.delete({
           where: { id },
         });
@@ -678,19 +729,29 @@ export class UserService {
     }
   }
 
-  async updateStatus(id: string): Promise<USER> {
+  async updateStatus(id: string, actorUserId?: string): Promise<USER> {
     try {
       const currentUser = await this.findById(id);
       if (!currentUser) throw new NotFoundException(`User not found`);
       if (currentUser.status !== 'prospect')
         new BadRequestException(`User status is not prospect`);
 
-      return await this.prisma.uSER.update({
+      const updated = await this.prisma.uSER.update({
         where: { id },
         data: {
           status: 'client',
         },
       });
+
+      await this.userAudit.logUpdate({
+        before: currentUser,
+        after: updated,
+        source: UserAuditSource.admin,
+        actorUserId: actorUserId ?? null,
+        metadata: { origin: 'user_update_status' },
+      });
+
+      return updated;
     } catch (error) {
       throw new BadRequestException(`Failed to update user status: ${error}`);
     }
@@ -1061,6 +1122,19 @@ export class UserService {
           avatar: '',
           createdByMethod: 'admin_invite',
           createdByUserId: currentUser.id,
+        },
+      });
+
+      await this.userAudit.log({
+        subject: newUser,
+        event: USER_AUDIT_EVENTS.INVITED,
+        source: UserAuditSource.admin,
+        ...auditActor(currentUser),
+        after: { status: newUser.status, role: newUser.role },
+        metadata: {
+          origin: 'organization_invite',
+          createdByMethod: 'admin_invite',
+          contact_id: inviteData.contact_id ?? null,
         },
       });
 

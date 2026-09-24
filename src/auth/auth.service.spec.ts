@@ -16,6 +16,16 @@ const mockEmailTemplates = {
 import * as jwt from 'jsonwebtoken';
 import * as bcrypt from 'bcryptjs';
 import { first } from 'rxjs';
+import { UserAuditService } from '../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 jest.mock('jsonwebtoken', () => ({
   sign: jest.fn(() => 'mocked-jwt-token'),
@@ -64,6 +74,7 @@ describe('AuthService - signIn', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userMock },
         { provide: MailService, useValue: mailMock },
@@ -352,6 +363,87 @@ describe('AuthService - signIn', () => {
 
     expect((result as any).user.business_unit).toBe('Berry Virtual');
   });
+  describe('user audit trail', () => {
+    const activeUser = {
+      id: 'u1',
+      email: dataFake.email,
+      password: 'hashed-pass',
+      authentication_method: authenticationMethod,
+      verified: true,
+      status: 'active',
+      organization_id: 'org1',
+      first_name: 'Test',
+      last_name: 'User',
+      role: 'organization_admin',
+    };
+    const ctx = { ip: '10.0.0.1', user_agent: 'jest' };
+
+    beforeEach(() => {
+      userAuditServiceMock.log.mockClear();
+      prismaMock.organization.findUnique.mockResolvedValue({
+        business_unit: 'Test Unit',
+        status: 'active',
+      });
+    });
+
+    it('records login_failed with the attempted email when no user matches', async () => {
+      userMock.findByEmail.mockResolvedValue(null);
+
+      await expect(service.signIn(dataFake, ctx)).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(userAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: { email: dataFake.email },
+          event: 'login_failed',
+          reason: 'user_not_found',
+          metadata: expect.objectContaining({
+            ip: '10.0.0.1',
+            user_agent: 'jest',
+          }),
+        }),
+      );
+    });
+
+    it('records login_failed with reason bad_password', async () => {
+      userMock.findByEmail.mockResolvedValue(activeUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.signIn(dataFake, ctx)).rejects.toThrow(
+        new BadRequestException('Invalid password'),
+      );
+
+      expect(userAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: activeUser,
+          event: 'login_failed',
+          reason: 'bad_password',
+        }),
+      );
+    });
+
+    it('records login_succeeded after the session is created', async () => {
+      userMock.findByEmail.mockResolvedValue(activeUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (jwt.sign as jest.Mock).mockReturnValue('mocked-token');
+      prismaMock.session.updateMany.mockResolvedValue({});
+      prismaMock.session.create.mockResolvedValue({ id: 'session1' });
+
+      await service.signIn({ ...dataFake, rememberMe: true }, ctx);
+
+      expect(userAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'login_succeeded',
+          actorUserId: 'u1',
+          metadata: expect.objectContaining({
+            remember_me: true,
+            ip: '10.0.0.1',
+          }),
+        }),
+      );
+    });
+  });
 });
 
 describe('AuthService - Signup', () => {
@@ -393,6 +485,7 @@ describe('AuthService - Signup', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailmock },
@@ -515,6 +608,7 @@ describe('AuthService - inviteUser', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
@@ -586,6 +680,7 @@ describe('AuthService - getUser', () => {
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -675,6 +770,7 @@ describe('AuthService - invitedUserSignup', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -822,6 +918,7 @@ describe('AuthService - resendCode', () => {
 
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
@@ -905,6 +1002,7 @@ describe('AuthService - reInviteUser', () => {
 
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
@@ -970,6 +1068,7 @@ describe('AuthService - verifyCode', () => {
 
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
@@ -1057,6 +1156,7 @@ describe('AuthService - logout', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -1112,6 +1212,7 @@ describe('AuthService - updatePassword', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -1193,6 +1294,7 @@ describe('AuthService - signIn (additional branches)', () => {
     jest.clearAllMocks();
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
@@ -1292,6 +1394,7 @@ describe('AuthService - verifyCode (additional branches)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: { sendMail: jest.fn() } },
@@ -1368,6 +1471,7 @@ describe('AuthService - logout (additional)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -1408,6 +1512,7 @@ describe('AuthService - inviteUser (additional branches)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },
@@ -1476,6 +1581,7 @@ describe('AuthService - getUser (additional)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -1514,6 +1620,7 @@ describe('AuthService - invitedUserSignup (additional branches)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: {} },
         { provide: MailService, useValue: {} },
@@ -1619,6 +1726,7 @@ describe('AuthService - reInviteUser (additional branches)', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         AuthService,
         { provide: UserService, useValue: userServiceMock },
         { provide: MailService, useValue: mailServiceMock },

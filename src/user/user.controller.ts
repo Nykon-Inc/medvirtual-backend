@@ -32,12 +32,17 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { USER } from '@prisma/client';
+import { UserAuditService } from '../user-audit/user-audit.service';
+import { ListUserAuditLogsDto } from '../user-audit/dto/list-user-audit-logs.dto';
 
 @ApiTags('User')
 @ApiBearerAuth()
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly userAuditService: UserAuditService,
+  ) {}
 
   @Get('profile')
   @UseGuards(AuthGuard)
@@ -192,6 +197,27 @@ export class UserController {
   })
   async searchOrganizationUsers(@Query() query: SearchUsersDto) {
     return this.userService.searchOrganizationUsers(query);
+  }
+
+  // Must stay above @Get(':id') — keeps 'admin' from ever being read as an :id.
+  @Get('admin/audit-logs')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_super_admin')
+  @ApiOperation({
+    summary: 'List USER lifecycle audit logs (system owner only)',
+  })
+  @ApiQuery({ type: ListUserAuditLogsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Audit logs retrieved successfully',
+  })
+  async listAuditLogs(@Query() query: ListUserAuditLogsDto) {
+    const result = await this.userAuditService.findAllLogs(query);
+    return {
+      status: 200,
+      message: 'Audit logs retrieved successfully',
+      ...result,
+    };
   }
 
   @Get(':id')
@@ -492,7 +518,10 @@ export class UserController {
   @ApiResponse({ status: 200, description: 'User updated successfully.' })
   @ApiResponse({ status: 400, description: 'Failed to update user' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async updateStatus(@Param('id') id: string) {
-    return this.userService.updateStatus(id);
+  async updateStatus(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: USER,
+  ) {
+    return this.userService.updateStatus(id, currentUser.id);
   }
 }

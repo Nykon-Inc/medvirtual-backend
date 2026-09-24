@@ -100,6 +100,15 @@ function makeBuContext() {
   return { bustCache: jest.fn() };
 }
 
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
+
 const candidateAuditMock = {
   log: jest.fn().mockResolvedValue(undefined),
   logOrThrow: jest.fn().mockResolvedValue(undefined),
@@ -118,6 +127,7 @@ function makeService(
     audit,
     buContext,
     candidateAuditMock,
+    userAuditServiceMock,
   );
   return { service: service as BusinessUnitsService, prisma, audit, buContext };
 }
@@ -150,6 +160,7 @@ describe('BusinessUnitsService.findAllBranding', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.findAllBranding();
@@ -184,6 +195,7 @@ describe('BusinessUnitsService.findAllBranding', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.findAllBranding();
@@ -213,6 +225,7 @@ describe('BusinessUnitsService.findAllBranding', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     const result = await service.findAllBranding();
@@ -239,6 +252,7 @@ describe('BusinessUnitsService.create', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.create(dto, 'user-1');
@@ -265,6 +279,7 @@ describe('BusinessUnitsService.create', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.create(dto, 'user-1');
@@ -512,6 +527,7 @@ describe('BusinessUnitsService — sync bidirecional', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.updateBranding(
@@ -757,6 +773,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     mockedAxios.post
@@ -853,6 +870,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     mockedAxios.post
@@ -912,6 +930,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockResolvedValue(emptySearch());
 
@@ -938,6 +957,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockResolvedValue({
       data: {
@@ -976,6 +996,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     let resolvePost: (value: unknown) => void;
@@ -1009,6 +1030,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockResolvedValue(emptySearch());
 
@@ -1035,6 +1057,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post
       .mockResolvedValueOnce({
@@ -1122,6 +1145,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockResolvedValue(emptySearch());
 
@@ -1151,6 +1175,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockResolvedValue(emptySearch());
 
@@ -1195,6 +1220,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     mockedAxios.post
@@ -1253,6 +1279,7 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
     mockedAxios.post.mockRejectedValue(hubspot400());
 
@@ -1293,6 +1320,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       audit,
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1347,6 +1375,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1395,6 +1424,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1427,6 +1457,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1461,6 +1492,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       audit,
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1486,6 +1518,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       audit,
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1511,6 +1544,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       audit,
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1539,6 +1573,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: true });
@@ -1572,6 +1607,7 @@ describe('BusinessUnitsService.update — activation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     // backfill's axios call never resolves during this test
@@ -1615,6 +1651,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1641,6 +1678,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1664,6 +1702,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1684,6 +1723,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1707,6 +1747,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1725,6 +1766,7 @@ describe('BusinessUnitsService.update — deactivation flow', () => {
       audit,
       buContext,
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     await service.update('mmva', { is_visible: false });
@@ -1760,6 +1802,7 @@ describe('BusinessUnitsService — deactivate/reactivate round-trip symmetry', (
       makeAudit(),
       makeBuContext(),
       candidateAuditMock,
+      userAuditServiceMock,
     ) as BusinessUnitsService;
 
     // ── Deactivate: tag everything deactivated_by_bu='mmva' ──

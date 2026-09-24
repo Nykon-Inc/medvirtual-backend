@@ -18,6 +18,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { CronModule } from './cron/cron.module';
 import { HireRequestModule } from './hire-request/hire-request.module';
 import { TicketModule } from './ticket/ticket.module';
+import { UserAuditModule } from './user-audit/user-audit.module';
 import { StaffModule } from './staff/staff.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EmailTestModule } from './email-test/email-test.module';
@@ -92,6 +93,7 @@ import { SessionActivityModule } from './session-activity/session-activity.modul
     CronModule,
     HireRequestModule,
     TicketModule,
+    UserAuditModule,
     StaffModule,
     NotificationsModule,
     EmailTestModule,

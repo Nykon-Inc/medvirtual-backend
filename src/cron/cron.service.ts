@@ -46,7 +46,11 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { getEmailThemeByBusinessUnit } from '../common/utils/email-templates/theme';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
-import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import {
+  CandidateAuditFieldGroup,
+  CandidateAuditSource,
+  UserAuditSource,
+} from '@prisma/client';
 import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,
@@ -58,6 +62,11 @@ import {
   isPairingTypeDowngraded,
 } from '../common/utils/organizationActiveStaff.util';
 import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
+import {
+  USER_AUDIT_EVENTS,
+  UserAuditService,
+  snapshotUser,
+} from '../user-audit/user-audit.service';
 
 type Event = {
   objectId?: string;
@@ -95,6 +104,7 @@ export class CronService {
     private readonly businessUnitsService: BusinessUnitsService,
     private readonly candidateAudit: CandidateAuditService,
     private readonly hubspotAuditService: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   // ── EmailTemplatesService fallback helper ─────────────────────────────────
@@ -436,7 +446,18 @@ export class CronService {
         first_name: true,
         last_name: true,
         organization_id: true,
+        organization_name: true,
+        role: true,
+        status: true,
+        verified: true,
+        createdAt: true,
+        activatedAt: true,
+        createdByMethod: true,
+        createdByUserId: true,
+        hubspot_contact_id: true,
       };
+      const AUDIT_ORIGIN = 'deactivate-client-users-no-staff';
+      const DAY_MS = 24 * 60 * 60 * 1000;
 
       // Collect active users for the report before updating
       const usersToDeactivate = await this.prisma.uSER.findMany({
@@ -452,6 +473,17 @@ export class CronService {
         where: { id: { in: usersToDeactivate.map((u) => u.id) } },
         data: { status: 'inactive', status_before_deactivation: 'active' },
       });
+
+      await this.userAudit.logBulkUpdate(
+        usersToDeactivate,
+        { status: 'inactive', status_before_deactivation: 'active' },
+        {
+          source: UserAuditSource.cron,
+          actorLabel: 'Cron: Client Users Deactivation',
+          reason: 'org_without_staff_60d',
+          metadata: { origin: AUDIT_ORIGIN },
+        },
+      );
 
       console.log(`Deactivated ${usersToDeactivate.length} active users.`);
 
@@ -469,13 +501,60 @@ export class CronService {
         `Found ${invitedUsersToDelete.length} invited users to delete.`,
       );
 
+      const deletedUsers: typeof invitedUsersToDelete = [];
+      const failedDeletions: typeof invitedUsersToDelete = [];
+
+      // One failure must not abort the rest of the run — each user is its own transaction,
+      // and the audit tombstone commits atomically with the delete (or neither happens).
       for (const user of invitedUsersToDelete) {
-        await this.prisma.$transaction(async (tx) => {
-          await tx.emailVerification.deleteMany({ where: { userId: user.id } });
-          await tx.emailInvitation.deleteMany({ where: { userId: user.id } });
-          await tx.uSER.delete({ where: { id: user.id } });
-        });
-        console.log(`Deleted invited user: ${user.email}`);
+        try {
+          await this.prisma.$transaction(async (tx) => {
+            const invitations = await tx.emailInvitation.findMany({
+              where: { userId: user.id },
+              select: { createdAt: true, expiresAt: true },
+              orderBy: { createdAt: 'asc' },
+            });
+            const organizationName = user.organization_id
+              ? (orgNameById[user.organization_id] ?? user.organization_name)
+              : user.organization_name;
+
+            await this.userAudit.logOrThrow(
+              {
+                subject: { ...user, organization_name: organizationName },
+                event: USER_AUDIT_EVENTS.INVITE_EXPIRED_DELETED,
+                source: UserAuditSource.cron,
+                actorLabel: 'Cron: Client Users Deactivation',
+                oldStatus: user.status,
+                reason: 'invite_not_accepted_60d_org_without_staff',
+                before: snapshotUser(user),
+                metadata: {
+                  origin: AUDIT_ORIGIN,
+                  rule: '60d_since_createdAt_org_without_staff',
+                  days_since_created: Math.floor(
+                    (Date.now() - user.createdAt.getTime()) / DAY_MS,
+                  ),
+                  organization_name: organizationName,
+                  invitations: invitations.map((i) => ({
+                    createdAt: i.createdAt.toISOString(),
+                    expiresAt: i.expiresAt.toISOString(),
+                  })),
+                },
+              },
+              tx,
+            );
+
+            await tx.emailVerification.deleteMany({
+              where: { userId: user.id },
+            });
+            await tx.emailInvitation.deleteMany({ where: { userId: user.id } });
+            await tx.uSER.delete({ where: { id: user.id } });
+          });
+          deletedUsers.push(user);
+          console.log(`Deleted invited user: ${user.email}`);
+        } catch (err) {
+          failedDeletions.push(user);
+          console.error(`Failed to delete invited user ${user.email}:`, err);
+        }
       }
 
       // Send report email
@@ -490,8 +569,9 @@ export class CronService {
 
       const emailBody = clientUsersDeactivationReport(
         usersToDeactivate.map(toReportUser),
-        invitedUsersToDelete.map(toReportUser),
+        deletedUsers.map(toReportUser),
         new Date(),
+        failedDeletions.map(toReportUser),
       );
 
       const tplDeactivation = await this.getCronTplContent(
@@ -499,7 +579,7 @@ export class CronService {
         {
           '{{reportDate}}': new Date().toLocaleDateString('en-US'),
           '{{deactivatedCount}}': String(usersToDeactivate.length),
-          '{{removedCount}}': String(invitedUsersToDelete.length),
+          '{{removedCount}}': String(deletedUsers.length),
           '{{reportContent}}': '(see attached report)',
         },
       );

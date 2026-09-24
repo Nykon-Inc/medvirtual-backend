@@ -3,18 +3,24 @@ import {
   HubspotAuditAction,
   HubspotAuditSource,
   HubspotEntityType,
+  USER,
+  UserAuditSource,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
+import { UserAuditService } from '../../user-audit/user-audit.service';
 
 @Injectable()
 export class HandlerContactMerge {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: HubspotAuditService,
+    private readonly userAudit: UserAuditService,
   ) {}
 
   async execute(event) {
+    // USER hubspot_contact_id re-points — collected in the tx, audited after it commits.
+    const relinked: { before: USER; hubspot_contact_id: string | null }[] = [];
     try {
       await this.prisma.$transaction(async (tx) => {
         const primaryContact = await tx.contact.findUnique({
@@ -52,10 +58,19 @@ export class HandlerContactMerge {
         });
 
         if (primaryContact.user_id) {
+          const before = await tx.uSER.findUnique({
+            where: { id: primaryContact.user_id },
+          });
           await tx.uSER.update({
             where: { id: primaryContact.user_id },
             data: { hubspot_contact_id: String(event.newObjectId) },
           });
+          if (before) {
+            relinked.push({
+              before,
+              hubspot_contact_id: String(event.newObjectId),
+            });
+          }
         }
 
         for (const merged of mergedContacts) {
@@ -70,10 +85,14 @@ export class HandlerContactMerge {
           });
 
           if (merged.user_id) {
+            const before = await tx.uSER.findUnique({
+              where: { id: merged.user_id },
+            });
             await tx.uSER.update({
               where: { id: merged.user_id },
               data: { hubspot_contact_id: null },
             });
+            if (before) relinked.push({ before, hubspot_contact_id: null });
           }
 
           await tx.contact.update({
@@ -101,6 +120,19 @@ export class HandlerContactMerge {
           },
         });
       });
+
+      await this.userAudit.logMany(
+        relinked.flatMap(({ before, hubspot_contact_id }) =>
+          this.userAudit.buildUpdateEntries({
+            before,
+            after: { hubspot_contact_id },
+            source: UserAuditSource.webhook,
+            actorLabel: 'HubSpot',
+            reason: 'hubspot_contact_merged',
+            metadata: { origin: 'hubspot_contact_merge' },
+          }),
+        ),
+      );
     } catch (error) {
       throw new BadRequestException(`HandlerContactMerge: ${error.message}`);
     }

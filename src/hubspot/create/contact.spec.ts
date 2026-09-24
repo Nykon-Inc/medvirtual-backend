@@ -8,6 +8,16 @@ import {
   HubspotAuditSource,
   HubspotEntityType,
 } from '@prisma/client';
+import { UserAuditService } from '../../user-audit/user-audit.service';
+
+const userAuditServiceMock = {
+  log: jest.fn().mockResolvedValue(undefined),
+  logOrThrow: jest.fn().mockResolvedValue(undefined),
+  logMany: jest.fn().mockResolvedValue(undefined),
+  logUpdate: jest.fn().mockResolvedValue(undefined),
+  logBulkUpdate: jest.fn().mockResolvedValue(undefined),
+  buildUpdateEntries: jest.fn().mockReturnValue([]),
+};
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -39,6 +49,7 @@ describe('ContactCreationService', () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: UserAuditService, useValue: userAuditServiceMock },
         ContactCreationService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: HubspotAuditService, useValue: auditMock },

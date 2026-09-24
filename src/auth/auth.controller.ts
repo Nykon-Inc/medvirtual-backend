@@ -11,9 +11,10 @@ import {
   Redirect,
   Res,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 import { AuthService } from './auth.service';
 
@@ -32,6 +33,7 @@ import { Roles } from './roles.decorator';
 import { USER } from '@prisma/client';
 import { AuthUpdatePasswordDto } from './dto/authSetPassword.dto';
 import { UserService } from '../user/user.service';
+import { auditRequestContext } from '../user-audit/user-audit.service';
 
 /*
     1.User is redirected to workOs for authentication.
@@ -68,8 +70,8 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid Password' })
   @ApiResponse({ status: 400, description: 'Failed to create session' })
   @ApiResponse({ status: 500, description: 'Authentication failed' })
-  async signIn(@Body() data: AuthSignInDto) {
-    return await this.authService.signIn(data);
+  async signIn(@Body() data: AuthSignInDto, @Req() req: Request) {
+    return await this.authService.signIn(data, auditRequestContext(req));
   }
 
   @Post('signup')
@@ -199,8 +201,11 @@ export class AuthController {
     status: 403,
     description: 'Access denied: insufficient permissions',
   })
-  async inviteUser(@Body() data: AuthInviteUserDto) {
-    const result = await this.authService.inviteUser(data);
+  async inviteUser(
+    @Body() data: AuthInviteUserDto,
+    @CurrentUser() currentUser: USER,
+  ) {
+    const result = await this.authService.inviteUser(data, currentUser);
     if (result) {
       return {
         statusCode: 201,
@@ -223,8 +228,11 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Failed to generate invite code' })
   @ApiResponse({ status: 400, description: 'Failed to send invitation email' })
   @ApiResponse({ status: 400, description: 'Failed to store invite code' })
-  async reInviteUser(@Param('id') id: string) {
-    const result = await this.authService.reInviteUser(id);
+  async reInviteUser(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: USER,
+  ) {
+    const result = await this.authService.reInviteUser(id, currentUser);
     if (result) {
       return {
         statusCode: 200,
