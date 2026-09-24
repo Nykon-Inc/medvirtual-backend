@@ -58,6 +58,13 @@ import {
   CandidateAuditService,
 } from '../candidate/candidate-audit.service';
 import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import {
+  hasActiveStaff,
+  resolvePairingRequestType,
+  isPairingTypeDowngraded,
+} from '../common/utils/organizationActiveStaff.util';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
+import { buildHireRequestTitle } from '../common/utils/hireRequestTitle.util';
 
 @Injectable()
 export class HireRequestService {
@@ -76,6 +83,7 @@ export class HireRequestService {
     private readonly configService: ConfigService,
     @Inject('REDIS_CLIENT') private readonly redisClient: redis.RedisClientType,
     private readonly businessUnitContext: BusinessUnitContext,
+    private readonly hubspotAuditService: HubspotAuditService,
   ) {
     this.keyPrefix = keyPrefix(this.configService);
   }
@@ -376,13 +384,30 @@ export class HireRequestService {
     if (!organizationSQL)
       throw new NotFoundException(`Organization from client not found`);
 
+    // Never trust an incoming 'Upsell Agent' classification blindly — the client's
+    // active VA may be inactive/terminated by now (e.g. a stale form resubmission,
+    // or a caller that doesn't know the client's current staff status). This is
+    // the fix for the "UPS HR for a former client" bug.
+    const orgIdForStaffCheck = whereCondition?.id as string | undefined;
+    const orgHasActiveStaff = await hasActiveStaff(
+      this.prisma,
+      orgIdForStaffCheck,
+    );
+    const resolvedPairingType = resolvePairingRequestType(
+      hireRequestData.hubspot_pairing_request_type,
+      orgHasActiveStaff,
+    );
+    const pairingTypeDowngraded = isPairingTypeDowngraded(
+      hireRequestData.hubspot_pairing_request_type,
+      resolvedPairingType,
+    );
+
     const hubspotMappedFields = mapHRTicketToDb({
       hs_pipeline: '0',
       hs_pipeline_stage: Object.keys(HRTicketStatus).find(
         (key) => HRTicketStatus[key] === 'New Agent Request',
       ), //=> New agent Request
-      pairing_request_type:
-        hireRequestData.hubspot_pairing_request_type || 'New Client',
+      pairing_request_type: resolvedPairingType || 'New Client',
       ticket_type: 'Agent Pairing Request',
       business_unit: organizationSQL.business_unit || 'Not Specified',
       company_name: organizationSQL.name,
@@ -398,13 +423,25 @@ export class HireRequestService {
       return value && value.trim() !== '' ? value : null;
     };
 
-    // Note: The title is now received from the frontend with the required format
-    // Previously used: const hubspotTitle = `HR - ${organizationSQL.name} - ${hireRequestData.numberVA.toString()} - ${hireRequestData.position} - ${data.availability.toUpperCase()}`;
-    // The title from hireRequestData (which comes from the frontend) is used directly
+    // Note: The title is normally received from the frontend with the required
+    // format. The exception is when we just downgraded the pairing type above —
+    // in that case the frontend-provided title may still carry a "UPS " prefix
+    // built from the un-validated classification, so we recompute it here to
+    // keep the displayed title consistent with the corrected classification.
+    const resolvedTitle = pairingTypeDowngraded
+      ? buildHireRequestTitle({
+          hubspot_pairing_request_type: resolvedPairingType,
+          hubspot_numberVA: Number(hireRequestData.numberVA) || null,
+          hubspot_role_type: hireRequestData.position ?? null,
+          availability: hireRequestData.availability ?? null,
+          organization: { name: organizationSQL.name ?? '' },
+        })
+      : hireRequestData.title;
 
     const hireRequest = {
       ...hireRequestData,
       ...hubspotMappedFields,
+      title: resolvedTitle,
       organization: user.role.includes('organization')
         ? { connect: { id: user.organization_id || undefined } }
         : { connect: { id: client_id } },
@@ -444,6 +481,24 @@ export class HireRequestService {
     });
     if (!newHireRequest)
       throw new BadRequestException(`Hire request not created`);
+
+    if (pairingTypeDowngraded) {
+      await this.hubspotAuditService.log({
+        entityType: 'hire_request',
+        entityId: newHireRequest.id,
+        hubspotObjectType: 'ticket',
+        hubspotObjectId: null, // no HubSpot ticket exists yet at this point in the flow
+        action: 'CREATE',
+        source: 'user_action',
+        success: true,
+        payload: {
+          reason: 'upsell_downgrade_no_active_staff',
+          requested_pairing_request_type: 'Upsell Agent',
+          resolved_pairing_request_type: null,
+          organization_id: orgIdForStaffCheck ?? null,
+        },
+      });
+    }
 
     if (data.description && data.description.length >= 500) {
       try {
@@ -603,7 +658,12 @@ export class HireRequestService {
       newHireRequest.id,
       user,
     );
-    return hireRequestWithHubspotID;
+    return {
+      ...hireRequestWithHubspotID,
+      pairing_type_notice: pairingTypeDowngraded
+        ? "This request was created as a regular hire request because the client has no active VA — the 'Upsell Agent' classification was not applied."
+        : undefined,
+    };
   }
 
   async findAll(

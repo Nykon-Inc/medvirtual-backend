@@ -17,6 +17,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { BusinessUnitsService } from '../business-units/business-units.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -38,6 +39,7 @@ describe('CronService', () => {
   let businessUnitsServiceMock: Record<string, jest.Mock>;
   let emailTemplatesServiceMock: { getTemplateContent: jest.Mock };
   let candidateAuditServiceMock: Record<string, jest.Mock>;
+  let hubspotAuditServiceMock: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     emailTemplatesServiceMock = {
@@ -100,6 +102,13 @@ describe('CronService', () => {
       medAllianceAuditLog: {
         create: jest.fn(),
       },
+      hireRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
+      staff: {
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
     };
 
     candidatesServiceMock = {
@@ -156,6 +165,10 @@ describe('CronService', () => {
       logMany: jest.fn(),
     };
 
+    hubspotAuditServiceMock = {
+      log: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CronService,
@@ -183,6 +196,7 @@ describe('CronService', () => {
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
         { provide: BusinessUnitsService, useValue: businessUnitsServiceMock },
         { provide: CandidateAuditService, useValue: candidateAuditServiceMock },
+        { provide: HubspotAuditService, useValue: hubspotAuditServiceMock },
       ],
     }).compile();
 
@@ -523,6 +537,132 @@ describe('CronService', () => {
       const result = await service.syncClientsWithActiveStaffs();
 
       expect(result).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // syncHireRequestTitles
+  // ---------------------------------------------------------------------------
+  describe('syncHireRequestTitles', () => {
+    const baseHr = {
+      id: 'hr-1',
+      title: null,
+      org_id: 'org-1',
+      hubspot_ticket_id: 'ticket-1',
+      hubspot_pairing_request_type: 'Upsell Agent',
+      hubspot_numberVA: 2,
+      hubspot_role_type: 'Medical Scribe',
+      availability: 'full-time',
+      organization: { name: 'Acme Health' },
+    };
+
+    beforeEach(() => {
+      prismaServiceMock.hireRequest.update.mockResolvedValue({});
+      (axios.patch as jest.Mock).mockResolvedValue({ status: 200 });
+    });
+
+    it('downgrades a stale "Upsell Agent" to null and logs an audit entry when the org has no active staff', async () => {
+      prismaServiceMock.hireRequest.findMany.mockResolvedValue([baseHr]);
+      // groupBy returns no row for org-1 → no active staff
+      prismaServiceMock.staff.groupBy.mockResolvedValue([]);
+
+      const result = await service.syncHireRequestTitles();
+
+      expect(result.updated).toBe(1);
+      expect(result.errors).toBe(0);
+      expect(prismaServiceMock.hireRequest.update).toHaveBeenCalledWith({
+        where: { id: 'hr-1' },
+        data: {
+          title: expect.not.stringContaining('UPS'),
+          hubspot_pairing_request_type: null,
+        },
+      });
+      expect(hubspotAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'hire_request',
+          entityId: 'hr-1',
+          action: 'UPDATE',
+          source: 'cron',
+          payload: expect.objectContaining({
+            reason: 'upsell_downgrade_no_active_staff',
+          }),
+        }),
+      );
+    });
+
+    it('keeps "Upsell Agent" and does not log when the org has active staff', async () => {
+      prismaServiceMock.hireRequest.findMany.mockResolvedValue([baseHr]);
+      prismaServiceMock.staff.groupBy.mockResolvedValue([
+        { organization_id: 'org-1', _count: { _all: 3 } },
+      ]);
+
+      const result = await service.syncHireRequestTitles();
+
+      expect(result.updated).toBe(1);
+      expect(prismaServiceMock.hireRequest.update).toHaveBeenCalledWith({
+        where: { id: 'hr-1' },
+        data: {
+          title: expect.stringContaining('UPS'),
+          hubspot_pairing_request_type: 'Upsell Agent',
+        },
+      });
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('queries staff.groupBy once for multiple hire requests across organizations (no N+1)', async () => {
+      prismaServiceMock.hireRequest.findMany.mockResolvedValue([
+        { ...baseHr, id: 'hr-1', org_id: 'org-1' },
+        { ...baseHr, id: 'hr-2', org_id: 'org-2' },
+        { ...baseHr, id: 'hr-3', org_id: 'org-1' },
+      ]);
+      prismaServiceMock.staff.groupBy.mockResolvedValue([
+        { organization_id: 'org-1', _count: { _all: 1 } },
+      ]);
+
+      const result = await service.syncHireRequestTitles();
+
+      expect(prismaServiceMock.staff.groupBy).toHaveBeenCalledTimes(1);
+      expect(prismaServiceMock.staff.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['organization_id'],
+          where: expect.objectContaining({
+            organization_id: { in: ['org-1', 'org-2'] },
+          }),
+        }),
+      );
+      expect(result.updated).toBe(3);
+    });
+
+    it('skips hire requests whose title already has 5+ segments', async () => {
+      prismaServiceMock.hireRequest.findMany.mockResolvedValue([
+        { ...baseHr, title: 'UPS TEST HR - Acme Health - 2 - Scribe - Full-Time' },
+      ]);
+      prismaServiceMock.staff.groupBy.mockResolvedValue([]);
+
+      const result = await service.syncHireRequestTitles();
+
+      expect(result.skipped).toBe(1);
+      expect(result.updated).toBe(0);
+      expect(prismaServiceMock.hireRequest.update).not.toHaveBeenCalled();
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('does not downgrade "Agent Replacement" regardless of active staff', async () => {
+      prismaServiceMock.hireRequest.findMany.mockResolvedValue([
+        { ...baseHr, hubspot_pairing_request_type: 'Agent Replacement' },
+      ]);
+      prismaServiceMock.staff.groupBy.mockResolvedValue([]);
+
+      await service.syncHireRequestTitles();
+
+      expect(prismaServiceMock.hireRequest.update).toHaveBeenCalledWith({
+        where: { id: 'hr-1' },
+        data: {
+          title: expect.stringContaining('REP'),
+          hubspot_pairing_request_type: 'Agent Replacement',
+        },
+      });
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
     });
   });
 

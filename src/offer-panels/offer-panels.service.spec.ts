@@ -13,6 +13,7 @@ import { HireRequestService } from '../hire-request/hire-request.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { TicketAuditService } from '../ticket/ticket-audit.service';
 import { OfferPanelsAuditService } from './offer-panels-audit.service';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -172,6 +173,11 @@ const mockPanelAuditService = {
   findByOfferPanel: jest.fn(),
 };
 
+const mockHubspotAuditService = {
+  log: jest.fn(),
+  findAllLogs: jest.fn(),
+};
+
 describe('OfferPanelsService', () => {
   let service: OfferPanelsService;
 
@@ -192,6 +198,7 @@ describe('OfferPanelsService', () => {
           provide: OfferPanelsAuditService,
           useValue: mockPanelAuditService,
         },
+        { provide: HubspotAuditService, useValue: mockHubspotAuditService },
       ],
     }).compile();
 
@@ -1537,10 +1544,23 @@ describe('OfferPanelsService', () => {
         return fn(txPrisma);
       });
 
-      await service.acceptByClientUser('panel-1', client);
+      const result = await service.acceptByClientUser('panel-1', client);
 
       expect(createArgs.data.hubspot_pairing_request_type).toBeNull();
       expect(createArgs.data.title).not.toContain('UPS');
+      expect(result.pairing_type_notice).toEqual(
+        expect.stringContaining('no active VA'),
+      );
+      expect(mockHubspotAuditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'hire_request',
+          action: 'CREATE',
+          source: 'user_action',
+          payload: expect.objectContaining({
+            reason: 'upsell_downgrade_no_active_staff',
+          }),
+        }),
+      );
     });
 
     it('sets hubspot_pairing_request_type to "Upsell Agent" when org has active staff', async () => {
@@ -1560,10 +1580,12 @@ describe('OfferPanelsService', () => {
         return fn(txPrisma);
       });
 
-      await service.acceptByClientUser('panel-1', client);
+      const result = await service.acceptByClientUser('panel-1', client);
 
       expect(createArgs.data.hubspot_pairing_request_type).toBe('Upsell Agent');
       expect(createArgs.data.title).toContain('UPS');
+      expect(result.pairing_type_notice).toBeUndefined();
+      expect(mockHubspotAuditService.log).not.toHaveBeenCalled();
     });
 
     it('throws ForbiddenException when user is not the recipient', async () => {

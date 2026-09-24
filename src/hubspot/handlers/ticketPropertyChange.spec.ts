@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { HandlerTicketPropertyChange } from './ticketPropertyChange';
 import { PrismaService } from '../../prisma/prisma.service';
+import { HubspotAuditService } from '../hubspot-audit.service';
 
 jest.mock('axios', () => ({
   __esModule: true,
@@ -18,6 +19,13 @@ const prismaMock = {
   uSER: {
     findUnique: jest.fn(),
   },
+  staff: {
+    count: jest.fn(),
+  },
+};
+
+const hubspotAuditServiceMock = {
+  log: jest.fn(),
 };
 
 const BASE_HR = {
@@ -26,12 +34,14 @@ const BASE_HR = {
 };
 
 const BASE_HR_WITH_ORG: {
+  org_id: string | null;
   hubspot_pairing_request_type: string | null;
   hubspot_numberVA: number | null;
   hubspot_role_type: string | null;
   availability: string | null;
   organization: { name: string };
 } = {
+  org_id: 'org-acme',
   hubspot_pairing_request_type: 'New Client',
   hubspot_numberVA: 2,
   hubspot_role_type: 'Medical Scribe',
@@ -47,6 +57,7 @@ describe('HandlerTicketPropertyChange', () => {
       providers: [
         HandlerTicketPropertyChange,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: HubspotAuditService, useValue: hubspotAuditServiceMock },
       ],
     }).compile();
 
@@ -54,6 +65,9 @@ describe('HandlerTicketPropertyChange', () => {
       HandlerTicketPropertyChange,
     );
     jest.clearAllMocks();
+    // Default: org has active staff, so 'Upsell Agent' is never downgraded
+    // unless a specific test overrides this to simulate the bug scenario.
+    prismaMock.staff.count.mockResolvedValue(1);
   });
 
   it('should be defined', () => {
@@ -303,10 +317,13 @@ describe('HandlerTicketPropertyChange', () => {
         where: { id: BASE_HR.id },
         data: { availability: 'Part-Time' },
       });
-      // Second update: the recalculated title
+      // Second update: the recalculated title (+ resolved pairing type)
       expect(prismaMock.hireRequest.update).toHaveBeenNthCalledWith(2, {
         where: { id: BASE_HR.id },
-        data: { title: expect.any(String) },
+        data: {
+          title: expect.any(String),
+          hubspot_pairing_request_type: expect.anything(),
+        },
       });
       expect(axios.patch).toHaveBeenCalledWith(
         `https://api.hubapi.com/crm/v3/objects/tickets/ticket-123`,
@@ -340,6 +357,86 @@ describe('HandlerTicketPropertyChange', () => {
 
       expect(prismaMock.hireRequest.update).toHaveBeenCalledTimes(2);
       expect(axios.patch).toHaveBeenCalledTimes(1);
+    });
+
+    it('downgrades a stale "Upsell Agent" to null and logs an audit entry when the org has no active staff', async () => {
+      prismaMock.staff.count.mockResolvedValue(0);
+      prismaMock.hireRequest.findUnique
+        .mockReset()
+        .mockResolvedValueOnce(BASE_HR)
+        .mockResolvedValueOnce({
+          ...BASE_HR_WITH_ORG,
+          hubspot_pairing_request_type: 'Upsell Agent',
+        });
+
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_request_type',
+        propertyValue: 'Upsell Agent',
+      });
+
+      const titleUpdate = prismaMock.hireRequest.update.mock.calls[1][0];
+      expect(titleUpdate.data.hubspot_pairing_request_type).toBeNull();
+      expect(titleUpdate.data.title).not.toContain('UPS');
+      expect(hubspotAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'hire_request',
+          entityId: BASE_HR.id,
+          action: 'UPDATE',
+          source: 'webhook',
+          payload: expect.objectContaining({
+            reason: 'upsell_downgrade_no_active_staff',
+          }),
+        }),
+      );
+    });
+
+    it('keeps "Upsell Agent" and does not log when the org has active staff', async () => {
+      prismaMock.staff.count.mockResolvedValue(2);
+      prismaMock.hireRequest.findUnique
+        .mockReset()
+        .mockResolvedValueOnce(BASE_HR)
+        .mockResolvedValueOnce({
+          ...BASE_HR_WITH_ORG,
+          hubspot_pairing_request_type: 'Upsell Agent',
+        });
+
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_request_type',
+        propertyValue: 'Upsell Agent',
+      });
+
+      const titleUpdate = prismaMock.hireRequest.update.mock.calls[1][0];
+      expect(titleUpdate.data.hubspot_pairing_request_type).toBe(
+        'Upsell Agent',
+      );
+      expect(titleUpdate.data.title).toContain('UPS');
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
+    });
+
+    it('does not downgrade "Agent Replacement" regardless of active staff', async () => {
+      prismaMock.staff.count.mockResolvedValue(0);
+      prismaMock.hireRequest.findUnique
+        .mockReset()
+        .mockResolvedValueOnce(BASE_HR)
+        .mockResolvedValueOnce({
+          ...BASE_HR_WITH_ORG,
+          hubspot_pairing_request_type: 'Agent Replacement',
+        });
+
+      await handler.execute({
+        objectId: 'ticket-123',
+        propertyName: 'pairing_request_type',
+        propertyValue: 'Agent Replacement',
+      });
+
+      const titleUpdate = prismaMock.hireRequest.update.mock.calls[1][0];
+      expect(titleUpdate.data.hubspot_pairing_request_type).toBe(
+        'Agent Replacement',
+      );
+      expect(titleUpdate.data.title).toContain('REP');
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
     });
 
     it('should NOT sync title for non-title-affecting fields', async () => {
@@ -385,6 +482,10 @@ describe('HandlerTicketPropertyChange', () => {
         organization: { name: string };
       }>,
     ) => {
+      // The org has active staff by default so that 'Upsell Agent' cases in
+      // this suite exercise the title formula itself, not the downgrade path
+      // (that path is covered separately above).
+      prismaMock.staff.count.mockResolvedValue(1);
       prismaMock.hireRequest.findUnique
         .mockResolvedValueOnce(BASE_HR)
         .mockResolvedValueOnce({ ...BASE_HR_WITH_ORG, ...hrData });

@@ -3,6 +3,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { hrTicketToDbDictionary } from '../../common/dictionaries/HRTicket-dicionary';
 import { timestampToDate } from '../../common/utils/formatDate';
 import { buildHireRequestTitle } from '../../common/utils/hireRequestTitle.util';
+import {
+  hasActiveStaff,
+  resolvePairingRequestType,
+  isPairingTypeDowngraded,
+} from '../../common/utils/organizationActiveStaff.util';
+import { HubspotAuditService } from '../hubspot-audit.service';
 import axios from 'axios';
 
 const TITLE_AFFECTING_DB_FIELDS = new Set([
@@ -13,7 +19,10 @@ const TITLE_AFFECTING_DB_FIELDS = new Set([
 
 @Injectable()
 export class HandlerTicketPropertyChange {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly hubspotAuditService: HubspotAuditService,
+  ) {}
 
   private async syncTitle(
     hrId: string,
@@ -22,6 +31,7 @@ export class HandlerTicketPropertyChange {
     const hr = await this.prisma.hireRequest.findUnique({
       where: { id: hrId },
       select: {
+        org_id: true,
         hubspot_pairing_request_type: true,
         hubspot_numberVA: true,
         hubspot_role_type: true,
@@ -31,11 +41,47 @@ export class HandlerTicketPropertyChange {
     });
     if (!hr) return;
 
-    const title = buildHireRequestTitle(hr);
+    // Never trust a persisted/incoming 'Upsell Agent' blindly — the client's
+    // active VA may have been terminated after this value was first set (either
+    // by our own creation flow or by a human editing the HubSpot ticket property
+    // directly), which is exactly the "UPS HR for a former client" bug.
+    const orgHasActiveStaff = await hasActiveStaff(this.prisma, hr.org_id);
+    const resolvedPairingType = resolvePairingRequestType(
+      hr.hubspot_pairing_request_type,
+      orgHasActiveStaff,
+    );
+
+    if (
+      isPairingTypeDowngraded(
+        hr.hubspot_pairing_request_type,
+        resolvedPairingType,
+      )
+    ) {
+      await this.hubspotAuditService.log({
+        entityType: 'hire_request',
+        entityId: hrId,
+        hubspotObjectType: 'ticket',
+        hubspotObjectId: hubspotTicketId,
+        action: 'UPDATE',
+        source: 'webhook',
+        success: true,
+        payload: {
+          reason: 'upsell_downgrade_no_active_staff',
+          requested_pairing_request_type: 'Upsell Agent',
+          resolved_pairing_request_type: null,
+          organization_id: hr.org_id,
+        },
+      });
+    }
+
+    const title = buildHireRequestTitle({
+      ...hr,
+      hubspot_pairing_request_type: resolvedPairingType,
+    });
 
     await this.prisma.hireRequest.update({
       where: { id: hrId },
-      data: { title },
+      data: { title, hubspot_pairing_request_type: resolvedPairingType },
     });
 
     try {

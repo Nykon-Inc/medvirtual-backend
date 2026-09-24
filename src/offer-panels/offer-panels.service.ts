@@ -44,6 +44,12 @@ import {
   RecipientDto,
 } from './dto/create-offer-panel.dto';
 import { buildHireRequestTitle } from '../common/utils/hireRequestTitle.util';
+import {
+  hasActiveStaff,
+  resolvePairingRequestType,
+  isPairingTypeDowngraded,
+} from '../common/utils/organizationActiveStaff.util';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
 
 /** Panel tally per lifecycle status, one entry per status tab in the UI. */
 export type OfferPanelStatusCounts = Record<OfferPanelStatus, number>;
@@ -293,6 +299,7 @@ export class OfferPanelsService {
     private readonly businessUnitContext: BusinessUnitContext,
     private readonly ticketAudit: TicketAuditService,
     private readonly panelAudit: OfferPanelsAuditService,
+    private readonly hubspotAuditService: HubspotAuditService,
   ) {}
 
   /**
@@ -1253,7 +1260,7 @@ export class OfferPanelsService {
   async acceptByClientUser(
     panelId: string,
     clientUser: USER,
-  ): Promise<{ hireRequest: any }> {
+  ): Promise<{ hireRequest: any; pairing_type_notice?: string }> {
     const panel = await this.prisma.offerPanel.findUnique({
       where: { id: panelId },
       select: {
@@ -1295,7 +1302,7 @@ export class OfferPanelsService {
     );
     const hubspot_numberVA = candidateRows.length;
 
-    const [org, activeStaffCount] = await Promise.all([
+    const [org, orgHasActiveStaff] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: clientUser.organization_id ?? '' },
         select: {
@@ -1305,16 +1312,22 @@ export class OfferPanelsService {
           website_url: true,
         },
       }),
-      this.prisma.staff.count({
-        where: {
-          organization_id: clientUser.organization_id ?? undefined,
-          status: { notIn: ['terminated', 'inactive'] },
-          terminated_date: null,
-        },
-      }),
+      hasActiveStaff(this.prisma, clientUser.organization_id),
     ]);
 
-    const pairingRequestType = activeStaffCount > 0 ? 'Upsell Agent' : null;
+    // This flow always requests 'Upsell Agent' by construction (offer panels are only
+    // offered to existing clients), so resolvePairingRequestType downgrades it to null
+    // whenever the org turns out to have no active staff (e.g. the VA was terminated
+    // between the offer being sent and the client accepting it).
+    const pairingRequestType = resolvePairingRequestType(
+      'Upsell Agent',
+      orgHasActiveStaff,
+    );
+
+    const pairingTypeDowngraded = isPairingTypeDowngraded(
+      'Upsell Agent',
+      pairingRequestType,
+    );
 
     const title = buildHireRequestTitle({
       hubspot_pairing_request_type: pairingRequestType,
@@ -1360,6 +1373,24 @@ export class OfferPanelsService {
 
       return hr;
     });
+
+    if (pairingTypeDowngraded) {
+      await this.hubspotAuditService.log({
+        entityType: 'hire_request',
+        entityId: hireRequest.id,
+        hubspotObjectType: 'ticket',
+        hubspotObjectId: null,
+        action: 'CREATE',
+        source: 'user_action',
+        success: true,
+        payload: {
+          reason: 'upsell_downgrade_no_active_staff',
+          requested_pairing_request_type: 'Upsell Agent',
+          resolved_pairing_request_type: null,
+          organization_id: clientUser.organization_id ?? null,
+        },
+      });
+    }
 
     await this.panelAudit.log({
       offerPanelId: panelId,
@@ -1427,7 +1458,12 @@ export class OfferPanelsService {
       }
     });
 
-    return { hireRequest };
+    return {
+      hireRequest,
+      pairing_type_notice: pairingTypeDowngraded
+        ? "This request was created as a regular hire request because the client has no active VA — the 'Upsell Agent' classification was not applied."
+        : undefined,
+    };
   }
 
   async acceptByToken(token: string): Promise<{ ticket: any }> {

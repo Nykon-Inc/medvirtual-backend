@@ -17,6 +17,7 @@ import { PositionRateConfigService } from '../position-rate-config/position-rate
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { OfferPanelsService } from '../offer-panels/offer-panels.service';
 import { CandidateAuditService } from '../candidate/candidate-audit.service';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
 
 jest.mock('axios', () => {
   const mockAxios = jest.requireActual('axios');
@@ -86,6 +87,9 @@ const prismaMock = {
   uSER: {
     findMany: jest.fn(),
   },
+  staff: {
+    count: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 const hubspotServiceMock = {
@@ -139,6 +143,10 @@ const businessUnitContextMock = {
   poolFor: jest.fn().mockResolvedValue('medical'),
 };
 
+const hubspotAuditServiceMock = {
+  log: jest.fn(),
+};
+
 describe('HireRequestService', () => {
   let service: HireRequestService;
   let user: USER;
@@ -164,6 +172,7 @@ describe('HireRequestService', () => {
         { provide: ConfigService, useValue: configServiceMock },
         { provide: 'REDIS_CLIENT', useValue: redisClientMock },
         { provide: BusinessUnitContext, useValue: businessUnitContextMock },
+        { provide: HubspotAuditService, useValue: hubspotAuditServiceMock },
       ],
     }).compile();
 
@@ -218,6 +227,9 @@ describe('HireRequestService', () => {
 
     beforeEach(() => {
       jest.clearAllMocks();
+      // Default: org has active staff, so existing tests (which don't request
+      // 'Upsell Agent') never accidentally exercise the downgrade path.
+      prismaMock.staff.count.mockResolvedValue(1);
     });
 
     it('should throw NotFoundException if user has no org', async () => {
@@ -337,6 +349,89 @@ describe('HireRequestService', () => {
           }),
         }),
       );
+    });
+
+    it('downgrades "Upsell Agent" to a regular hire request and warns the user when the org has no active staff', async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({
+        status: 'active',
+        organization_role: OrganizationRole.client,
+        admin_id: 'user1',
+        name: 'Acme Health',
+      });
+      prismaMock.staff.count.mockResolvedValue(0);
+      prismaMock.hireRequest.create.mockResolvedValue({ id: 'hr1' });
+      prismaMock.candidatePanel.create.mockResolvedValue({ id: 'panel1' });
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: 'hr1',
+        skills: [],
+      });
+
+      const dto = {
+        ...baseDto,
+        title: 'UPS HR - Acme Health - 1 - Developer - Full-Time',
+        hubspot_pairing_request_type: 'Upsell Agent',
+      };
+
+      const result = await service.create(dto as any, user);
+
+      // The resolved pairing type (null) falls back to 'New Client' here, matching
+      // this flow's existing default for any non-upsell classification.
+      expect(prismaMock.hireRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            hubspot_pairing_request_type: 'New Client',
+            title: expect.not.stringContaining('UPS'),
+          }),
+        }),
+      );
+      expect(result.pairing_type_notice).toEqual(
+        expect.stringContaining('no active VA'),
+      );
+      expect(hubspotAuditServiceMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'hire_request',
+          entityId: 'hr1',
+          action: 'CREATE',
+          source: 'user_action',
+          payload: expect.objectContaining({
+            reason: 'upsell_downgrade_no_active_staff',
+          }),
+        }),
+      );
+    });
+
+    it('keeps "Upsell Agent" and does not warn the user when the org has active staff', async () => {
+      prismaMock.organization.findUnique.mockResolvedValue({
+        status: 'active',
+        organization_role: OrganizationRole.client,
+        admin_id: 'user1',
+        name: 'Acme Health',
+      });
+      prismaMock.staff.count.mockResolvedValue(2);
+      prismaMock.hireRequest.create.mockResolvedValue({ id: 'hr1' });
+      prismaMock.candidatePanel.create.mockResolvedValue({ id: 'panel1' });
+      prismaMock.hireRequest.findUnique.mockResolvedValue({
+        id: 'hr1',
+        skills: [],
+      });
+
+      const dto = {
+        ...baseDto,
+        title: 'UPS HR - Acme Health - 1 - Developer - Full-Time',
+        hubspot_pairing_request_type: 'Upsell Agent',
+      };
+
+      const result = await service.create(dto as any, user);
+
+      expect(prismaMock.hireRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            hubspot_pairing_request_type: 'Upsell Agent',
+          }),
+        }),
+      );
+      expect(result.pairing_type_notice).toBeUndefined();
+      expect(hubspotAuditServiceMock.log).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException if hireRequest is not created', async () => {

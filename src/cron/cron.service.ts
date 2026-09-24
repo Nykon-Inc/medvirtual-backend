@@ -51,6 +51,13 @@ import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,
 } from '../candidate/candidate-audit.service';
+import { buildHireRequestTitle } from '../common/utils/hireRequestTitle.util';
+import {
+  ACTIVE_STAFF_STATUS_FILTER,
+  resolvePairingRequestType,
+  isPairingTypeDowngraded,
+} from '../common/utils/organizationActiveStaff.util';
+import { HubspotAuditService } from '../hubspot/hubspot-audit.service';
 
 type Event = {
   objectId?: string;
@@ -87,6 +94,7 @@ export class CronService {
     private readonly businessUnitContext: BusinessUnitContext,
     private readonly businessUnitsService: BusinessUnitsService,
     private readonly candidateAudit: CandidateAuditService,
+    private readonly hubspotAuditService: HubspotAuditService,
   ) {}
 
   // ── EmailTemplatesService fallback helper ─────────────────────────────────
@@ -1757,50 +1765,6 @@ export class CronService {
     };
   }
 
-  private buildHireRequestTitle(hr: {
-    hubspot_pairing_request_type?: string | null;
-    hubspot_numberVA?: number | null;
-    hubspot_role_type?: string | null;
-    availability?: string | null;
-    organization: { name: string };
-  }): string {
-    const isProduction = process.env.ENVIRONMENT === 'PROD';
-    const basePrefix = isProduction ? 'HR' : 'TEST HR';
-    const requestType = hr.hubspot_pairing_request_type || '';
-    const firstPrefix =
-      requestType === 'Upsell Agent'
-        ? 'UPS '
-        : requestType === 'Agent Replacement'
-          ? 'REP '
-          : '';
-
-    const parts: string[] = [(firstPrefix + basePrefix).trim()];
-
-    if (hr.organization?.name?.trim()) {
-      parts.push(hr.organization.name);
-    }
-
-    if (hr.hubspot_numberVA) {
-      parts.push(String(hr.hubspot_numberVA));
-    }
-
-    if (hr.hubspot_role_type?.trim()) {
-      parts.push(hr.hubspot_role_type);
-    }
-
-    if (hr.availability?.trim()) {
-      const formatted = hr.availability
-        .split('-')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('-');
-      if (formatted.trim()) {
-        parts.push(formatted);
-      }
-    }
-
-    return parts.filter((p) => p?.trim()).join(' - ');
-  }
-
   async syncHireRequestTitles(): Promise<{
     updated: number;
     skipped: number;
@@ -1815,6 +1779,7 @@ export class CronService {
       select: {
         id: true,
         title: true,
+        org_id: true,
         hubspot_ticket_id: true,
         hubspot_pairing_request_type: true,
         hubspot_numberVA: true,
@@ -1823,6 +1788,27 @@ export class CronService {
         organization: { select: { name: true } },
       },
     });
+
+    // Pre-aggregate active staff per organization in one query instead of
+    // N+1-ing staff.count per hire request in the loop below.
+    const orgIds = [
+      ...new Set(hireRequests.map((hr) => hr.org_id).filter(Boolean)),
+    ] as string[];
+    const activeStaffGroups = orgIds.length
+      ? await this.prisma.staff.groupBy({
+          by: ['organization_id'],
+          where: {
+            organization_id: { in: orgIds },
+            ...ACTIVE_STAFF_STATUS_FILTER,
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const orgsWithActiveStaff = new Set(
+      activeStaffGroups
+        .filter((g) => g._count._all > 0)
+        .map((g) => g.organization_id as string),
+    );
 
     let updated = 0;
     let skipped = 0;
@@ -1839,13 +1825,32 @@ export class CronService {
         continue;
       }
 
-      const newTitle = this.buildHireRequestTitle(hr);
+      // Never trust a persisted 'Upsell Agent' blindly — the client's active VA
+      // may have been terminated since this value was first set. This is the
+      // fix for the "UPS HR for a former client" bug.
+      const orgHasActiveStaff = orgsWithActiveStaff.has(hr.org_id ?? '');
+      const resolvedPairingType = resolvePairingRequestType(
+        hr.hubspot_pairing_request_type,
+        orgHasActiveStaff,
+      );
+      const downgraded = isPairingTypeDowngraded(
+        hr.hubspot_pairing_request_type,
+        resolvedPairingType,
+      );
+
+      const newTitle = buildHireRequestTitle({
+        ...hr,
+        hubspot_pairing_request_type: resolvedPairingType,
+      });
       preview.push({ id: hr.id, currentTitle: hr.title, newTitle });
 
       try {
         await this.prisma.hireRequest.update({
           where: { id: hr.id },
-          data: { title: newTitle },
+          data: {
+            title: newTitle,
+            hubspot_pairing_request_type: resolvedPairingType,
+          },
         });
         await axios.patch(
           `https://api.hubapi.com/crm/v3/objects/tickets/${hr.hubspot_ticket_id}`,
@@ -1858,6 +1863,24 @@ export class CronService {
           },
         );
         updated++;
+
+        if (downgraded) {
+          await this.hubspotAuditService.log({
+            entityType: 'hire_request',
+            entityId: hr.id,
+            hubspotObjectType: 'ticket',
+            hubspotObjectId: hr.hubspot_ticket_id,
+            action: 'UPDATE',
+            source: HubspotAuditSource.cron,
+            success: true,
+            payload: {
+              reason: 'upsell_downgrade_no_active_staff',
+              requested_pairing_request_type: 'Upsell Agent',
+              resolved_pairing_request_type: null,
+              organization_id: hr.org_id,
+            },
+          });
+        }
       } catch (e) {
         errors++;
         console.error(
