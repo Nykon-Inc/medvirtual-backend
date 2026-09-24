@@ -16,7 +16,11 @@ import { changeLabelAvailability } from '../common/utils/hubspot.util';
 import { getApprovedPositionLabel } from '../common/dictionaries/approved-positions-pairing-dictionary';
 import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
 import { dbToStageDictionary } from '../common/dictionaries/stage-dictionary';
-import { activePipelines } from '../common/constant/activeDealPipelines';
+import {
+  activePipelines,
+  ACTIVE_PIPELINE_STAFF_WHERE,
+} from '../common/constant/activeDealPipelines';
+import { buildInclusiveDateRange } from '../common/utils/date-range.util';
 import { TalentAvailabilityByRoleDto } from './dto/talent-availability-by-role.dto';
 import { ClientSelectedCandidatesQueryDto } from './dto/client-selected-candidates-query.dto';
 import { ClientSelectedCandidatesResponseDto } from './dto/client-selected-candidate-row.dto';
@@ -214,9 +218,8 @@ export class PanelService {
   }
 
   async getPanelData(dateFrom?: string, dateTo?: string): Promise<any> {
-    const dateFilterCreated: any = {};
-    if (dateFrom) dateFilterCreated.gte = new Date(dateFrom);
-    if (dateTo) dateFilterCreated.lte = new Date(`${dateTo}T23:59:59.999Z`);
+    const dateFilterCreated: any =
+      buildInclusiveDateRange(dateFrom, dateTo) ?? {};
     const hasDateFilter = Object.keys(dateFilterCreated).length > 0;
 
     const selectCandidates = {
@@ -357,10 +360,7 @@ export class PanelService {
     // active staff placement — "client with staff" (an active customer) vs.
     // "prospect" (signed up, no placement yet). Mirrors activeStaff's own
     // status/hubspot_dealstage filter so both counts agree on what "active" means.
-    const activeStaffFilter = {
-      status: 'active',
-      hubspot_dealstage: { in: activePipelines.map(([key]) => String(key)) },
-    };
+    const activeStaffFilter = ACTIVE_PIPELINE_STAFF_WHERE;
     const activeClientUsersWithStaff = await this.prisma.uSER.count({
       where: {
         role: { in: ['organization_admin', 'organization_super_admin'] },

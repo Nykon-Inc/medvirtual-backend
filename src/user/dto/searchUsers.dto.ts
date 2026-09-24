@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  IsIn,
+  IsDateString,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class SearchUsersDto {
@@ -34,6 +42,33 @@ export class SearchUsersDto {
   @IsOptional()
   @IsString()
   organization_id?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ['with_active_staff', 'without_active_staff'],
+    description:
+      'Filter by whether the user organization has active staff (same definition as the operational dashboard)',
+  })
+  @IsOptional()
+  @IsIn(['with_active_staff', 'without_active_staff'])
+  staff_status?: 'with_active_staff' | 'without_active_staff';
+
+  @ApiProperty({
+    required: false,
+    description: 'Users created on or after this date (YYYY-MM-DD, UTC)',
+  })
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Users created on or before this date (YYYY-MM-DD, inclusive, UTC)',
+  })
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 
   @ApiProperty({
     required: false,

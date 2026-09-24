@@ -17,6 +17,8 @@ import { MailService } from '../mail/mail.service';
 import { UpdateProfileDto } from './dto/updateProfile.dto';
 import { GetProfileDto } from './dto/getProfile.dto';
 import { SearchUsersDto } from './dto/searchUsers.dto';
+import { ACTIVE_PIPELINE_STAFF_WHERE } from '../common/constant/activeDealPipelines';
+import { buildInclusiveDateRange } from '../common/utils/date-range.util';
 import InviteSignup from '../common/utils/email-templates/invite-signup';
 import { getUserEmailTheme } from '../common/utils/email-templates/theme-helper';
 import { InviteUserToOrganizationDto } from './dto/inviteUserToOrganization.dto';
@@ -760,7 +762,15 @@ export class UserService {
   async searchOrganizationUsers(
     query: Omit<SearchUsersDto, 'role'>,
   ): Promise<any[]> {
-    const { search, status, organization_id, limit } = query;
+    const {
+      search,
+      status,
+      organization_id,
+      limit,
+      staff_status,
+      dateFrom,
+      dateTo,
+    } = query;
 
     const whereClause: Prisma.USERWhereInput = {
       role: { in: ['organization_admin', 'organization_super_admin'] },
@@ -790,6 +800,24 @@ export class UserService {
 
     if (organization_id) {
       whereClause.organization_id = organization_id;
+    }
+
+    // Same definitions as the operational dashboard (panel.service getPanelData)
+    // so filtered counts match the "Clients (with Staff)" / "Prospects (no Staff)"
+    // and "Users Created" cards.
+    if (staff_status === 'with_active_staff') {
+      whereClause.organization = {
+        staff: { some: ACTIVE_PIPELINE_STAFF_WHERE },
+      };
+    } else if (staff_status === 'without_active_staff') {
+      whereClause.organization = {
+        staff: { none: ACTIVE_PIPELINE_STAFF_WHERE },
+      };
+    }
+
+    const createdAtRange = buildInclusiveDateRange(dateFrom, dateTo);
+    if (createdAtRange) {
+      whereClause.createdAt = createdAtRange;
     }
 
     const queryOptions: Prisma.USERFindManyArgs = {

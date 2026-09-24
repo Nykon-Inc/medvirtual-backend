@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ACTIVE_PIPELINE_STAFF_WHERE } from '../common/constant/activeDealPipelines';
 import { MailService } from '../mail/mail.service';
 import { HubspotService } from '../hubspot/hubspot.service';
 import { UserAuditService } from '../user-audit/user-audit.service';
@@ -381,6 +382,58 @@ describe('UserService', () => {
       });
       expect(findManyArgs.where.AND[1].OR[0]).toEqual({
         first_name: { contains: 'Doe', mode: 'insensitive' },
+      });
+    });
+
+    it('should restrict to organizations with active staff (dashboard definition)', async () => {
+      await service.searchOrganizationUsers({
+        staff_status: 'with_active_staff',
+      } as any);
+
+      const findManyArgs = prismaMock.uSER.findMany.mock.calls[0][0];
+      expect(findManyArgs.where.organization).toEqual({
+        staff: { some: ACTIVE_PIPELINE_STAFF_WHERE },
+      });
+    });
+
+    it('should restrict to organizations without active staff', async () => {
+      await service.searchOrganizationUsers({
+        staff_status: 'without_active_staff',
+      } as any);
+
+      const findManyArgs = prismaMock.uSER.findMany.mock.calls[0][0];
+      expect(findManyArgs.where.organization).toEqual({
+        staff: { none: ACTIVE_PIPELINE_STAFF_WHERE },
+      });
+    });
+
+    it('should not filter by organization staff when staff_status is omitted', async () => {
+      await service.searchOrganizationUsers({} as any);
+
+      const findManyArgs = prismaMock.uSER.findMany.mock.calls[0][0];
+      expect(findManyArgs.where.organization).toBeUndefined();
+      expect(findManyArgs.where.createdAt).toBeUndefined();
+    });
+
+    it('should filter createdAt with inclusive UTC day bounds', async () => {
+      await service.searchOrganizationUsers({
+        dateFrom: '2026-09-01',
+        dateTo: '2026-09-30',
+      } as any);
+
+      const findManyArgs = prismaMock.uSER.findMany.mock.calls[0][0];
+      expect(findManyArgs.where.createdAt).toEqual({
+        gte: new Date('2026-09-01T00:00:00.000Z'),
+        lte: new Date('2026-09-30T23:59:59.999Z'),
+      });
+    });
+
+    it('should support an open-ended createdAt range', async () => {
+      await service.searchOrganizationUsers({ dateFrom: '2026-09-01' } as any);
+
+      const findManyArgs = prismaMock.uSER.findMany.mock.calls[0][0];
+      expect(findManyArgs.where.createdAt).toEqual({
+        gte: new Date('2026-09-01T00:00:00.000Z'),
       });
     });
   });
