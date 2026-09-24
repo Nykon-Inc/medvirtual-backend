@@ -253,4 +253,56 @@ describe('ContactService', () => {
       await expect(service.deleteById('contact-999')).resolves.toBeUndefined();
     });
   });
+
+  describe('associateExistingContactsWithCompany', () => {
+    it('associates DB contacts and HubSpot contacts found by contact_email, without duplicates', async () => {
+      const axiosMock = jest.requireMock('axios');
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        contact_email: 'Jane@Clinic.com',
+        contacts: [{ hubspot_id: 'hs-c-1' }, { hubspot_id: null }],
+      });
+      axiosMock.post.mockResolvedValue({
+        data: { results: [{ id: 'hs-c-1' }, { id: 'hs-c-2' }] },
+      });
+      axiosMock.put.mockResolvedValue({});
+
+      const result = await service.associateExistingContactsWithCompany(
+        'org-1',
+        'hs-company-1',
+      );
+
+      expect(axiosMock.post).toHaveBeenCalledWith(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
+        expect.objectContaining({
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'email',
+                  operator: 'EQ',
+                  value: 'jane@clinic.com',
+                },
+              ],
+            },
+          ],
+        }),
+        expect.anything(),
+      );
+      expect(axiosMock.put).toHaveBeenCalledTimes(2);
+      expect(axiosMock.put).toHaveBeenCalledWith(
+        'https://api.hubapi.com/crm/v3/objects/contacts/hs-c-2/associations/companies/hs-company-1/279',
+        {},
+        expect.anything(),
+      );
+      expect(result).toEqual(['hs-c-1', 'hs-c-2']);
+    });
+
+    it('throws NotFoundException when the organization does not exist', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.associateExistingContactsWithCompany('org-x', 'hs-company-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
 });

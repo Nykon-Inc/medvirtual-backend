@@ -127,6 +127,7 @@ describe('OrganizationService', () => {
 
   const mockContactService = {
     createForOrganization: jest.fn(),
+    associateExistingContactsWithCompany: jest.fn(),
   };
 
   const mockBusinessUnitContext = {
@@ -667,6 +668,107 @@ describe('OrganizationService', () => {
       await expect(service.convertToClient('99', convertDto)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('pushToHubspot', () => {
+    const actor = { id: 'admin-1' } as any;
+    const orphanOrg = {
+      id: 'org-1',
+      name: 'Orphan Org',
+      status: OrganizationStatus.active,
+      hubspot_id: null,
+    };
+
+    it('creates the company, marks it synced and associates the existing contacts', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(orphanOrg);
+      mockHubspotService.createOrganizationInHubspot.mockResolvedValue(
+        'hs-company-1',
+      );
+      mockPrismaService.organization.update.mockResolvedValue({});
+      mockContactService.associateExistingContactsWithCompany.mockResolvedValue(
+        ['hs-contact-1'],
+      );
+
+      const result = await service.pushToHubspot('org-1', actor);
+
+      expect(
+        mockHubspotService.createOrganizationInHubspot,
+      ).toHaveBeenCalledWith(orphanOrg, 'admin-1', expect.any(String));
+      expect(mockPrismaService.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: expect.objectContaining({
+          hubspot_sync_status: 'synced',
+          hubspot_sync_error: null,
+        }),
+      });
+      expect(
+        mockContactService.associateExistingContactsWithCompany,
+      ).toHaveBeenCalledWith('org-1', 'hs-company-1');
+      expect(result).toEqual({
+        hubspot_id: 'hs-company-1',
+        associated_contact_ids: ['hs-contact-1'],
+      });
+    });
+
+    it('rejects an org that already has a HubSpot company without calling HubSpot', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...orphanOrg,
+        hubspot_id: 'hs-existing',
+      });
+
+      await expect(service.pushToHubspot('org-1', actor)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(
+        mockHubspotService.createOrganizationInHubspot,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects a deleted org', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue({
+        ...orphanOrg,
+        status: OrganizationStatus.deleted,
+      });
+
+      await expect(service.pushToHubspot('org-1', actor)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(
+        mockHubspotService.createOrganizationInHubspot,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws when HubSpot rejects the creation and leaves the org untouched', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(orphanOrg);
+      mockHubspotService.createOrganizationInHubspot.mockResolvedValue(null);
+
+      await expect(service.pushToHubspot('org-1', actor)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrismaService.organization.update).not.toHaveBeenCalled();
+      expect(
+        mockContactService.associateExistingContactsWithCompany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('still returns the new company when the contact association fails', async () => {
+      mockPrismaService.organization.findUnique.mockResolvedValue(orphanOrg);
+      mockHubspotService.createOrganizationInHubspot.mockResolvedValue(
+        'hs-company-1',
+      );
+      mockPrismaService.organization.update.mockResolvedValue({});
+      mockContactService.associateExistingContactsWithCompany.mockRejectedValue(
+        new Error('HubSpot down'),
+      );
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await service.pushToHubspot('org-1', actor);
+
+      expect(result).toEqual({
+        hubspot_id: 'hs-company-1',
+        associated_contact_ids: [],
+      });
     });
   });
 

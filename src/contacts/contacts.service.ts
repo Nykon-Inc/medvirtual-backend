@@ -21,6 +21,71 @@ export class ContactService {
   }
 
   /**
+   * Associates the organization's existing HubSpot contacts (contact → company, 279)
+   * with a company created after the fact — used to repair organizations whose HubSpot
+   * company creation failed while their contact was still created. Contacts come from
+   * the org's DB Contact rows plus a HubSpot search by the org's contact_email (referred
+   * companies have no DB Contact row). Returns the associated HubSpot contact ids.
+   */
+  async associateExistingContactsWithCompany(
+    orgId: string,
+    companyHubspotId: string,
+  ): Promise<string[]> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        contact_email: true,
+        contacts: { select: { hubspot_id: true } },
+      },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const headers = {
+      Authorization: `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    };
+
+    const contactIds = new Set(
+      org.contacts.map((c) => c.hubspot_id).filter((id): id is string => !!id),
+    );
+
+    if (org.contact_email) {
+      const search = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
+        {
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'email',
+                  operator: 'EQ',
+                  value: org.contact_email.toLowerCase(),
+                },
+              ],
+            },
+          ],
+          properties: ['email'],
+          limit: 10,
+        },
+        { headers },
+      );
+      for (const result of search.data?.results ?? []) {
+        contactIds.add(String(result.id));
+      }
+    }
+
+    for (const contactId of contactIds) {
+      await axios.put(
+        `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}/associations/companies/${companyHubspotId}/279`,
+        {},
+        { headers },
+      );
+    }
+
+    return [...contactIds];
+  }
+
+  /**
    * Creates a Contact record in DB and syncs to HubSpot for the common org creation flow.
    * Association: contact → organization only (associationTypeId: 279).
    * Returns null silently if the org has no owner yet (owner_type: 'new' invitation pending).

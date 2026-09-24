@@ -203,6 +203,17 @@ export class ReferredCompaniesService {
       if (!newOrganization)
         throw new NotFoundException('Organization not found after creation');
 
+      // HubSpot company creation failures are logged but never thrown (Step 1). If no
+      // company was created or matched, flag it for an admin instead of leaving the
+      // referral silently without a HubSpot company.
+      if (!newOrganization.hubspot_id) {
+        await this.reviewCases.openOrSkip(
+          newOrganization.id,
+          'hubspot_company_create_failed',
+          { company_name: newOrganization.name },
+        );
+      }
+
       // Step 6: Create Contact in DB + HubSpot with referral data + associations.
       if (currentUser) {
         try {
@@ -358,6 +369,55 @@ export class ReferredCompaniesService {
     });
 
     return `This referral appears to be a duplicate of an existing referred company ("${duplicate.name}"). An admin review case has been opened.`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin: create the missing HubSpot company for a referral whose company creation
+  // failed, associate its existing contact, resolve the review case and re-run the
+  // sync pipeline (invoices + commissions) now that hubspot_id is set.
+  // ---------------------------------------------------------------------------
+  async pushToHubspot(id: string, adminUser: USER) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id },
+      select: { id: true, referred_by_affiliate_id: true },
+    });
+    if (!org) throw new NotFoundException('Referred company not found');
+    if (!org.referred_by_affiliate_id)
+      throw new BadRequestException('Not a referred company');
+
+    const pushResult = await this.organizationService.pushToHubspot(
+      id,
+      adminUser,
+    );
+
+    await this.prisma.medAllianceAdminReviewCase.updateMany({
+      where: {
+        organization_id: id,
+        reason_code: 'hubspot_company_create_failed',
+        status: 'open',
+      },
+      data: {
+        status: 'resolved',
+        resolved_by_id: adminUser.id,
+        resolved_at: new Date(),
+        resolution: `HubSpot company ${pushResult.hubspot_id} created by admin`,
+      },
+    });
+
+    await this.prisma.medAllianceAuditLog.create({
+      data: {
+        entity_type: 'referred_company',
+        entity_id: id,
+        event: 'hubspot_company_pushed',
+        source: 'admin_action',
+        actor_user_id: adminUser.id,
+        metadata: pushResult as any,
+      },
+    });
+
+    const sync = await this.referralSync.run(id);
+
+    return { ...pushResult, sync };
   }
 
   // ---------------------------------------------------------------------------

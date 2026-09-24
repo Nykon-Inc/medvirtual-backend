@@ -1042,15 +1042,22 @@ export class OrganizationService {
         },
       });
 
-      const newOrganization = await this.getById(organization.id);
+      let newOrganization = await this.getById(organization.id);
 
       if (user) {
         //this rule avoid re-call on hubspot. If this flow came from hubspot, we dont have logged user and then we avoid send new organization for hubspot
-        await this.hubspot.createOrganizationInHubspot(
+        const hubspotCompanyId = await this.hubspot.createOrganizationInHubspot(
           newOrganization,
           user?.id,
           `New organization onboarded — company record created in HubSpot`,
         );
+        // Reflect the hubspot_id stored by the HubSpot creation on the returned org.
+        if (hubspotCompanyId) {
+          newOrganization = {
+            ...newOrganization,
+            hubspot_id: hubspotCompanyId,
+          };
+        }
         // Referred companies have their own contact creation flow (createForReferredCompany in Step 6)
         if (!referred_by_affiliate_id) {
           console.log('Creating contact for organization:', newOrganization.id);
@@ -1065,6 +1072,70 @@ export class OrganizationService {
       }
       throw new BadRequestException('Failed to create organization:', error);
     }
+  }
+
+  /**
+   * Repairs an app-created organization whose HubSpot company creation failed:
+   * creates the company (storing hubspot_id immediately, so the HubSpot creation
+   * webhook finds the org and does not create a duplicate) and associates the
+   * contacts that were already created in HubSpot without a company.
+   * Never create the company manually in the HubSpot UI for these orgs — the
+   * webhook would create a second organization.
+   */
+  async pushToHubspot(
+    id: string,
+    actor: USER,
+  ): Promise<{ hubspot_id: string; associated_contact_ids: string[] }> {
+    const org = await this.getById(id);
+    if (org.status === OrganizationStatus.deleted) {
+      throw new BadRequestException('Cannot push a deleted organization');
+    }
+    if (org.hubspot_id) {
+      throw new BadRequestException(
+        `Organization already has a HubSpot company (${org.hubspot_id})`,
+      );
+    }
+
+    const hubspotCompanyId = await this.hubspot.createOrganizationInHubspot(
+      org,
+      actor.id,
+      'Company record created in HubSpot by admin after a failed creation',
+    );
+    if (!hubspotCompanyId) {
+      throw new BadRequestException(
+        'HubSpot rejected the company creation. Check the HubSpot audit log of this organization for the details.',
+      );
+    }
+
+    await this.prisma.organization.update({
+      where: { id },
+      data: {
+        hubspot_sync_status: 'synced',
+        hubspot_sync_error: null,
+        hubspot_synced_at: new Date(),
+      },
+    });
+
+    // The company already exists at this point — a failed association must not
+    // hide that, so it is logged and reported through the empty list instead.
+    let associatedContactIds: string[] = [];
+    try {
+      associatedContactIds =
+        await this.contactService.associateExistingContactsWithCompany(
+          id,
+          hubspotCompanyId,
+        );
+    } catch (error) {
+      console.error(
+        `[OrganizationService.pushToHubspot] Failed to associate contacts for org ${id}:`,
+        error?.response?.data ?? error?.message,
+      );
+    }
+
+    return {
+      hubspot_id: hubspotCompanyId,
+      associated_contact_ids: associatedContactIds,
+    };
   }
 
   async update(

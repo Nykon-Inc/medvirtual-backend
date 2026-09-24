@@ -26,7 +26,8 @@ const auditMock = { log: jest.fn() };
  * touching Prisma. Covers Med, Berry, and a 3rd BU (MMVA) so the outbound
  * normalization is proven data-driven, not a 2-BU special case.
  */
-const BU_ROWS = [
+type BuRow = { hubspot_value: string | null; name: string; slug: string };
+const BU_ROWS: BuRow[] = [
   { hubspot_value: 'MedVirtual', name: 'Med Virtual', slug: 'medvirtual' },
   {
     hubspot_value: 'Berry Virtual',
@@ -38,12 +39,15 @@ const BU_ROWS = [
 const normalize = (v?: string | null) =>
   (v ?? '').trim().toLowerCase().replace(/\s+/g, '');
 
+let buRows: BuRow[] = BU_ROWS;
+
 const businessUnitContextMock = {
+  normalizeBusinessUnit: jest.fn(normalize),
   resolveByHubspotValue: jest.fn(async (v: string) => {
     const target = normalize(v);
     if (!target) return null;
     return (
-      BU_ROWS.find(
+      buRows.find(
         (row) =>
           normalize(row.hubspot_value) === target ||
           normalize(row.name) === target ||
@@ -75,6 +79,7 @@ describe('OrganizationCreationService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    buRows = BU_ROWS;
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrganizationCreationService,
@@ -99,9 +104,9 @@ describe('OrganizationCreationService', () => {
       prismaMock.organization.update.mockResolvedValueOnce({});
     });
 
-    it('returns true on success', async () => {
+    it('returns the HubSpot company id on success', async () => {
       const result = await service.execute(baseData, 'user-abc');
-      expect(result).toBe(true);
+      expect(result).toBe('hs-company-999');
     });
 
     it('saves hubspot_id to organization record', async () => {
@@ -181,6 +186,36 @@ describe('OrganizationCreationService', () => {
           success: false,
           errorCode: 'ECONNRESET',
           errorMessage: 'Network Error',
+        }),
+      );
+    });
+
+    it('returns null when API fails', async () => {
+      mockedAxios.post.mockRejectedValueOnce({ message: 'fail', code: 'ERR' });
+      const result = await service.execute(baseData);
+      expect(result).toBeNull();
+    });
+
+    it('stores the HubSpot validation message and body instead of the generic axios message', async () => {
+      const hubspotBody = {
+        status: 'error',
+        category: 'VALIDATION_ERROR',
+        message:
+          'Property values were not valid: Med Virtual was not one of the allowed options',
+      };
+      mockedAxios.post.mockRejectedValueOnce({
+        response: { status: 400, data: hubspotBody },
+        message: 'Request failed with status code 400',
+      });
+
+      await service.execute(baseData, 'user-abc');
+
+      expect(auditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          errorCode: '400',
+          errorMessage: hubspotBody.message,
+          response: hubspotBody,
         }),
       );
     });
@@ -294,6 +329,28 @@ describe('OrganizationCreationService', () => {
       expect(payload.properties.business_unit).toBe('SomeFutureBU');
     });
 
+    it('sends "MedVirtual" when the BU row has no hubspot_value yet (prod regression — HubSpot rejected "Med Virtual")', async () => {
+      buRows = [
+        { hubspot_value: null, name: 'Med Virtual', slug: 'medvirtual' },
+      ];
+      await service.execute({ ...baseData, business_unit: 'Med Virtual' });
+
+      const payload = mockedAxios.post.mock.calls[0][1] as {
+        properties: { business_unit: string };
+      };
+      expect(payload.properties.business_unit).toBe('MedVirtual');
+    });
+
+    it('sends "MedVirtual" for "Med Virtual" when no BU row matches at all', async () => {
+      buRows = [];
+      await service.execute({ ...baseData, business_unit: 'Med Virtual' });
+
+      const payload = mockedAxios.post.mock.calls[0][1] as {
+        properties: { business_unit: string };
+      };
+      expect(payload.properties.business_unit).toBe('MedVirtual');
+    });
+
     it('sends an empty string when business_unit is missing (regression)', async () => {
       const { business_unit: _omit, ...withoutBu } = baseData;
       await service.execute(withoutBu);
@@ -302,6 +359,53 @@ describe('OrganizationCreationService', () => {
         properties: { business_unit: string };
       };
       expect(payload.properties.business_unit).toBe('');
+    });
+  });
+
+  // ── Growth partner association (referred companies) ─────────────────────────
+
+  describe('growth partner association', () => {
+    beforeEach(() => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'hs-company-999' },
+      });
+      prismaMock.organization.update.mockResolvedValueOnce({});
+      prismaMock.uSER.findUnique.mockResolvedValue({ email: 'gp@x.com' });
+    });
+
+    it('associates the company with the growth partner when it has a hubspot_id', async () => {
+      prismaMock.affiliateProfile.findUnique.mockResolvedValueOnce({
+        hubspot_id: 'gp-hs-1',
+      });
+
+      await service.execute({
+        ...baseData,
+        referred_by_affiliate_id: 'affiliate-user-1',
+      });
+
+      const payload = mockedAxios.post.mock.calls[0][1] as {
+        associations?: Array<{ to: { id: string } }>;
+      };
+      expect(payload.associations).toEqual([
+        expect.objectContaining({ to: { id: 'gp-hs-1' } }),
+      ]);
+    });
+
+    it('omits the association when the growth partner has no hubspot_id (a null id rejects the whole creation)', async () => {
+      prismaMock.affiliateProfile.findUnique.mockResolvedValueOnce({
+        hubspot_id: null,
+      });
+
+      const result = await service.execute({
+        ...baseData,
+        referred_by_affiliate_id: 'affiliate-user-1',
+      });
+
+      const payload = mockedAxios.post.mock.calls[0][1] as {
+        associations?: unknown;
+      };
+      expect(payload.associations).toBeUndefined();
+      expect(result).toBe('hs-company-999');
     });
   });
 });

@@ -9,6 +9,18 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotAuditService } from '../hubspot-audit.service';
 import { BusinessUnitContext } from '../../business-units/business-unit-context.service';
 
+/**
+ * HubSpot `business_unit` labels for the two legacy BUs, keyed by the
+ * normalized BU name. Used only when the matched BusinessUnit row has no
+ * `hubspot_value` yet — without it the outbound value fell back to the display
+ * name ("Med Virtual"), which HubSpot rejects with INVALID_OPTION and silently
+ * left referred companies without a HubSpot company record.
+ */
+const LEGACY_HUBSPOT_BUSINESS_UNITS: Record<string, string> = {
+  medvirtual: 'MedVirtual',
+  berryvirtual: 'Berry Virtual',
+};
+
 @Injectable()
 export class OrganizationCreationService {
   constructor(
@@ -38,7 +50,13 @@ export class OrganizationCreationService {
     if (!businessUnit) return '';
     const bu =
       await this.businessUnitContext.resolveByHubspotValue(businessUnit);
-    return bu?.hubspot_value ?? bu?.name ?? businessUnit;
+    if (bu?.hubspot_value) return bu.hubspot_value;
+    const fallback = bu?.name ?? businessUnit;
+    return (
+      LEGACY_HUBSPOT_BUSINESS_UNITS[
+        this.businessUnitContext.normalizeBusinessUnit(fallback)
+      ] ?? fallback
+    );
   }
 
   async getOwnerId(userId: string): Promise<string | null> {
@@ -83,11 +101,17 @@ export class OrganizationCreationService {
     return user?.email ?? null;
   }
 
+  /**
+   * Creates the HubSpot company for an app-created organization and stores its
+   * id on the organization. Returns the HubSpot company id, or null when the
+   * creation failed (the failure is logged, never thrown — callers that need the
+   * company must check the return value).
+   */
   async execute(
     data: any,
     actorUserId?: string,
     reason?: string,
-  ): Promise<any> {
+  ): Promise<string | null> {
     const source = actorUserId
       ? HubspotAuditSource.user_action
       : HubspotAuditSource.cron;
@@ -95,6 +119,11 @@ export class OrganizationCreationService {
       const businessUnit = await this.resolveOutboundBusinessUnit(
         data.business_unit,
       );
+      // Only associate the growth partner when it exists in HubSpot — a null id
+      // makes HubSpot reject the whole company creation.
+      const growthPartnerHubspotId = data.referred_by_affiliate_id
+        ? await this.getAfiliateId(data.referred_by_affiliate_id)
+        : null;
       const response = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/companies',
         {
@@ -124,11 +153,11 @@ export class OrganizationCreationService {
               ? await this.getAffiliateEmail(data.referred_by_affiliate_id)
               : undefined,
           },
-          associations: data.referred_by_affiliate_id
+          associations: growthPartnerHubspotId
             ? [
                 {
                   to: {
-                    id: await this.getAfiliateId(data.referred_by_affiliate_id),
+                    id: growthPartnerHubspotId,
                   },
                   types: [
                     {
@@ -167,7 +196,7 @@ export class OrganizationCreationService {
         response: { id: response.data.id },
       });
 
-      return true;
+      return String(response.data.id);
     } catch (error) {
       if (error.response) {
         console.error('Error to created organization:', error.response.data);
@@ -183,9 +212,13 @@ export class OrganizationCreationService {
         source,
         success: false,
         errorCode: error.response?.status?.toString() ?? error.code,
-        errorMessage: error.message,
+        // HubSpot's validation detail lives in the response body — error.message
+        // is only the generic "Request failed with status code 400".
+        errorMessage: error.response?.data?.message ?? error.message,
         payload: { ...(reason && { reason }) },
+        response: error.response?.data,
       });
+      return null;
     }
   }
 }

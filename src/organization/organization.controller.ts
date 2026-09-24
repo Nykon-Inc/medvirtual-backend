@@ -363,6 +363,30 @@ export class OrganizationController {
     };
   }
 
+  // Repairs an app-created organization whose HubSpot company creation failed.
+  // Referred companies should use POST med-alliance/admin/referred-companies/:id/push-to-hubspot,
+  // which also re-runs the referral sync pipeline.
+  @Post('push-to-hubspot/:id')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_super_admin', 'system_admin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Create the missing HubSpot company for an organization and associate its existing contacts',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'HubSpot company created successfully',
+  })
+  async pushToHubspot(@Param('id') id: string, @CurrentUser() user: USER) {
+    const data = await this.organizationService.pushToHubspot(id, user);
+    return {
+      status: 200,
+      message: 'HubSpot company created successfully',
+      data,
+    };
+  }
+
   @Put('assign-admin/:id')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('system_super_admin')

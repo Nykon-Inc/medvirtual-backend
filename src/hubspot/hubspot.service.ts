@@ -711,7 +711,7 @@ export class HubspotService {
     data: any,
     actorUserId?: string,
     reason?: string,
-  ): Promise<any> {
+  ): Promise<string | null> {
     return await this.organizationCreationService.execute(
       data,
       actorUserId,

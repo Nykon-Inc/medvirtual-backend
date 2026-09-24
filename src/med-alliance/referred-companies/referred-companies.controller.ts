@@ -384,6 +384,29 @@ export class ReferredCompaniesController {
     return { status: 200, message: 'Sync completed', data };
   }
 
+  // POST /med-alliance/admin/referred-companies/:id/push-to-hubspot
+  // Repairs a referral whose HubSpot company creation failed (hubspot_id is null):
+  // creates the company, associates the existing contact and re-runs the sync pipeline.
+  @Post('admin/referred-companies/:id/push-to-hubspot')
+  @HttpCode(200)
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({
+    summary:
+      'Create the missing HubSpot company for a referred company and associate its existing contact',
+  })
+  @ApiParam({ name: 'id', description: 'Referred company (organization) UUID' })
+  @ApiResponse({ status: 200, description: 'HubSpot company created' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Not a referred company, already has a HubSpot company, or HubSpot rejected the creation',
+  })
+  @ApiResponse({ status: 404, description: 'Referred company not found' })
+  async pushToHubspot(@Param('id') id: string, @CurrentUser() user: USER) {
+    const data = await this.service.pushToHubspot(id, user);
+    return { status: 200, message: 'HubSpot company created', data };
+  }
+
   @Get('referred_to/options')
   @UseGuards(AuthGuard)
   @ApiOperation({

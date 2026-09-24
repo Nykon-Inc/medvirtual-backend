@@ -1535,6 +1535,7 @@ enum AdminReviewReasonCode {
   unmatched_line_item // Invoice line item name didn't match any Staff in the organization — admin must manually link it or mark it not a collaborator
   ambiguous_line_item // Invoice line item name matched 2+ Staff in the organization — admin must pick the correct one
   invoice_reassociated_in_hubspot // Invoice moved to a different Company in HubSpot and an active commission is attached — admin must decide whether to void or keep it
+  hubspot_company_create_failed // Referral saved but HubSpot rejected the company creation and no existing company matched — admin must push it to HubSpot
 }
 
 enum AdminReviewStatus {

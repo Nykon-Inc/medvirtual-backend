@@ -46,6 +46,7 @@ const mockPrisma = {
   },
   medAllianceAdminReviewCase: {
     deleteMany: jest.fn(),
+    updateMany: jest.fn(),
   },
   medAllianceAuditLog: {
     create: jest.fn(),
@@ -76,6 +77,7 @@ const mockReviewCasesService = {
 const mockOrganizationService = {
   create: jest.fn(),
   getById: jest.fn(),
+  pushToHubspot: jest.fn(),
 };
 
 const mockHubspotService = {
@@ -318,6 +320,143 @@ describe('ReferredCompaniesService', () => {
       );
 
       expect(result.email).toBeNull();
+    });
+
+    it('opens a hubspot_company_create_failed review case when no HubSpot company was created or matched', async () => {
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
+      mockOrganizationService.create.mockResolvedValue(mockOrg);
+      mockPrisma.organization.update.mockResolvedValue({});
+      mockPrisma.organization.findFirst.mockResolvedValue(null);
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...mockOrgWithEligibility,
+        hubspot_id: null,
+      });
+
+      await service.create(createDto, mockCurrentUser);
+
+      expect(mockReviewCasesService.openOrSkip).toHaveBeenCalledWith(
+        mockOrg.id,
+        'hubspot_company_create_failed',
+        { company_name: mockOrg.name },
+      );
+    });
+
+    it('does not open a review case when the org has a HubSpot company', async () => {
+      mockAffiliatesService.requireActiveProfile.mockResolvedValue({
+        id: 'profile-1',
+        status: 'active',
+      });
+      mockOrganizationService.create.mockResolvedValue(mockOrg);
+      mockPrisma.organization.update.mockResolvedValue({});
+      mockPrisma.organization.findFirst.mockResolvedValue(null);
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        ...mockOrgWithEligibility,
+        hubspot_id: 'hs-company-1',
+      });
+
+      await service.create(createDto, mockCurrentUser);
+
+      expect(mockReviewCasesService.openOrSkip).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'hubspot_company_create_failed',
+        expect.anything(),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // pushToHubspot — repair a referral whose HubSpot company creation failed
+  // -------------------------------------------------------------------------
+  describe('pushToHubspot', () => {
+    const adminUser = { id: 'admin-1' } as any;
+    const pushResult = {
+      hubspot_id: 'hs-company-1',
+      associated_contact_ids: ['hs-contact-1'],
+    };
+
+    it('throws NotFoundException when the org does not exist', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue(null);
+
+      await expect(service.pushToHubspot('org-x', adminUser)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockOrganizationService.pushToHubspot).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException for a non-referred org', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        referred_by_affiliate_id: null,
+      });
+
+      await expect(service.pushToHubspot('org-1', adminUser)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockOrganizationService.pushToHubspot).not.toHaveBeenCalled();
+    });
+
+    it('creates the company, resolves the open review case, audits and re-runs the sync', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        referred_by_affiliate_id: 'user-1',
+      });
+      mockOrganizationService.pushToHubspot.mockResolvedValue(pushResult);
+      mockReferralSyncService.run.mockResolvedValue({
+        organizationId: 'org-1',
+        phaseA: { outcome: 'already_matched' },
+      });
+
+      const result = await service.pushToHubspot('org-1', adminUser);
+
+      expect(mockOrganizationService.pushToHubspot).toHaveBeenCalledWith(
+        'org-1',
+        adminUser,
+      );
+      expect(
+        mockPrisma.medAllianceAdminReviewCase.updateMany,
+      ).toHaveBeenCalledWith({
+        where: {
+          organization_id: 'org-1',
+          reason_code: 'hubspot_company_create_failed',
+          status: 'open',
+        },
+        data: expect.objectContaining({
+          status: 'resolved',
+          resolved_by_id: 'admin-1',
+        }),
+      });
+      expect(mockPrisma.medAllianceAuditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          entity_id: 'org-1',
+          event: 'hubspot_company_pushed',
+          source: 'admin_action',
+        }),
+      });
+      expect(mockReferralSyncService.run).toHaveBeenCalledWith('org-1');
+      expect(result).toEqual(
+        expect.objectContaining({ hubspot_id: 'hs-company-1' }),
+      );
+    });
+
+    it('does not resolve the case nor sync when the HubSpot creation fails', async () => {
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        id: 'org-1',
+        referred_by_affiliate_id: 'user-1',
+      });
+      mockOrganizationService.pushToHubspot.mockRejectedValue(
+        new BadRequestException('HubSpot rejected the company creation'),
+      );
+
+      await expect(service.pushToHubspot('org-1', adminUser)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(
+        mockPrisma.medAllianceAdminReviewCase.updateMany,
+      ).not.toHaveBeenCalled();
+      expect(mockReferralSyncService.run).not.toHaveBeenCalled();
     });
   });
 
