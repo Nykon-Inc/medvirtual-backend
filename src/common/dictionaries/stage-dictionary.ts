@@ -28,4 +28,13 @@ export const stageToDbDictionary: Record<string, number> = Object.entries(
 // Stages a candidate is considered "available" for placement — the only
 // stages pipeline_status_origin should ever be set to, since it's the stage
 // candidates are returned to when pulled out of a panel/hire request.
+// Origin tracks the LAST available stage a recruiter set in HubSpot, so a VA
+// reclassified between full-time and part-time returns to the right track.
 export const availableStages = ['261075105', '1087596819'];
+
+export function isAvailableStage(stage: unknown): boolean {
+  return (
+    (typeof stage === 'string' || typeof stage === 'number') &&
+    availableStages.includes(String(stage))
+  );
+}

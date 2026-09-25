@@ -914,6 +914,10 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
 
     expect(availableCall[0].create.pipeline_status_origin).toBe('261075105');
     expect(newCandidateCall[0].create.pipeline_status_origin).toBeNull();
+    // Update branch refreshes origin (FT <-> PT reclassification) but never
+    // touches it for non-available stages.
+    expect(availableCall[0].update.pipeline_status_origin).toBe('261075105');
+    expect(newCandidateCall[0].update.pipeline_status_origin).toBeUndefined();
   });
 
   it('is non-destructive — never calls deleteMany/delete for any of the 4 object types', async () => {

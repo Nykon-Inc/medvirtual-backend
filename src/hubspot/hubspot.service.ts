@@ -25,7 +25,7 @@ import {
   mapContactToDb,
 } from '../common/utils/hubspot.util';
 import { candidadeToDbDictionary } from '../common/dictionaries/candidate-dictionary';
-import { availableStages } from '../common/dictionaries/stage-dictionary';
+import { isAvailableStage } from '../common/dictionaries/stage-dictionary';
 import { contactToDbDictionary } from '../common/dictionaries/contact-dictionary';
 import { pace } from '../common/utils/pacing.util';
 
@@ -854,10 +854,7 @@ export class HubspotService {
         );
         const candidateData = mapHubspotToDb(result.properties);
 
-        if (
-          candidateData.pipeline_status &&
-          availableStages.includes(String(candidateData.pipeline_status))
-        ) {
+        if (isAvailableStage(candidateData.pipeline_status)) {
           candidateData.pipeline_status_origin = candidateData.pipeline_status;
         }
 
@@ -997,6 +994,12 @@ export class HubspotService {
           .filter(Boolean);
       } else {
         candidateData.approved_positions_pairing = [];
+      }
+
+      // Keep origin aligned with the last available stage set in HubSpot, so a
+      // FT <-> PT reclassification is picked up by a re-sync.
+      if (isAvailableStage(candidateData.pipeline_status)) {
+        candidateData.pipeline_status_origin = candidateData.pipeline_status;
       }
 
       const changedKeys = Object.keys(candidateData);

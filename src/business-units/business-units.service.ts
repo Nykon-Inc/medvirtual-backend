@@ -27,7 +27,7 @@ import {
 import { organizationToDbDictionary } from '../common/dictionaries/organization-dictionary';
 import { contactToDbDictionary } from '../common/dictionaries/contact-dictionary';
 import { candidadeToDbDictionary } from '../common/dictionaries/candidate-dictionary';
-import { availableStages } from '../common/dictionaries/stage-dictionary';
+import { isAvailableStage } from '../common/dictionaries/stage-dictionary';
 import { affiliateToDbDictionary } from '../common/dictionaries/affiliate-dictionary';
 import {
   OrganizationStatus,
@@ -790,6 +790,14 @@ export class BusinessUnitsService {
         select: { id: true },
       });
 
+      // Origin must only ever be an "available" stage — it's where the
+      // candidate gets sent back to when pulled out of a panel/hire request.
+      // Refreshed on update too, so a re-sync picks up a FT <-> PT
+      // reclassification made in HubSpot.
+      if (isAvailableStage(candidateData.pipeline_status)) {
+        candidateData.pipeline_status_origin = candidateData.pipeline_status;
+      }
+
       const upsertedCandidate = await this.prisma.candidate.upsert({
         where: { hubspot_id: hubspotId },
         create: {
@@ -800,13 +808,7 @@ export class BusinessUnitsService {
           // makes for webhook-driven candidate creation.
           email: candidateData.email ?? `unknown+${hubspotId}@medvirtual.ai`,
           processing_status: 'pending',
-          // Origin must only ever be an "available" stage — it's where the
-          // candidate gets sent back to when pulled out of a panel/hire request.
-          pipeline_status_origin: availableStages.includes(
-            String(candidateData.pipeline_status),
-          )
-            ? candidateData.pipeline_status
-            : null,
+          pipeline_status_origin: candidateData.pipeline_status_origin ?? null,
         } as Prisma.CandidateCreateInput,
         update: { ...candidateData },
       });

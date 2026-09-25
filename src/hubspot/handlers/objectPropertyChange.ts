@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { candidadeToDbDictionary } from '../../common/dictionaries/candidate-dictionary';
-import { availableStages } from '../../common/dictionaries/stage-dictionary';
+import { isAvailableStage } from '../../common/dictionaries/stage-dictionary';
 import { HandlerObjectCreation } from './objectCreation';
 import { CandidatesService } from '../../candidate/candidates.service';
 import {
@@ -111,15 +111,17 @@ export class HandlerObjectPropertyChange {
         {} as Record<string, any>,
       );
 
-      // Candidates created while still in a non-available stage (e.g. "New
-      // Candidates") get pipeline_status_origin=null — backfill it the first
-      // time they're actually moved into an available stage, so returning
-      // them to origin later sends them to the right track (full-time vs
-      // part-time) instead of relying on a generic fallback.
+      // Origin follows the recruiter: every time they move the VA into an
+      // available stage in HubSpot (e.g. reclassified full-time <-> part-time,
+      // or back from Lost/Hired), that becomes the stage the VA returns to when
+      // pulled out of a panel. Echoes of our own pushes (e.g. returning a VA to
+      // origin after losing a process) must never touch it — they arrive as
+      // INTEGRATION and/or carry the value we already wrote to pipeline_status.
       if (
         event.propertyName === 'hs_pipeline_stage' &&
-        !candidate.pipeline_status_origin &&
-        availableStages.includes(String(event.propertyValue))
+        isAvailableStage(event.propertyValue) &&
+        event.changeSource !== 'INTEGRATION' &&
+        String(event.propertyValue) !== candidate.pipeline_status
       ) {
         updateData.pipeline_status_origin = event.propertyValue;
       }
@@ -144,7 +146,7 @@ export class HandlerObjectPropertyChange {
           ? CandidateAuditFieldGroup.pipeline_status
           : CandidateAuditFieldGroup.hubspot_sync,
         before: Object.fromEntries(
-          fields.map((field) => [
+          Object.keys(updateData).map((field) => [
             field,
             (candidate as Record<string, any>)[field],
           ]),

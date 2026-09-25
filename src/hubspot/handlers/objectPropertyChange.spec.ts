@@ -117,23 +117,84 @@ describe('HandlerObjectPropertyChange', () => {
     );
   });
 
-  it('should NOT overwrite an existing pipeline_status_origin when the candidate moves into an "available" stage again', async () => {
+  it.each([
+    ['full-time to part-time', '261075105', '261075105', '1087596819'],
+    ['part-time to full-time', '1087596819', '1087596819', '261075105'],
+    ['Lost back to part-time', '261173428', '261075105', '1087596819'],
+    ['Hired back to part-time', '261214844', '261075105', '1087596819'],
+    [
+      'Endorsed via Platform to part-time',
+      '1172847191',
+      '261075105',
+      '1087596819',
+    ],
+  ])(
+    'should overwrite pipeline_status_origin when a recruiter moves the candidate %s in HubSpot',
+    async (_label, currentStatus, currentOrigin, newStage) => {
+      prismaMock.candidate.findUnique.mockResolvedValue({
+        id: 'candidate-1',
+        hubspot_id: 'hs-1',
+        pipeline_status: currentStatus,
+        pipeline_status_origin: currentOrigin,
+      });
+
+      await handler.execute({
+        objectId: 'hs-1',
+        propertyName: 'hs_pipeline_stage',
+        propertyValue: newStage,
+        changeSource: 'CRM_UI',
+      });
+
+      const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+      expect(updateArgs.data.pipeline_status).toBe(newStage);
+      expect(updateArgs.data.pipeline_status_origin).toBe(newStage);
+      expect(candidateAuditMock.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          before: expect.objectContaining({
+            pipeline_status_origin: currentOrigin,
+          }),
+          after: expect.objectContaining({ pipeline_status_origin: newStage }),
+        }),
+      );
+    },
+  );
+
+  it('should NOT touch pipeline_status_origin on the INTEGRATION echo of our own push', async () => {
     prismaMock.candidate.findUnique.mockResolvedValue({
       id: 'candidate-1',
       hubspot_id: 'hs-1',
-      email: 'jane@example.com',
-      name: 'Jane Doe',
+      pipeline_status: '1172847191', // "Endorsed via Platform"
       pipeline_status_origin: '261075105',
     });
 
     await handler.execute({
       objectId: 'hs-1',
       propertyName: 'hs_pipeline_stage',
-      propertyValue: '1087596819', // "Available Candidates - Part Time"
+      propertyValue: '1087596819',
+      changeSource: 'INTEGRATION',
     });
 
     const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
     expect(updateArgs.data.pipeline_status).toBe('1087596819');
+    expect(updateArgs.data.pipeline_status_origin).toBeUndefined();
+  });
+
+  it('should NOT touch pipeline_status_origin when the stage already matches pipeline_status (internal return to origin)', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      pipeline_status: '261075105',
+      pipeline_status_origin: '261075105',
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '261075105',
+      changeSource: 'CRM_UI',
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
     expect(updateArgs.data.pipeline_status_origin).toBeUndefined();
   });
 
