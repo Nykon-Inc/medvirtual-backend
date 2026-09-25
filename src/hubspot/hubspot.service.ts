@@ -1530,4 +1530,121 @@ export class HubspotService {
       );
     }
   }
+
+  /**
+   * Looks up a HubSpot contact by email (case-insensitive). Returns null when no
+   * contact exists. HubSpot enforces unique emails on contacts, but merged or
+   * imported records can still produce more than one hit — the first one wins and
+   * the collision is logged.
+   *
+   * Errors propagate: callers decide whether "HubSpot unavailable" is fatal.
+   */
+  async findContactByEmail(email: string): Promise<HubspotContactSummary | null> {
+    const normalized = email.toLowerCase().trim();
+    if (!normalized) return null;
+
+    const response = await this.hubspotClient.crm.contacts.searchApi.doSearch({
+      filterGroups: [
+        {
+          filters: [
+            {
+              propertyName: 'email',
+              operator: FilterOperatorEnum.Eq,
+              value: normalized,
+            },
+          ],
+        },
+      ],
+      properties: ['email', 'firstname', 'lastname', 'phone', 'jobtitle'],
+      limit: 10,
+    });
+
+    const results = response.results ?? [];
+    if (results.length === 0) return null;
+    if (results.length > 1) {
+      console.warn(
+        `[Hubspot] ${results.length} contacts share the email ${normalized} — using ${results[0].id}`,
+      );
+    }
+
+    const contact = results[0];
+    return {
+      id: String(contact.id),
+      email: contact.properties.email ?? normalized,
+      first_name: contact.properties.firstname ?? '',
+      last_name: contact.properties.lastname ?? '',
+      phone: contact.properties.phone ?? '',
+      job_title: contact.properties.jobtitle ?? '',
+    };
+  }
+
+  /**
+   * Companies associated with a contact (v4 associations). `isPrimary` marks the
+   * HubSpot-defined "Primary" contact→company association (typeId 1).
+   */
+  async getContactCompanyAssociations(
+    contactId: string,
+  ): Promise<HubspotContactCompanyAssociation[]> {
+    const byCompany = new Map<string, boolean>();
+    let after: string | undefined = undefined;
+
+    do {
+      const page = await this.hubspotClient.crm.associations.v4.basicApi.getPage(
+        'contacts',
+        contactId,
+        'companies',
+        after,
+        500,
+      );
+      for (const assoc of page.results ?? []) {
+        const companyId = String(assoc.toObjectId);
+        const isPrimary = (assoc.associationTypes ?? []).some(
+          (t) =>
+            String(t.category) === 'HUBSPOT_DEFINED' &&
+            t.typeId === HUBSPOT_PRIMARY_CONTACT_TO_COMPANY_TYPE_ID,
+        );
+        byCompany.set(companyId, (byCompany.get(companyId) ?? false) || isPrimary);
+      }
+      after = page.paging?.next?.after;
+    } while (after);
+
+    return Array.from(byCompany, ([companyId, isPrimary]) => ({
+      companyId,
+      isPrimary,
+    }));
+  }
+
+  /** Name/domain for a set of HubSpot company ids (used for "not synced" messages). */
+  async getCompanySummaries(
+    companyIds: string[],
+  ): Promise<{ id: string; name: string | null; domain: string | null }[]> {
+    if (companyIds.length === 0) return [];
+    const response = await this.hubspotClient.crm.companies.batchApi.read({
+      inputs: companyIds.map((id) => ({ id })),
+      properties: ['name', 'domain'],
+      propertiesWithHistory: [],
+    });
+    return (response.results ?? []).map((c) => ({
+      id: String(c.id),
+      name: c.properties.name ?? null,
+      domain: c.properties.domain ?? null,
+    }));
+  }
+}
+
+/** HubSpot-defined association type id for the "Primary" contact → company link. */
+const HUBSPOT_PRIMARY_CONTACT_TO_COMPANY_TYPE_ID = 1;
+
+export interface HubspotContactSummary {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  job_title: string;
+}
+
+export interface HubspotContactCompanyAssociation {
+  companyId: string;
+  isPrimary: boolean;
 }

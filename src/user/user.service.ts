@@ -1103,6 +1103,15 @@ export class UserService {
     organizationId: string,
     inviteData: InviteUserToOrganizationDto,
     currentUser: USER,
+    options?: {
+      /**
+       * The invitee already exists as a HubSpot contact (e.g. the offer-panel
+       * "Add as user" flow resolved them by email). Link that contact instead of
+       * creating one — creating would 409 on the duplicate email and leave the
+       * user without a hubspot_contact_id.
+       */
+      existingHubspotContactId?: string;
+    },
   ): Promise<string> {
     try {
       const normalizedEmail = inviteData.email.toLowerCase().trim();
@@ -1224,6 +1233,15 @@ export class UserService {
         throw new BadRequestException('Failed to store invite code');
       }
 
+      if (options?.existingHubspotContactId) {
+        await this.linkExistingHubspotContact(
+          newUser,
+          options.existingHubspotContactId,
+          currentUser,
+        );
+        return `Invitation sent successfully to ${inviteData.email}`;
+      }
+
       //create contact in hubspot
       try {
         const newUserForHubspot = {
@@ -1254,6 +1272,43 @@ export class UserService {
         throw error;
       }
       throw new BadRequestException('Failed to invite user to organization');
+    }
+  }
+
+  /**
+   * Stores an already-existing HubSpot contact id on a freshly invited user.
+   * hubspot_contact_id is unique, so a contact already held by another user is
+   * logged and skipped rather than failing the invite.
+   */
+  private async linkExistingHubspotContact(
+    user: USER,
+    hubspotContactId: string,
+    currentUser: USER,
+  ): Promise<void> {
+    try {
+      const holder = await this.prisma.uSER.findUnique({
+        where: { hubspot_contact_id: hubspotContactId },
+        select: { id: true },
+      });
+      if (holder && holder.id !== user.id) {
+        console.warn(
+          `HubSpot contact ${hubspotContactId} is already linked to user ${holder.id} — not linking to ${user.id}`,
+        );
+        return;
+      }
+      await this.prisma.uSER.update({
+        where: { id: user.id },
+        data: { hubspot_contact_id: hubspotContactId },
+      });
+      await this.userAudit.logUpdate({
+        before: user,
+        after: { hubspot_contact_id: hubspotContactId },
+        source: UserAuditSource.admin,
+        ...auditActor(currentUser),
+        metadata: { origin: 'hubspot_contact_linked' },
+      });
+    } catch (err) {
+      console.error('Failed to link existing HubSpot contact to user:', err);
     }
   }
 }

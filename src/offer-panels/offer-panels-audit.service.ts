@@ -23,6 +23,10 @@ export const OFFER_PANEL_AUDIT_EVENTS = {
   DECLINED: 'declined',
   DELETED: 'deleted',
   RESENT: 'resent',
+  /** "Add as user": recipient invited as an org user and the panel relinked to them. */
+  RECIPIENT_INVITED_AS_USER: 'recipient_invited_as_user',
+  /** Recipient already had a user account; the panel was relinked to it. */
+  RECIPIENT_LINKED_TO_USER: 'recipient_linked_to_user',
 } as const;
 
 export type OfferPanelAuditEvent =
@@ -47,6 +51,8 @@ export const OFFER_PANEL_AUDIT_ORIGINS = {
   ADMIN_RESEND: 'admin_resend',
   /** PATCH /offer-panels/:id or DELETE /offer-panels/:id from the admin console. */
   ADMIN_CONSOLE: 'admin_console',
+  /** POST /offer-panels/:id/add-as-user or /link-recipient-user. */
+  ADMIN_ADD_AS_USER: 'admin_add_as_user',
 } as const;
 
 export type OfferPanelAuditOrigin =

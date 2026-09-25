@@ -36,6 +36,8 @@ import { MetricDetailsRoute } from '../panel/metric-details-route.decorator';
 import { CreateOfferPanelDto } from './dto/create-offer-panel.dto';
 import { UpdateOfferPanelDto } from './dto/update-offer-panel.dto';
 import { OfferPanelsAuditService } from './offer-panels-audit.service';
+import { OfferPanelRecipientInviteService } from './offer-panel-recipient-invite.service';
+import { AddRecipientAsUserDto } from './dto/add-recipient-as-user.dto';
 
 @ApiTags('Offer Panels')
 @ApiBearerAuth()
@@ -44,6 +46,7 @@ export class OfferPanelsController {
   constructor(
     private readonly offerPanelsService: OfferPanelsService,
     private readonly panelAudit: OfferPanelsAuditService,
+    private readonly recipientInvite: OfferPanelRecipientInviteService,
   ) {}
 
   @Post('offer-panels')
@@ -340,6 +343,68 @@ export class OfferPanelsController {
   @ApiResponse({ status: 404, description: 'Offer panel not found' })
   async resend(@Param('id') id: string, @CurrentUser() user: USER) {
     const data = await this.offerPanelsService.resendPublicLink(id, user);
+    return { status: 200, data };
+  }
+
+  @Get('offer-panels/:id/add-as-user/preview')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_admin', 'system_super_admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resolve the panel recipient for "Add as user" (admin)',
+    description:
+      'Read-only. recipient_email → HubSpot contact → associated companies → ' +
+      'platform organizations. Returns a discriminated `status` (ready, ' +
+      'needs_selection, already_user, contact_not_found, no_company, ' +
+      'company_not_synced, org_deleted, bu_mismatch, panel_already_linked).',
+  })
+  @ApiParam({ name: 'id', type: String, description: 'Offer panel ID' })
+  @ApiResponse({ status: 200, description: 'Resolution result' })
+  @ApiResponse({ status: 404, description: 'Offer panel not found' })
+  @ApiResponse({ status: 503, description: 'HubSpot unavailable' })
+  async previewAddAsUser(@Param('id') id: string) {
+    const data = await this.recipientInvite.preview(id);
+    return { status: 200, data };
+  }
+
+  @Post('offer-panels/:id/add-as-user')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_admin', 'system_super_admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Invite the panel recipient as an organization user (admin)',
+    description:
+      'Re-resolves the recipient server-side, activates the organization if it ' +
+      'is inactive, invites the recipient email and relinks the panel to the ' +
+      'new user and organization.',
+  })
+  @ApiParam({ name: 'id', type: String, description: 'Offer panel ID' })
+  @ApiResponse({ status: 200, description: 'User invited, panel relinked' })
+  @ApiResponse({ status: 400, description: 'Recipient cannot be invited' })
+  @ApiResponse({ status: 404, description: 'Offer panel not found' })
+  @ApiResponse({ status: 503, description: 'HubSpot unavailable' })
+  async addAsUser(
+    @Param('id') id: string,
+    @Body() dto: AddRecipientAsUserDto,
+    @CurrentUser() user: USER,
+  ) {
+    const data = await this.recipientInvite.addAsUser(id, dto, user);
+    return { status: 200, data };
+  }
+
+  @Post('offer-panels/:id/link-recipient-user')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_admin', 'system_super_admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Link the panel to the recipient's existing user account (admin)",
+  })
+  @ApiParam({ name: 'id', type: String, description: 'Offer panel ID' })
+  @ApiResponse({ status: 200, description: 'Panel relinked' })
+  @ApiResponse({ status: 400, description: 'User cannot be linked' })
+  @ApiResponse({ status: 404, description: 'Offer panel not found' })
+  async linkRecipientUser(@Param('id') id: string, @CurrentUser() user: USER) {
+    const data = await this.recipientInvite.linkExistingUser(id, user);
     return { status: 200, data };
   }
 
