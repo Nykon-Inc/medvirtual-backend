@@ -31,6 +31,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { OfferPanelsService } from './offer-panels.service';
 import { QueryOfferPanelsDto } from './dto/query-offer-panels.dto';
 import { OfferPanelStatsQueryDto } from './dto/offer-panel-stats.dto';
+import { MetricDetailsQueryDto } from '../panel/dto/metric-details-query.dto';
+import { MetricDetailsRoute } from '../panel/metric-details-route.decorator';
 import { CreateOfferPanelDto } from './dto/create-offer-panel.dto';
 import { UpdateOfferPanelDto } from './dto/update-offer-panel.dto';
 import { OfferPanelsAuditService } from './offer-panels-audit.service';
@@ -183,6 +185,48 @@ export class OfferPanelsController {
   async getStats(@Query() query: OfferPanelStatsQueryDto) {
     const data = await this.offerPanelsService.getStats(query);
     return { status: 200, data };
+  }
+
+  // Operational Dashboard card drill-downs — also static, so before :id.
+
+  @MetricDetailsRoute(
+    'offer-panels/stats/details/total',
+    'Offer panels behind the "Total Panels" card',
+  )
+  getTotalPanelsDetails(@Query() query: MetricDetailsQueryDto) {
+    return this.offerPanelsService.getStatsDetails('total', query);
+  }
+
+  @MetricDetailsRoute(
+    'offer-panels/stats/details/accepted',
+    'Offer panels behind the "Panels Accepted" card',
+  )
+  getAcceptedPanelsDetails(@Query() query: MetricDetailsQueryDto) {
+    return this.offerPanelsService.getStatsDetails('accepted', query);
+  }
+
+  @MetricDetailsRoute(
+    'offer-panels/stats/details/declined',
+    'Offer panels behind the "Panels Declined" card',
+  )
+  getDeclinedPanelsDetails(@Query() query: MetricDetailsQueryDto) {
+    return this.offerPanelsService.getStatsDetails('declined', query);
+  }
+
+  @MetricDetailsRoute(
+    'offer-panels/stats/details/awaiting-response',
+    'Offer panels behind the "Awaiting Response" card',
+  )
+  getAwaitingResponsePanelsDetails(@Query() query: MetricDetailsQueryDto) {
+    return this.offerPanelsService.getStatsDetails('awaiting-response', query);
+  }
+
+  @MetricDetailsRoute(
+    'offer-panels/stats/details/awaiting-view',
+    'Offer panels behind the "Awaiting View" card',
+  )
+  getAwaitingViewPanelsDetails(@Query() query: MetricDetailsQueryDto) {
+    return this.offerPanelsService.getStatsDetails('awaiting-view', query);
   }
 
   @Get('offer-panels/mine')

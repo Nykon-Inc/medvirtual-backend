@@ -23,12 +23,28 @@ import { AdminLoginsResponseDto } from './dto/admin-login-row.dto';
 import { TalentAgingReportDto } from './dto/talent-aging-report.dto';
 import { HireRequestsByClientsQueryDto } from './dto/hire-requests-by-clients-query.dto';
 import { HireRequestsByClientsResponseDto } from './dto/hire-request-by-client-row.dto';
+import { PanelMetricDetailsService } from './panel-metric-details.service';
+import { MetricDetailsQueryDto } from './dto/metric-details-query.dto';
+import {
+  ClientDetailRowDto,
+  ClientUserDetailRowDto,
+  EndorsedTalentDetailRowDto,
+  HiredTalentDetailRowDto,
+  HireRequestDetailRowDto,
+  MetricDetailsResponse,
+  StaffDetailRowDto,
+  TalentDetailRowDto,
+} from './dto/metric-detail-rows.dto';
+import { MetricDetailsRoute } from './metric-details-route.decorator';
 
 @ApiTags('Panel')
 @ApiBearerAuth()
 @Controller('panel')
 export class PanelController {
-  constructor(private readonly panelService: PanelService) {}
+  constructor(
+    private readonly panelService: PanelService,
+    private readonly metricDetails: PanelMetricDetailsService,
+  ) {}
 
   @Get()
   @UseGuards(AuthGuard, RolesGuard)
@@ -244,5 +260,97 @@ export class PanelController {
   })
   async getTalentAgingReport(): Promise<TalentAgingReportDto> {
     return this.panelService.getTalentAgingReport();
+  }
+
+  // ── Card drill-downs (period-filtered KPI cards) ──────────────────────────
+
+  @MetricDetailsRoute(
+    'details/new-hire-requests',
+    'Hire requests behind the Overview "New Hire Requests" card',
+  )
+  getNewHireRequestsDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<HireRequestDetailRowDto>> {
+    return this.metricDetails.getNewHireRequests(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/new-available-staff',
+    'Staff behind the Overview "New Available Virtual Assistant" card',
+  )
+  getNewAvailableStaffDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<StaffDetailRowDto>> {
+    return this.metricDetails.getNewAvailableStaff(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/new-clients-with-active-staff',
+    'Organizations behind the Overview "New Clients with Active Staff" card',
+  )
+  getNewClientsWithActiveStaffDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<ClientDetailRowDto>> {
+    return this.metricDetails.getNewClientsWithActiveStaff(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/users-created',
+    'Client users behind the Users "Users Created" card',
+  )
+  getUsersCreatedDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<ClientUserDetailRowDto>> {
+    return this.metricDetails.getUsersCreated(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/invites-accepted',
+    'Client users behind the Users "Invites Accepted" card',
+  )
+  getInvitesAcceptedDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<ClientUserDetailRowDto>> {
+    return this.metricDetails.getInvitesAccepted(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/talents-created',
+    'Talents behind the Talents "Created" card',
+  )
+  getTalentsCreatedDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<TalentDetailRowDto>> {
+    return this.metricDetails.getTalentsCreated(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/talents-endorsed',
+    'Talents behind the Talents "Endorsed" card',
+  )
+  getTalentsEndorsedDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<EndorsedTalentDetailRowDto>> {
+    return this.metricDetails.getTalentsEndorsed(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/talents-hired',
+    'Talents behind the Talents "Hired" card',
+  )
+  getTalentsHiredDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<HiredTalentDetailRowDto>> {
+    return this.metricDetails.getTalentsHired(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/hr-submitted-by-client',
+    'Hire requests behind the HR Report "Submitted by Client" card',
+  )
+  getHrSubmittedByClientDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<HireRequestDetailRowDto>> {
+    return this.metricDetails.getHrSubmittedByClient(query);
   }
 }

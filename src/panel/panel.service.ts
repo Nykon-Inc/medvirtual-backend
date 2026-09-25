@@ -16,11 +16,19 @@ import { changeLabelAvailability } from '../common/utils/hubspot.util';
 import { getApprovedPositionLabel } from '../common/dictionaries/approved-positions-pairing-dictionary';
 import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
 import { dbToStageDictionary } from '../common/dictionaries/stage-dictionary';
-import {
-  activePipelines,
-  ACTIVE_PIPELINE_STAFF_WHERE,
-} from '../common/constant/activeDealPipelines';
+import { ACTIVE_PIPELINE_STAFF_WHERE } from '../common/constant/activeDealPipelines';
 import { buildInclusiveDateRange } from '../common/utils/date-range.util';
+import {
+  clientInvitesAcceptedWhere,
+  clientUsersCreatedWhere,
+  hrSubmittedByClientWhere,
+  newAvailableStaffWhere,
+  newClientsWithActiveStaffWhere,
+  newHireRequestsWhere,
+  talentsCreatedWhere,
+  talentsEndorsedWhere,
+  talentsHiredWhere,
+} from './panel-metric-filters';
 import { TalentAvailabilityByRoleDto } from './dto/talent-availability-by-role.dto';
 import { ClientSelectedCandidatesQueryDto } from './dto/client-selected-candidates-query.dto';
 import { ClientSelectedCandidatesResponseDto } from './dto/client-selected-candidate-row.dto';
@@ -221,6 +229,8 @@ export class PanelService {
     const dateFilterCreated: any =
       buildInclusiveDateRange(dateFrom, dateTo) ?? {};
     const hasDateFilter = Object.keys(dateFilterCreated).length > 0;
+    // Shared with the per-card drill-down endpoints (panel-metric-filters.ts).
+    const metricRange = hasDateFilter ? dateFilterCreated : undefined;
 
     const selectCandidates = {
       id: true,
@@ -309,12 +319,7 @@ export class PanelService {
     // for activeClientUsers/invitedClientUsers below, so those two read as a
     // breakdown of this total rather than two disconnected snapshots.
     const createdClientUsers = await this.prisma.uSER.count({
-      where: {
-        role: {
-          in: ['organization_admin', 'organization_super_admin'],
-        },
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: clientUsersCreatedWhere(metricRange),
     });
     result.createdClientUsers = createdClientUsers;
 
@@ -345,14 +350,7 @@ export class PanelService {
     // 3. Number of Verified Client users (subset of active users)
 
     const verifiedClientUsers = await this.prisma.uSER.count({
-      where: {
-        role: {
-          in: ['organization_admin', 'organization_super_admin'],
-        },
-        status: 'active',
-        verified: true,
-        ...(hasDateFilter ? { activatedAt: dateFilterCreated } : {}),
-      },
+      where: clientInvitesAcceptedWhere(metricRange),
     });
     result.verifiedClientUsers = verifiedClientUsers;
 
@@ -444,17 +442,7 @@ export class PanelService {
 
     // 5. Number of Hire Requests submitted by Client users
     const hrSubmittedByClient = await this.prisma.hireRequest.count({
-      where: {
-        createdBy: {
-          role: {
-            in: ['organization_admin', 'organization_super_admin'],
-          },
-        },
-        status: {
-          not: { in: [HireRequestStatus.deleted, HireRequestStatus.cancelled] },
-        },
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: hrSubmittedByClientWhere(metricRange),
     });
     result.hrSubmittedByClient = hrSubmittedByClient;
 
@@ -475,41 +463,22 @@ export class PanelService {
     result.activeUsers = usersCount;
 
     const HrCount = await this.prisma.hireRequest.count({
-      where: {
-        status: { not: HireRequestStatus.deleted },
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: newHireRequestsWhere(metricRange),
     });
     result.activeHireRequests = HrCount;
 
     const staffCount = await this.prisma.staff.count({
-      where: {
-        status: 'active',
-        hubspot_dealstage: {
-          in: activePipelines.map(([key, _value]) => String(key)),
-        },
-        ...(hasDateFilter ? { created_at: dateFilterCreated } : {}),
-      },
+      where: newAvailableStaffWhere(metricRange),
     });
     result.activeStaff = staffCount;
 
     const clientsWithActiveStaff = await this.prisma.organization.count({
-      where: {
-        status: OrganizationStatus.active,
-        staff: { some: activeStaffFilter },
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: newClientsWithActiveStaffWhere(metricRange),
     });
     result.clientsWithActiveStaff = clientsWithActiveStaff;
 
     const candidatesAvailable = await this.prisma.candidate.count({
-      where: {
-        OR: [
-          { pipeline_status: '261075105' },
-          { pipeline_status: '1087596819' },
-        ],
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: talentsCreatedWhere(metricRange),
     });
     result.candidatesAvailable = candidatesAvailable;
 
@@ -517,11 +486,7 @@ export class PanelService {
     // stage) within the searched date range. Deduped by candidate_id in case a
     // webhook retry logged the same transition twice.
     const endorsedRows = await this.prisma.candidateAuditLog.findMany({
-      where: {
-        event: CANDIDATE_AUDIT_EVENTS.PIPELINE_STATUS_CHANGED,
-        pipeline_status_new: ENDORSED_VIA_PLATFORM_PIPELINE_STATUS,
-        ...(hasDateFilter ? { createdAt: dateFilterCreated } : {}),
-      },
+      where: talentsEndorsedWhere(metricRange),
       select: { candidate_id: true },
       distinct: ['candidate_id'],
     });
@@ -529,10 +494,7 @@ export class PanelService {
 
     // Candidates actually selected as winner within the searched date range.
     const candidatesHired = await this.prisma.panelCandidate.count({
-      where: {
-        status: PanelCandidateStatus.selected_by_client,
-        ...(hasDateFilter ? { updatedAt: dateFilterCreated } : {}),
-      },
+      where: talentsHiredWhere(metricRange),
     });
 
     result.candidatesHired = candidatesHired;

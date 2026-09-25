@@ -20,7 +20,18 @@ import {
   TicketAuditSource,
   OfferPanelStatus,
   OfferPanelAuditSource,
+  Prisma,
 } from '@prisma/client';
+import { MetricDetailsQueryDto } from '../panel/dto/metric-details-query.dto';
+import {
+  MetricDetailsResponse,
+  OfferPanelDetailRowDto,
+} from '../panel/dto/metric-detail-rows.dto';
+import {
+  displayName,
+  paginateMetricDetails,
+  toIso,
+} from '../panel/metric-details-paging';
 import {
   TicketAuditService,
   TICKET_AUDIT_EVENTS,
@@ -112,6 +123,12 @@ export interface OfferPanelStats {
     awaitingResponse: number;
   };
   funnel: { sent: number; viewed: number; decided: number; accepted: number };
+  /**
+   * Undecided panels split by whether the recipient opened them — the
+   * Awaiting View / Awaiting Response cards. Same predicates as
+   * `OFFER_PANEL_STATS_DETAIL_WHERE`, so each card matches its drill-down.
+   */
+  awaiting: { view: number; response: number };
   topSenders: {
     mostSent: OfferPanelTopSender | null;
     mostAccepted: OfferPanelTopSender | null;
@@ -120,6 +137,43 @@ export interface OfferPanelStats {
   senders: OfferPanelSenderStats[];
   monthly: OfferPanelMonthlyBucket[];
 }
+
+const DECIDED_OFFER_PANEL_STATUSES: OfferPanelStatus[] = [
+  OfferPanelStatus.accepted,
+  OfferPanelStatus.declined,
+];
+
+function isAwaitingStatus(status: OfferPanelStatus): boolean {
+  return !DECIDED_OFFER_PANEL_STATUSES.includes(status);
+}
+
+export const OFFER_PANEL_STATS_DETAIL_KINDS = [
+  'total',
+  'accepted',
+  'declined',
+  'awaiting-response',
+  'awaiting-view',
+] as const;
+export type OfferPanelStatsDetailKind =
+  (typeof OFFER_PANEL_STATS_DETAIL_KINDS)[number];
+
+/** Extra filter per Offer Panels card, on top of the stats window. */
+const OFFER_PANEL_STATS_DETAIL_WHERE: Record<
+  OfferPanelStatsDetailKind,
+  Prisma.OfferPanelWhereInput
+> = {
+  total: {},
+  accepted: { status: OfferPanelStatus.accepted },
+  declined: { status: OfferPanelStatus.declined },
+  'awaiting-response': {
+    status: { notIn: DECIDED_OFFER_PANEL_STATUSES },
+    viewed_at: { not: null },
+  },
+  'awaiting-view': {
+    status: { notIn: DECIDED_OFFER_PANEL_STATUSES },
+    viewed_at: null,
+  },
+};
 
 /** Mutable per-sender tally, collapsed into `OfferPanelSenderStats` at the end. */
 interface SenderAccumulator {
@@ -177,6 +231,7 @@ function emptyOfferPanelStats(): OfferPanelStats {
       awaitingResponse: 0,
     },
     funnel: { sent: 0, viewed: 0, decided: 0, accepted: 0 },
+    awaiting: { view: 0, response: 0 },
     topSenders: { mostSent: null, mostAccepted: null, mostDeclined: null },
     senders: [],
     monthly: [],
@@ -1954,38 +2009,9 @@ export class OfferPanelsService {
    * `CronService.weeklyOfferPanelReport`.
    */
   async getStats(query: OfferPanelStatsQueryDto): Promise<OfferPanelStats> {
-    const { dateFrom, dateTo, business_unit } = query;
-
-    const conditions: any[] = [];
-
-    const createdAt: { gte?: Date; lte?: Date } = {};
-    if (dateFrom) createdAt.gte = new Date(`${dateFrom}T00:00:00.000Z`);
-    // The range is inclusive of its final day: a bare `new Date('2026-08-12')`
-    // is midnight, which would silently drop everything sent that day.
-    if (dateTo) createdAt.lte = new Date(`${dateTo}T23:59:59.999Z`);
-    if (dateFrom || dateTo) conditions.push({ createdAt });
-
-    if (business_unit) {
-      const resolved =
-        await this.businessUnitContext.resolveByHubspotValue(business_unit);
-      // An unrecognized BU must narrow to nothing, never widen to everything.
-      if (!resolved) return emptyOfferPanelStats();
-      // Rows have been written with several spellings over time ("Berry
-      // Virtual" vs "BerryVirtual"). `mode: 'insensitive'` covers casing but
-      // not whitespace, so match every variant explicitly.
-      const variants = new Set(
-        [resolved.hubspot_value, resolved.name, resolved.slug]
-          .filter((value): value is string => !!value)
-          .flatMap((value) => [value, value.replace(/\s+/g, '')]),
-      );
-      conditions.push({
-        OR: [...variants].map((value) => ({
-          business_unit: { equals: value, mode: 'insensitive' as const },
-        })),
-      });
-    }
-
-    const where = conditions.length ? { AND: conditions } : {};
+    const where = await this.buildStatsWhere(query);
+    // An unrecognized BU must narrow to nothing, never widen to everything.
+    if (!where) return emptyOfferPanelStats();
 
     const groupedQuery = this.prisma.offerPanel.groupBy({
       by: ['created_by_user_id', 'status'],
@@ -2045,6 +2071,7 @@ export class OfferPanelsService {
     const totals = emptyOfferPanelStatusCounts();
     let viewedEver = 0;
     let awaitingResponse = 0;
+    const awaiting = { view: 0, response: 0 };
     const timesToView: number[] = [];
     const timesToDecision: number[] = [];
     const monthlyBuckets = new Map<string, OfferPanelMonthlyBucket>();
@@ -2053,6 +2080,10 @@ export class OfferPanelsService {
     for (const row of rows) {
       const acc = accumulatorFor(row.created_by_user_id);
       totals[row.status] += 1;
+      if (isAwaitingStatus(row.status)) {
+        if (row.viewed_at) awaiting.response += 1;
+        else awaiting.view += 1;
+      }
 
       acc.totalCandidates += row._count.candidates;
       if (!acc.lastSentAt || row.createdAt > acc.lastSentAt) {
@@ -2157,6 +2188,7 @@ export class OfferPanelsService {
       },
       // Cumulative stages, so the funnel is monotonically non-increasing.
       funnel: { sent: total, viewed: viewedEver, decided, accepted },
+      awaiting,
       topSenders: {
         mostSent: topSender(senders, (s) => s.total),
         mostAccepted: topSender(senders, (s) => s.accepted),
@@ -2167,6 +2199,99 @@ export class OfferPanelsService {
         a.month.localeCompare(b.month),
       ),
     };
+  }
+
+  /**
+   * The `where` shared by `getStats` and `getStatsDetails`: creation-date
+   * window plus optional business unit. Returns null for an unrecognized BU,
+   * which callers must treat as "no rows".
+   */
+  private async buildStatsWhere(
+    query: OfferPanelStatsQueryDto,
+  ): Promise<Prisma.OfferPanelWhereInput | null> {
+    const { dateFrom, dateTo, business_unit } = query;
+
+    const conditions: Prisma.OfferPanelWhereInput[] = [];
+
+    const createdAt: { gte?: Date; lte?: Date } = {};
+    if (dateFrom) createdAt.gte = new Date(`${dateFrom}T00:00:00.000Z`);
+    // The range is inclusive of its final day: a bare `new Date('2026-08-12')`
+    // is midnight, which would silently drop everything sent that day.
+    if (dateTo) createdAt.lte = new Date(`${dateTo}T23:59:59.999Z`);
+    if (dateFrom || dateTo) conditions.push({ createdAt });
+
+    if (business_unit) {
+      const resolved =
+        await this.businessUnitContext.resolveByHubspotValue(business_unit);
+      if (!resolved) return null;
+      // Rows have been written with several spellings over time ("Berry
+      // Virtual" vs "BerryVirtual"). `mode: 'insensitive'` covers casing but
+      // not whitespace, so match every variant explicitly.
+      const variants = new Set(
+        [resolved.hubspot_value, resolved.name, resolved.slug]
+          .filter((value): value is string => !!value)
+          .flatMap((value) => [value, value.replace(/\s+/g, '')]),
+      );
+      conditions.push({
+        OR: [...variants].map((value) => ({
+          business_unit: { equals: value, mode: 'insensitive' as const },
+        })),
+      });
+    }
+
+    return conditions.length ? { AND: conditions } : {};
+  }
+
+  /**
+   * Rows behind one Offer Panels card of the Operational Dashboard. Uses the
+   * same window as `getStats` and the same awaiting predicates as its
+   * `awaiting` tallies, so each card number equals its list size.
+   */
+  async getStatsDetails(
+    kind: OfferPanelStatsDetailKind,
+    query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<OfferPanelDetailRowDto>> {
+    const base = await this.buildStatsWhere(query);
+    if (!base) return { data: [] };
+    const where: Prisma.OfferPanelWhereInput = {
+      AND: [base, OFFER_PANEL_STATS_DETAIL_WHERE[kind]],
+    };
+
+    return paginateMetricDetails(
+      query,
+      () => this.prisma.offerPanel.count({ where }),
+      (paging) =>
+        this.prisma.offerPanel.findMany({
+          where,
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            recipient_name: true,
+            recipient_org_name: true,
+            createdAt: true,
+            viewed_at: true,
+            decided_at: true,
+            createdBy: { select: { first_name: true, last_name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          ...paging,
+        }),
+      (panel) => ({
+        id: panel.id,
+        title: panel.title,
+        recipientName: panel.recipient_name,
+        recipientOrgName: panel.recipient_org_name ?? '—',
+        sentBy: displayName(
+          panel.createdBy.first_name,
+          panel.createdBy.last_name,
+        ),
+        status: panel.status,
+        sentAt: panel.createdAt.toISOString(),
+        viewedAt: toIso(panel.viewed_at),
+        decidedAt: toIso(panel.decided_at),
+      }),
+    );
   }
 
   async findByCandidateId(candidateId: string) {

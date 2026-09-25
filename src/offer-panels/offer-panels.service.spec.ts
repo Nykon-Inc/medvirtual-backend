@@ -2579,5 +2579,130 @@ describe('OfferPanelsService', () => {
         { month: '2026-06', sent: 1, accepted: 0, declined: 0 },
       ]);
     });
+
+    it('splits undecided panels into awaiting view and awaiting response', async () => {
+      mockStats([
+        makeRow({ status: 'sent' }),
+        makeRow({ status: 'sent' }),
+        makeRow({ status: 'viewed', viewed_at: new Date('2026-06-02') }),
+        makeRow({ status: 'accepted', viewed_at: new Date('2026-06-02') }),
+        // Decided without a recorded view — neither awaiting bucket.
+        makeRow({ status: 'declined' }),
+      ]);
+
+      const result = await service.getStats({});
+
+      expect(result.awaiting).toEqual({ view: 2, response: 1 });
+    });
+  });
+
+  describe('getStatsDetails', () => {
+    const panelRow = {
+      id: 'panel-1',
+      title: 'Nurses',
+      status: 'viewed',
+      recipient_name: 'Jane Client',
+      recipient_org_name: null,
+      createdAt: new Date('2026-06-01T10:00:00.000Z'),
+      viewed_at: new Date('2026-06-02T10:00:00.000Z'),
+      decided_at: null,
+      createdBy: { first_name: 'Admin', last_name: 'User' },
+    };
+    const query = { dateFrom: '2026-06-01', dateTo: '2026-06-30' };
+
+    it('pages the awaiting-response panels with the same window as getStats', async () => {
+      mockPrisma.offerPanel.count.mockResolvedValue(11);
+      mockPrisma.offerPanel.findMany.mockResolvedValue([panelRow]);
+
+      const result = await service.getStatsDetails('awaiting-response', {
+        ...query,
+        page: 2,
+        perPage: 10,
+      });
+
+      const expectedWhere = {
+        AND: [
+          {
+            AND: [
+              {
+                createdAt: {
+                  gte: new Date('2026-06-01T00:00:00.000Z'),
+                  lte: new Date('2026-06-30T23:59:59.999Z'),
+                },
+              },
+            ],
+          },
+          {
+            status: { notIn: ['accepted', 'declined'] },
+            viewed_at: { not: null },
+          },
+        ],
+      };
+      expect(mockPrisma.offerPanel.count).toHaveBeenCalledWith({
+        where: expectedWhere,
+      });
+      expect(mockPrisma.offerPanel.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere, skip: 10, take: 10 }),
+      );
+      expect(result.meta).toEqual({
+        total: 11,
+        totalPages: 2,
+        page: 2,
+        perPage: 10,
+      });
+      expect(result.data[0]).toEqual({
+        id: 'panel-1',
+        title: 'Nurses',
+        recipientName: 'Jane Client',
+        recipientOrgName: '—',
+        sentBy: 'Admin User',
+        status: 'viewed',
+        sentAt: '2026-06-01T10:00:00.000Z',
+        viewedAt: '2026-06-02T10:00:00.000Z',
+        decidedAt: null,
+      });
+    });
+
+    it('filters awaiting-view on panels never opened and not decided', async () => {
+      mockPrisma.offerPanel.count.mockResolvedValue(0);
+      mockPrisma.offerPanel.findMany.mockResolvedValue([]);
+
+      await service.getStatsDetails('awaiting-view', query);
+
+      const { where } = mockPrisma.offerPanel.count.mock.calls[0][0];
+      expect(where.AND[1]).toEqual({
+        status: { notIn: ['accepted', 'declined'] },
+        viewed_at: null,
+      });
+    });
+
+    it('returns every row without meta on export', async () => {
+      mockPrisma.offerPanel.findMany.mockResolvedValue([panelRow]);
+
+      const result = await service.getStatsDetails('total', {
+        ...query,
+        export: true,
+      });
+
+      expect(mockPrisma.offerPanel.count).not.toHaveBeenCalled();
+      expect(
+        mockPrisma.offerPanel.findMany.mock.calls[0][0].skip,
+      ).toBeUndefined();
+      expect(result).toEqual({
+        data: [expect.objectContaining({ id: 'panel-1' })],
+      });
+    });
+
+    it('returns no rows for an unrecognized business unit', async () => {
+      businessUnitContextMock.resolveByHubspotValue.mockResolvedValue(null);
+
+      const result = await service.getStatsDetails('total', {
+        ...query,
+        business_unit: 'Unknown',
+      } as any);
+
+      expect(result).toEqual({ data: [] });
+      expect(mockPrisma.offerPanel.findMany).not.toHaveBeenCalled();
+    });
   });
 });
