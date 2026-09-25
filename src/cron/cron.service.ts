@@ -1021,7 +1021,8 @@ export class CronService {
     console.log('Starting syncInvoicePaymentDates cron job...');
 
     const snapshots = await this.prisma.hubspotInvoiceSnapshot.findMany({
-      where: { invoice_status: 'paid' },
+      // Internal (Stripe) snapshots have no HubSpot invoice to refresh from.
+      where: { invoice_status: 'paid', source: 'hubspot' },
       select: { id: true, hubspot_id: true },
     });
 
@@ -1086,7 +1087,7 @@ export class CronService {
     console.log('Starting syncInvoiceDueDates backfill...');
 
     const snapshots = await this.prisma.hubspotInvoiceSnapshot.findMany({
-      where: { due_date: null },
+      where: { due_date: null, source: 'hubspot' },
       select: { id: true, hubspot_id: true },
     });
 

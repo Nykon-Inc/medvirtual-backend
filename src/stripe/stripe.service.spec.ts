@@ -1,4 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import {
   STRIPE_CUSTOMER_NOT_CONFIGURED,
   StripeService,
@@ -10,6 +12,11 @@ import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Prisma } from '@prisma/client';
+
+const allianceSnapshotMock = {
+  safeSync: jest.fn(),
+  safeOnPaid: jest.fn(),
+};
 
 // Mock Stripe library
 const mockWebhookEndpointsList = jest.fn();
@@ -101,6 +108,10 @@ describe('StripeService', () => {
         { provide: 'REDIS_CLIENT', useValue: redisMock },
         { provide: PrismaService, useValue: prismaMock },
         { provide: PusherService, useValue: {} },
+        {
+          provide: InternalInvoiceSnapshotService,
+          useValue: allianceSnapshotMock,
+        },
         { provide: getQueueToken('invoice'), useValue: {} },
         {
           provide: getQueueToken('invoice-prebill-reconciliation'),
@@ -260,6 +271,72 @@ describe('StripeService', () => {
           processing_started_at: null,
         },
       });
+    });
+  });
+
+  describe('webhookHandler — Med Alliance hooks', () => {
+    beforeEach(() => {
+      Object.assign(prismaMock, {
+        invoice: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ id: 'inv-1', reference: 'REF-1' }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        uSER: { findUnique: jest.fn().mockResolvedValue(null) },
+        invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+        invoicePayment: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({}),
+          update: jest.fn(),
+        },
+      });
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    });
+
+    it('runs the Med Alliance paid flow with the Stripe PDF link on invoice.paid', async () => {
+      await service.webhookHandler({
+        id: 'evt_1',
+        type: 'invoice.paid',
+        data: {
+          object: {
+            id: 'in_1',
+            payment_intent: 'pi_1',
+            amount_paid: 150000,
+            status_transitions: { paid_at: 1758000000 },
+            invoice_pdf: 'https://stripe.test/in_1.pdf',
+          },
+        },
+      } as any);
+
+      expect(allianceSnapshotMock.safeOnPaid).toHaveBeenCalledWith('inv-1', {
+        pdfLink: 'https://stripe.test/in_1.pdf',
+      });
+      expect(prismaMock.invoicePayment.create).toHaveBeenCalled();
+    });
+
+    it('does not run the Med Alliance flow when the Stripe invoice is not ours', async () => {
+      prismaMock.invoice.findUnique.mockResolvedValue(null);
+
+      await service.webhookHandler({
+        id: 'evt_2',
+        type: 'invoice.paid',
+        data: { object: { id: 'in_unknown' } },
+      } as any);
+
+      expect(allianceSnapshotMock.safeOnPaid).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the Med Alliance snapshot on invoice.finalized', async () => {
+      jest.spyOn(service, 'payInvoice').mockResolvedValue(undefined as any);
+
+      await service.webhookHandler({
+        id: 'evt_3',
+        type: 'invoice.finalized',
+        data: { object: { id: 'in_1', number: 'N-1' } },
+      } as any);
+
+      expect(allianceSnapshotMock.safeSync).toHaveBeenCalledWith('inv-1');
     });
   });
 

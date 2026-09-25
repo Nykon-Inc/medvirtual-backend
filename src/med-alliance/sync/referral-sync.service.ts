@@ -4,6 +4,7 @@ import { InvoiceIngestionService } from './invoice-ingestion.service';
 import { StaffMatchingService } from './staff-matching.service';
 import { CommissionDetectionService } from './commission-detection.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InternalInvoiceSnapshotService } from './internal-invoice-snapshot.service';
 
 export interface SyncResult {
   organizationId: string;
@@ -14,6 +15,8 @@ export interface SyncResult {
   };
   phaseB?: {
     invoices: { created: number; updated: number; skipped: number };
+    // Our own Stripe/Hubstaff invoices mirrored into the snapshot tables this run.
+    internalInvoices: { created: number; updated: number; skipped: number };
     lineItems: {
       created: number;
       matched: number;
@@ -34,6 +37,7 @@ export class ReferralSyncService {
     private readonly invoiceIngestion: InvoiceIngestionService,
     private readonly staffMatching: StaffMatchingService,
     private readonly commissionDetection: CommissionDetectionService,
+    private readonly internalInvoiceSnapshot: InternalInvoiceSnapshotService,
   ) {}
 
   /**
@@ -82,15 +86,20 @@ export class ReferralSyncService {
       },
     };
 
-    // Multiple matches or hard error — halt pipeline
-    if (
+    // Multiple matches or hard error — halt the HubSpot side of the pipeline. Internal
+    // (Stripe/Hubstaff) invoices are linked by organization_id and don't depend on the
+    // HubSpot company match, so they are still processed below when the org has any.
+    const phaseAHalted =
       matchResult.outcome === 'multiple_matches' ||
-      matchResult.outcome === 'error'
-    ) {
+      matchResult.outcome === 'error';
+    const internalInvoiceCount = await this.prisma.invoice.count({
+      where: { organization_id: organizationId },
+    });
+    if (phaseAHalted) {
       this.logger.warn(
         `Sync halted for org ${organizationId} — Phase A outcome: ${matchResult.outcome}`,
       );
-      return result;
+      if (internalInvoiceCount === 0) return result;
     }
 
     // -------------------------------------------------------------------------
@@ -118,8 +127,10 @@ export class ReferralSyncService {
       return result;
     }
 
-    // Phase B requires a hubspot_id to query invoices
-    if (!org?.hubspot_id) {
+    const hubspotCompanyId = phaseAHalted ? null : (org?.hubspot_id ?? null);
+
+    if (!hubspotCompanyId && internalInvoiceCount === 0) {
+      // Phase B requires a hubspot_id to query HubSpot invoices
       this.logger.log(
         `Phase B skipped for org ${organizationId} — no hubspot_id (no_match outcome)`,
       );
@@ -127,16 +138,30 @@ export class ReferralSyncService {
         ...result,
         phaseB: {
           invoices: { created: 0, updated: 0, skipped: 0 },
+          internalInvoices: { created: 0, updated: 0, skipped: 0 },
           lineItems: { created: 0, matched: 0, unmatched: 0, ambiguous: 0 },
           commissions: { created: 0, skipped: 0 },
         },
       };
     }
 
-    const invoiceStats = await this.invoiceIngestion.run(
-      organizationId,
-      org.hubspot_id,
-    );
+    const invoiceStats = hubspotCompanyId
+      ? await this.invoiceIngestion.run(organizationId, hubspotCompanyId)
+      : {
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          lineItems: { created: 0, updated: 0, skipped: 0 },
+        };
+
+    // Phase B Step 1b: mirror the org's internal invoices into the same snapshot tables, so
+    // the matching + detection steps below cover both billing sources in one pass.
+    const internalInvoiceStats =
+      internalInvoiceCount > 0
+        ? await this.internalInvoiceSnapshot.syncAllForOrganization(
+            organizationId,
+          )
+        : { created: 0, updated: 0, skipped: 0 };
 
     // Phase B Step 1.5: match newly-ingested line items to Staff before commission
     // detection runs, so it can query by match_status='matched' this same pass.
@@ -148,6 +173,7 @@ export class ReferralSyncService {
 
     result.phaseB = {
       invoices: invoiceStats,
+      internalInvoices: internalInvoiceStats,
       lineItems: {
         created: invoiceStats.lineItems.created,
         matched: staffMatchStats.matched,
@@ -160,6 +186,7 @@ export class ReferralSyncService {
     this.logger.log(
       `Sync complete for org ${organizationId} — ` +
         `invoices: +${invoiceStats.created} ~${invoiceStats.updated} =${invoiceStats.skipped} | ` +
+        `internal invoices: +${internalInvoiceStats.created} ~${internalInvoiceStats.updated} =${internalInvoiceStats.skipped} | ` +
         `line items: +${invoiceStats.lineItems.created} matched=${staffMatchStats.matched} unmatched=${staffMatchStats.unmatched} ambiguous=${staffMatchStats.ambiguous} | ` +
         `commissions: +${commissionStats.created} =${commissionStats.skipped}`,
     );

@@ -24,6 +24,7 @@ import {
 } from '../common/app-config';
 import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 
@@ -74,6 +75,7 @@ export class StripeService implements OnModuleInit {
     // this breaks the circular DI dependency between the two modules.
     @Inject(forwardRef(() => InvoiceService))
     private readonly invoiceService: InvoiceService,
+    private readonly allianceSnapshot: InternalInvoiceSnapshotService,
   ) {}
 
   private stripeCustomerNotConfigured(): BadRequestException {
@@ -492,7 +494,9 @@ export class StripeService implements OnModuleInit {
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : String(error ?? 'Unknown error');
+        error instanceof Error
+          ? error.message
+          : String(error ?? 'Unknown error');
       try {
         await this.prisma.webhookLog.update({
           where: { id: webhookLog.id },
@@ -647,6 +651,12 @@ export class StripeService implements OnModuleInit {
                 },
               });
             }
+
+            // Med Alliance: snapshot → deployed transition → staff matching → per-line
+            // commissions, the same flow a paid HubSpot invoice goes through. Never throws.
+            await this.allianceSnapshot.safeOnPaid(internalInvoice.id, {
+              pdfLink: paidInvoice.invoice_pdf ?? null,
+            });
 
             // Schedule prebill reconciliation if this was a pre-billed invoice
             await this.schedulePrebillReconciliationIfNeeded(
@@ -817,6 +827,8 @@ export class StripeService implements OnModuleInit {
                 event: `Invoice ${internalInvoice.reference} has been marked as published`,
               },
             });
+
+            await this.allianceSnapshot.safeSync(internalInvoice.id);
 
             // Send invoice to organization superadmin
             try {

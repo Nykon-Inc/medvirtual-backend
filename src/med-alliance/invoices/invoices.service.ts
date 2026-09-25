@@ -4,13 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { USER, HubspotInvoiceSnapshot } from '@prisma/client';
+import { USER, HubspotInvoiceSnapshot, InvoiceSource } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ListInvoicesDto } from './dto/list-invoices.dto';
 
 export interface EligibleInvoiceRow {
   id: string;
-  hubspot_id: string;
+  source: InvoiceSource;
+  hubspot_id: string | null;
+  internal_invoice_id: string | null;
   organization_id: string;
   organization_name: string;
   invoice_amount: Decimal;
@@ -24,7 +26,9 @@ export interface EligibleInvoiceRow {
 // it is an internal debug/replay field and must never be sent to the frontend.
 const SNAPSHOT_SELECT = {
   id: true,
+  source: true,
   hubspot_id: true,
+  internal_invoice_id: true,
   organization_id: true,
   invoice_status: true,
   payment_status: true,
@@ -83,6 +87,7 @@ export class InvoicesService {
 
     if (dto.invoice_status) where.invoice_status = dto.invoice_status;
     if (dto.payment_status) where.payment_status = dto.payment_status;
+    if (dto.source) where.source = dto.source;
 
     if (dto.paid_at_from || dto.paid_at_to) {
       where.paid_at = {};
@@ -189,7 +194,9 @@ export class InvoicesService {
       },
       select: {
         id: true,
+        source: true,
         hubspot_id: true,
+        internal_invoice_id: true,
         organization_id: true,
         invoice_amount: true,
         payment_status: true,
@@ -209,7 +216,9 @@ export class InvoicesService {
       )
       .map((s) => ({
         id: s.id,
+        source: s.source,
         hubspot_id: s.hubspot_id,
+        internal_invoice_id: s.internal_invoice_id,
         organization_id: s.organization_id,
         organization_name: s.organization.name,
         invoice_amount: s.invoice_amount,
@@ -275,6 +284,7 @@ export class InvoicesService {
     const where: any = {};
     if (dto.invoice_status) where.invoice_status = dto.invoice_status;
     if (dto.payment_status) where.payment_status = dto.payment_status;
+    if (dto.source) where.source = dto.source;
     if (dto.paid_at_from || dto.paid_at_to) {
       where.paid_at = {};
       if (dto.paid_at_from) where.paid_at.gte = new Date(dto.paid_at_from);

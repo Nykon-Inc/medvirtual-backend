@@ -17,7 +17,10 @@ import {
   UpdateBaseAmountDto,
 } from './dto/decide-commission.dto';
 import { AFFILIATE_VISIBLE_STATUSES } from '../../common/constant/commissions';
-import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
+import {
+  buildCommissionIdempotencyKey,
+  resolveInvoiceIdempotencyRef,
+} from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
 import {
   computeLineItemCommissionEligibility,
@@ -50,6 +53,7 @@ const COMMISSION_SELECT = {
   hubspot_invoice_snapshot_id: true,
   hubspot_line_item_snapshot_id: true,
   staff_id: true,
+  source: true,
   commission_percent_snapshot: true,
   base_amount_snapshot: true,
   commission_amount: true,
@@ -72,12 +76,20 @@ const COMMISSION_SELECT = {
   },
   staff: STAFF_SELECT,
   hubspotLineItemSnapshot: {
-    select: { id: true, name: true, amount: true, staff: STAFF_SELECT },
+    select: {
+      id: true,
+      name: true,
+      amount: true,
+      line_category: true,
+      staff: STAFF_SELECT,
+    },
   },
   hubspotInvoiceSnapshot: {
     select: {
       id: true,
+      source: true,
       hubspot_id: true,
+      internal_invoice_id: true,
       invoice_number: true,
       invoice_status: true,
       invoice_amount: true,
@@ -93,6 +105,8 @@ const COMMISSION_SELECT = {
           quantity: true,
           amount: true,
           discount: true,
+          line_category: true,
+          removed_at: true,
           staff: STAFF_SELECT,
         },
       },
@@ -168,6 +182,7 @@ export class CommissionsService {
       page = 1,
       limit = 20,
       status,
+      source,
       created_from,
       created_to,
       sortBy = 'createdAt',
@@ -176,6 +191,7 @@ export class CommissionsService {
     const skip = (page - 1) * limit;
 
     const where: any = { affiliate_id: currentUser.id };
+    if (source) where.source = source;
     if (status && AFFILIATE_VISIBLE_STATUSES.includes(status)) {
       where.status = status;
     } else {
@@ -226,6 +242,7 @@ export class CommissionsService {
       status,
       organization_id,
       affiliate_id,
+      source,
       created_from,
       created_to,
       sortBy = 'createdAt',
@@ -235,6 +252,7 @@ export class CommissionsService {
 
     const where: any = {};
     if (status) where.status = status;
+    if (source) where.source = source;
     if (organization_id) where.organization_id = organization_id;
     if (affiliate_id) where.affiliate_id = affiliate_id;
     if (created_from || created_to) {
@@ -669,6 +687,7 @@ export class CommissionsService {
           amount: true,
           match_status: true,
           staff_id: true,
+          removed_at: true,
           staff: {
             select: {
               id: true,
@@ -680,6 +699,8 @@ export class CommissionsService {
             select: {
               id: true,
               hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
               organization_id: true,
               invoice_status: true,
               invoice_amount: true,
@@ -699,7 +720,11 @@ export class CommissionsService {
 
       // Must already be matched to a Staff — this endpoint force-creates from an existing
       // match, it does not perform matching itself (that's StaffMatchingService's job).
-      if (lineItem.match_status !== 'matched' || !lineItem.staff_id) {
+      if (
+        lineItem.match_status !== 'matched' ||
+        !lineItem.staff_id ||
+        lineItem.removed_at
+      ) {
         this.logger.warn(
           `Line item ${lineItemId} is not matched to a Staff — skipping`,
         );
@@ -819,7 +844,7 @@ export class CommissionsService {
 
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: profile.user_id,
-        hubspotInvoiceId: snapshot.hubspot_id,
+        hubspotInvoiceId: resolveInvoiceIdempotencyRef(snapshot),
         hubspotLineItemId: lineItem.id,
       });
 
@@ -837,6 +862,7 @@ export class CommissionsService {
             commission_amount: eligibility.commissionAmount!,
             status: CommissionStatus.pending_admin_confirmation,
             idempotency_key: idempotencyKey,
+            source: snapshot.source,
           },
           select: { id: true },
         });
@@ -851,6 +877,7 @@ export class CommissionsService {
           metadata: {
             organization_id: snapshot.organization_id,
             hubspot_invoice_id: snapshot.hubspot_id,
+            internal_invoice_id: snapshot.internal_invoice_id,
             hubspot_line_item_snapshot_id: lineItem.id,
             staff_id: lineItem.staff_id,
             created_by_admin: adminUser.id,

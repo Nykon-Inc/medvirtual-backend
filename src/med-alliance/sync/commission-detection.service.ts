@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
+import {
+  buildCommissionIdempotencyKey,
+  resolveInvoiceIdempotencyRef,
+} from '../../common/utils/commission-idempotency';
 import { AllianceNotificationsService } from '../notifications/notifications.service';
 import {
   computeLineItemCommissionEligibility,
@@ -233,6 +236,7 @@ export class CommissionDetectionService {
           match_status: 'matched',
           staff_id: { not: null },
           amount: { gt: 0 },
+          removed_at: null,
         },
         select: {
           id: true,
@@ -240,7 +244,13 @@ export class CommissionDetectionService {
           invoice_id: true,
           staff_id: true,
           invoice: {
-            select: { hubspot_id: true, due_date: true, paid_at: true },
+            select: {
+              hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
+              due_date: true,
+              paid_at: true,
+            },
           },
           staff: {
             select: {
@@ -301,7 +311,7 @@ export class CommissionDetectionService {
 
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: affiliateUserId,
-        hubspotInvoiceId: lineItem.invoice.hubspot_id,
+        hubspotInvoiceId: resolveInvoiceIdempotencyRef(lineItem.invoice),
         hubspotLineItemId: lineItem.id,
       });
 
@@ -319,6 +329,7 @@ export class CommissionDetectionService {
             commission_amount: eligibility.commissionAmount!,
             status: commissionStatus,
             idempotency_key: idempotencyKey,
+            source: lineItem.invoice.source,
           },
         });
 
@@ -337,6 +348,7 @@ export class CommissionDetectionService {
             metadata: {
               organization_id: organizationId,
               hubspot_invoice_id: lineItem.invoice.hubspot_id,
+              internal_invoice_id: lineItem.invoice.internal_invoice_id,
               hubspot_line_item_snapshot_id: lineItem.id,
               staff_id: lineItem.staff_id,
             } as any,

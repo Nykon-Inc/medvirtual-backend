@@ -9,6 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { InvoiceSource } from '@prisma/client';
 
 export enum CommissionStatus {
   DETECTED = 'detected',
@@ -48,6 +49,16 @@ export class ListCommissionsDto {
   @IsOptional()
   @IsEnum(CommissionStatus)
   status?: CommissionStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by the billing system the invoice came from (HubSpot or our own Stripe/Hubstaff invoicing)',
+    enum: InvoiceSource,
+    example: InvoiceSource.internal,
+  })
+  @IsOptional()
+  @IsEnum(InvoiceSource)
+  source?: InvoiceSource;
 
   // Admin only: filter commissions by organization
   @ApiPropertyOptional({

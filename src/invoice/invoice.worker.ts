@@ -15,6 +15,7 @@ import {
 import { Decimal } from '@prisma/client/runtime/library';
 import { DateTime } from 'luxon';
 import { StripeService } from '../stripe/stripe.service';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
 import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
@@ -69,6 +70,7 @@ export class InvoiceWorker extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly positionRateConfigService: PositionRateConfigService,
     private readonly businessUnitContext: BusinessUnitContext,
+    private readonly allianceSnapshot: InternalInvoiceSnapshotService,
   ) {
     super();
   }
@@ -417,6 +419,10 @@ export class InvoiceWorker extends WorkerHost {
 
       // 4. Generate Invoice (Core Logic)
       const invoice = await this.generateInvoiceRecord(org, payload);
+
+      // Outside generateInvoiceRecord's transaction on purpose: the snapshot must only ever
+      // mirror a committed invoice.
+      await this.allianceSnapshot.safeSync(invoice.id);
 
       // 5. Emit Completion
       await this.completeJob(job_id, created_by, [invoice.id]);

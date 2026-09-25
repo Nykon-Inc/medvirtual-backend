@@ -370,7 +370,7 @@ export class ReferredCompaniesController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({
     summary:
-      'Re-run the full sync pipeline for a referred company including HubSpot matching and invoice ingestion',
+      'Re-run the full sync pipeline for a referred company: HubSpot matching, HubSpot and internal (Stripe) invoice ingestion, staff matching and commission detection',
   })
   @ApiParam({ name: 'id', description: 'Referred company (organization) UUID' })
   @ApiResponse({ status: 200, description: 'Sync completed' })

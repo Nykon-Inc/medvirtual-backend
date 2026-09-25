@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { InvoiceWorker } from './invoice.worker';
 import { PrismaService } from '../prisma/prisma.service';
 import { HubstaffService } from '../hubstaff/hubstaff.service';
@@ -9,6 +10,11 @@ import { PositionRateConfigService } from '../position-rate-config/position-rate
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { DateTime } from 'luxon';
+
+const allianceSnapshotMock = {
+  safeSync: jest.fn(),
+  safeOnPaid: jest.fn(),
+};
 
 describe('InvoiceWorker', () => {
   let worker: InvoiceWorker;
@@ -68,6 +74,10 @@ describe('InvoiceWorker', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: HubstaffService, useValue: hubstaffMock },
         { provide: PusherService, useValue: {} },
+        {
+          provide: InternalInvoiceSnapshotService,
+          useValue: allianceSnapshotMock,
+        },
         { provide: StripeService, useValue: {} },
         { provide: ConfigService, useValue: {} },
         {

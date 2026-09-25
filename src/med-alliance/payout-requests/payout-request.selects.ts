@@ -44,7 +44,9 @@ export const PAYOUT_REQUEST_SELECT = {
               invoice_amount: true,
               invoice_status: true,
               invoice_number: true,
+              source: true,
               hubspot_id: true,
+              internal_invoice_id: true,
               currency: true,
               paid_at: true,
               hubspot_pdf_link: true,
@@ -175,6 +177,9 @@ export function shapeAdminRequest(raw: any, allRequestedIds?: Set<string>) {
         c.commission.hubspotInvoiceSnapshot?.invoice_number ?? null,
       invoice_hubspot_id:
         c.commission.hubspotInvoiceSnapshot?.hubspot_id ?? null,
+      invoice_source: c.commission.hubspotInvoiceSnapshot?.source ?? null,
+      invoice_internal_id:
+        c.commission.hubspotInvoiceSnapshot?.internal_invoice_id ?? null,
       invoice_currency: c.commission.hubspotInvoiceSnapshot?.currency ?? null,
       invoice_paid_at: c.commission.hubspotInvoiceSnapshot?.paid_at ?? null,
       invoice_pdf_link:

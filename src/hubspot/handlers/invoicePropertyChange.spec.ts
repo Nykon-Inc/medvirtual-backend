@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { HandlerInvoiceCreation } from './invoiceCreation';
 import { HandlerComissionCreation } from './comissionCreation';
 import { StaffMatchingService } from '../../med-alliance/sync/staff-matching.service';
+import { InvoicePaidCommissionService } from '../../med-alliance/sync/invoice-paid-commission.service';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -31,6 +32,7 @@ describe('HandlerInvoicePropertyChange', () => {
         { provide: HandlerInvoiceCreation, useValue: mockInvoiceCreation },
         { provide: HandlerComissionCreation, useValue: mockComissionCreation },
         { provide: StaffMatchingService, useValue: mockStaffMatching },
+        InvoicePaidCommissionService,
       ],
     }).compile();
 

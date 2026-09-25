@@ -441,7 +441,12 @@ describe('AffiliatesService', () => {
         expect.objectContaining({
           hubspot_invoice_snapshot_id: true,
           hubspotInvoiceSnapshot: {
-            select: { hubspot_id: true, invoice_number: true },
+            select: {
+              hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
+              invoice_number: true,
+            },
           },
         }),
       );
@@ -577,7 +582,12 @@ describe('AffiliatesService', () => {
       expect(findManyArgs.include).toEqual(
         expect.objectContaining({
           hubspotInvoiceSnapshot: {
-            select: { hubspot_id: true, invoice_number: true },
+            select: {
+              hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
+              invoice_number: true,
+            },
           },
         }),
       );
@@ -1329,6 +1339,8 @@ describe('AffiliatesService', () => {
         status: 'eligible',
         date: '2026-07-07T19:54:34.650Z',
         invoice_id: 'hs-1',
+        invoice_source: null,
+        invoice_internal_id: null,
         name: 'INV-1',
       });
       expect(result.commissions[1].organization_name).toBe('');

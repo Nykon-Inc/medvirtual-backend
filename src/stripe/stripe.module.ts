@@ -2,6 +2,7 @@ import { Module, Global, forwardRef } from '@nestjs/common';
 import { StripeService } from './stripe.service';
 import { StripeController } from './stripe.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SyncModule } from '../med-alliance/sync/sync.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { BullModule } from '@nestjs/bullmq';
 import { queuesEnabledSync } from '../common/app-config';
@@ -10,6 +11,7 @@ import { queuesEnabledSync } from '../common/app-config';
 @Module({
   imports: [
     PrismaModule,
+    SyncModule,
     forwardRef(() => InvoiceModule),
     ...(queuesEnabledSync()
       ? [

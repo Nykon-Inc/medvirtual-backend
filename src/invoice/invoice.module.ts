@@ -7,6 +7,7 @@ import { InvoiceStatsWorker } from './invoice-stats.worker';
 import { InvoiceReconciliationWorker } from './invoice-reconciliation.worker';
 import { InvoicePrebillReconciliationWorker } from './invoice-prebill-reconciliation.worker';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SyncModule } from '../med-alliance/sync/sync.module';
 import { PusherModule } from '../pusher/pusher.module';
 import { HubstaffModule } from '../hubstaff/hubstaff.module';
 import { MailModule } from '../mail/mail.module';
@@ -32,6 +33,7 @@ const workerProviders = QUEUES
 @Module({
   imports: [
     PrismaModule,
+    SyncModule,
     PusherModule,
     HubstaffModule,
     MailModule,

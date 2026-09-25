@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PusherService } from '../pusher/pusher.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 
 describe('StripeController', () => {
   let stripeController: StripeController;
@@ -43,6 +44,10 @@ describe('StripeController', () => {
         { provide: SecretsService, useValue: mockSecretsService },
         { provide: 'REDIS_CLIENT', useValue: mockRedisClient },
         { provide: PrismaService, useValue: {} },
+        {
+          provide: InternalInvoiceSnapshotService,
+          useValue: { safeSync: jest.fn(), safeOnPaid: jest.fn() },
+        },
         {
           provide: PusherService,
           useValue: { trigger: jest.fn(), authenticate: jest.fn() },

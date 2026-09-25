@@ -6,6 +6,7 @@ import { invoiceToDbDictionary } from '../../common/dictionaries/invoice-diction
 import { HandlerComissionCreation } from './comissionCreation';
 import { resolvePaidAt } from '../../common/utils/hubspot.util';
 import { StaffMatchingService } from '../../med-alliance/sync/staff-matching.service';
+import { InvoicePaidCommissionService } from '../../med-alliance/sync/invoice-paid-commission.service';
 
 @Injectable()
 export class HandlerInvoicePropertyChange {
@@ -14,6 +15,7 @@ export class HandlerInvoicePropertyChange {
     private readonly invoiceCreation: HandlerInvoiceCreation,
     private readonly comissionCreation: HandlerComissionCreation,
     private readonly staffMatching: StaffMatchingService,
+    private readonly invoicePaid: InvoicePaidCommissionService,
   ) {}
 
   async execute(event) {
@@ -115,7 +117,7 @@ export class HandlerInvoicePropertyChange {
         console.log(
           `Checking deployed transition for organization ${invoiceWithOrg.organization.id} (invoice ${event.objectId}).`,
         );
-        await this.markOrganizationDeployedFromFirstPaidInvoice({
+        await this.invoicePaid.markOrganizationDeployedFromFirstPaidInvoice({
           organizationId: invoiceWithOrg.organization.id,
           firstInvoiceDate: invoiceWithOrg.paid_at ?? new Date(),
           hubspotInvoiceId: String(event.objectId),
@@ -197,141 +199,5 @@ export class HandlerInvoicePropertyChange {
     }
 
     return true;
-  }
-
-  /**
-   * Marks a referred organization as "deployed" when its first paid invoice is detected.
-   *
-   * This helper intentionally does NOT touch med_alliance_referral_status — Confirm/Block
-   * eligibility decisions become available to admins immediately once deployed, there is no
-   * waiting period. execute() calls this before commission creation so the first commission
-   * follows the expected "detected" status until an admin confirms eligibility.
-   */
-  private async markOrganizationDeployedFromFirstPaidInvoice(params: {
-    organizationId: string;
-    firstInvoiceDate: Date;
-    hubspotInvoiceId?: string;
-  }): Promise<boolean> {
-    const org = await this.prisma.organization.findUnique({
-      where: { id: params.organizationId },
-      select: {
-        id: true,
-        referred_by_affiliate_id: true,
-        med_alliance_referral_status: true,
-        med_alliance_block_reason: true,
-        first_paid_invoice_at: true,
-        referral_stage: true,
-      },
-    });
-
-    if (!org) {
-      console.log(
-        `Organization ${params.organizationId} not found. Cannot mark as deployed.`,
-      );
-      return false;
-    }
-
-    // Only referred organizations participate in the Med Alliance lifecycle.
-    if (!org.referred_by_affiliate_id) {
-      console.log(
-        `Organization ${org.id} has no referred affiliate. Skipping deployed transition.`,
-      );
-      return false;
-    }
-
-    // Active-client blocks are permanent for commission detection and must not be cleared here.
-    if (org.med_alliance_block_reason?.startsWith('active_client_block')) {
-      console.log(
-        `Organization ${org.id} has an active-client block. Skipping deployed transition.`,
-      );
-      return false;
-    }
-
-    // Idempotency guard: once the first paid invoice was recorded, retries must not restart the clock.
-    if (org.first_paid_invoice_at) {
-      console.log(
-        `Organization ${org.id} already has first_paid_invoice_at. Skipping deployed transition.`,
-      );
-      return false;
-    }
-
-    // Canceled organizations should never be moved back into deployed by an invoice webhook.
-    if (org.referral_stage === 'canceled') {
-      console.log(
-        `Organization ${org.id} is canceled. Skipping deployed transition.`,
-      );
-      return false;
-    }
-
-    if (org.referral_stage === 'deployed') {
-      console.log(
-        `Organization ${org.id} is already deployed. Skipping deployed transition.`,
-      );
-      return false;
-    }
-
-    const eligibilityStartAt = params.firstInvoiceDate;
-
-    return this.prisma.$transaction(async (tx) => {
-      const updateResult = await tx.organization.updateMany({
-        where: {
-          id: org.id,
-          referred_by_affiliate_id: { not: null },
-          first_paid_invoice_at: null,
-          referral_stage: { notIn: ['deployed', 'canceled'] },
-          OR: [
-            { med_alliance_block_reason: null },
-            {
-              NOT: {
-                med_alliance_block_reason: {
-                  startsWith: 'active_client_block',
-                },
-              },
-            },
-          ],
-        },
-        data: {
-          referral_stage: 'deployed',
-          eligibility_start_at: eligibilityStartAt,
-          first_paid_invoice_at: params.firstInvoiceDate,
-          med_alliance_block_reason: null,
-          // med_alliance_referral_status intentionally stays as-is — Confirm/Block are
-          // available to admins immediately once deployed, no waiting period.
-        },
-      });
-
-      if (updateResult.count === 0) {
-        console.log(
-          `Organization ${org.id} was not updated to deployed. It may have been changed by another process.`,
-        );
-        return false;
-      }
-
-      await tx.medAllianceAuditLog.create({
-        data: {
-          entity_type: 'referred_company',
-          entity_id: org.id,
-          event: 'stage_changed',
-          old_status: org.med_alliance_referral_status,
-          new_status: org.med_alliance_referral_status,
-          reason:
-            'First paid invoice - auto-transitioned to deployed stage; eligibility decisions now available',
-          source: 'sync',
-          actor_user_id: null,
-          metadata: {
-            referral_stage: 'deployed',
-            previous_referral_stage: org.referral_stage,
-            eligibility_start_at: eligibilityStartAt.toISOString(),
-            first_paid_invoice_at: params.firstInvoiceDate.toISOString(),
-            hubspot_invoice_id: params.hubspotInvoiceId ?? null,
-          } as any,
-        },
-      });
-
-      console.log(
-        `Organization ${org.id} transitioned to deployed after first paid invoice.`,
-      );
-      return true;
-    });
   }
 }

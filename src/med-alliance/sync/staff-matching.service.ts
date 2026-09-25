@@ -48,6 +48,7 @@ export class StaffMatchingService {
         match_status: null,
         invoice: { organization_id: organizationId },
         name: { not: null },
+        removed_at: null,
       },
       select: { id: true, name: true, invoice_id: true },
     });

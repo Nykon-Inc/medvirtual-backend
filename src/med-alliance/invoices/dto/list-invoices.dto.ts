@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { InvoiceSource } from '@prisma/client';
 
 export class ListInvoicesDto {
   @ApiPropertyOptional({ description: 'Page number', default: 1, minimum: 1 })
@@ -49,6 +50,16 @@ export class ListInvoicesDto {
   @IsOptional()
   @IsString()
   payment_status?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by the billing system the invoice came from (HubSpot or our own Stripe/Hubstaff invoicing)',
+    enum: InvoiceSource,
+    example: InvoiceSource.internal,
+  })
+  @IsOptional()
+  @IsEnum(InvoiceSource)
+  source?: InvoiceSource;
 
   // When true, return only snapshots where is_candidate_input === true
   @ApiPropertyOptional({

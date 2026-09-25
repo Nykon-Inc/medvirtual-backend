@@ -6,6 +6,8 @@ import { InvoiceIngestionService } from './invoice-ingestion.service';
 import { StaffMatchingService } from './staff-matching.service';
 import { CommissionDetectionService } from './commission-detection.service';
 import { ReferralSyncService } from './referral-sync.service';
+import { InvoicePaidCommissionService } from './invoice-paid-commission.service';
+import { InternalInvoiceSnapshotService } from './internal-invoice-snapshot.service';
 import { EligibilityCheckService } from '../referred-companies/eligibility-check.service';
 import { ReviewCasesModule } from '../review-cases/review-cases.module';
 import { AllianceNotificationsModule } from '../notifications/notifications.module';
@@ -25,6 +27,8 @@ import { EmailTemplatesModule } from '../../email-templates/email-templates.modu
     StaffMatchingService,
     CommissionDetectionService,
     ReferralSyncService,
+    InvoicePaidCommissionService,
+    InternalInvoiceSnapshotService,
     // EligibilityCheckService is used by HubspotMatchingService after a match is resolved
     EligibilityCheckService,
   ],
@@ -33,6 +37,8 @@ import { EmailTemplatesModule } from '../../email-templates/email-templates.modu
     InvoiceIngestionService,
     StaffMatchingService,
     CommissionDetectionService,
+    InvoicePaidCommissionService,
+    InternalInvoiceSnapshotService,
   ],
 })
 export class SyncModule {}

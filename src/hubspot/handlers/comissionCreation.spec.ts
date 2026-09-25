@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import axios from 'axios';
 import { HandlerComissionCreation } from './comissionCreation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoicePaidCommissionService } from '../../med-alliance/sync/invoice-paid-commission.service';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -19,6 +20,7 @@ describe('HandlerComissionCreation', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         HandlerComissionCreation,
+        InvoicePaidCommissionService,
         { provide: PrismaService, useValue: mockPrisma },
       ],
     }).compile();

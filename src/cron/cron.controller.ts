@@ -377,7 +377,7 @@ export class CronController {
   @Get('sync-organizations-with-hubspot')
   @ApiOperation({
     summary:
-      'Full Med Alliance sync for referred organizations: resolves HubSpot company ID, ingests invoices, detects commissions, and promotes eligible companies. Pass organization_id to target a single org; omit to process all referred organizations.',
+      'Full Med Alliance sync for referred organizations: resolves HubSpot company ID, ingests HubSpot and internal (Stripe) invoices, detects commissions, and promotes eligible companies. Pass organization_id to target a single org; omit to process all referred organizations.',
   })
   @ApiQuery({
     name: 'organization_id',

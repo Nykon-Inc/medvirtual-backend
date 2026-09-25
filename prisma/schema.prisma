@@ -1002,10 +1002,16 @@ model AffiliateProfile {
   @@index([deactivated_by_bu], map: "idx_affiliate_profiles_deactivated_by_bu")
 }
 
+// Despite the name, this holds invoice snapshots from BOTH billing sources (see `source`):
+// HubSpot invoices (hubspot_id set) and our own Stripe/Hubstaff invoices (internal_invoice_id
+// set). Keeping one table means every Med Alliance consumer (staff matching, commission
+// detection, review cases, payouts) runs the exact same approved flow for both sources.
 model HubspotInvoiceSnapshot {
-  id               String    @id @default(uuid())
-  hubspot_id       String    @unique
-  organization_id  String
+  id                  String        @id @default(uuid())
+  source              InvoiceSource @default(hubspot)
+  hubspot_id          String?       @unique
+  internal_invoice_id String?       @unique
+  organization_id     String
   invoice_status   String
   payment_status   String?
   invoice_amount   Decimal   @db.Decimal(14, 2)
@@ -1019,20 +1025,32 @@ model HubspotInvoiceSnapshot {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  organization Organization              @relation(fields: [organization_id], references: [id])
-  commissions  AffiliateCommission[]
-  lineItems    HubspotLineItemSnapshot[]
+  organization    Organization              @relation(fields: [organization_id], references: [id])
+  internalInvoice Invoice?                  @relation(fields: [internal_invoice_id], references: [id], onDelete: SetNull)
+  commissions     AffiliateCommission[]
+  lineItems       HubspotLineItemSnapshot[]
 
   @@index([organization_id], map: "idx_hubspot_invoice_snapshots_org_id")
+  @@index([source], map: "idx_hubspot_invoice_snapshots_source")
   @@index([invoice_status], map: "idx_hubspot_invoice_snapshots_invoice_status")
   @@index([paid_at], map: "idx_hubspot_invoice_snapshots_paid_at")
   @@index([sync_hash], map: "idx_hubspot_invoice_snapshots_sync_hash")
 }
 
 model HubspotLineItemSnapshot {
-  id           String   @id @default(uuid())
-  hubspot_id   String   @unique
+  id           String        @id @default(uuid())
+  source       InvoiceSource @default(hubspot)
+  hubspot_id   String?       @unique
   invoice_id   String
+  // Internal invoices only. InvoiceService.createVersion recreates every line with new ids,
+  // so the line's identity across versions is `${worker_id ?? 'org'}|${category}|${ordinal}`
+  // — keying by InvoiceLineItem.id would duplicate commissions whenever a new version is saved.
+  internal_line_key     String?
+  // Line of the invoice's current version this row was last synced from (traceability only).
+  internal_line_item_id String?
+  line_category         String?
+  // Set when the line no longer exists on the internal invoice's current version. Never set for HubSpot.
+  removed_at            DateTime?
   name         String?
   description  String?
   quantity     String?
@@ -1046,10 +1064,13 @@ model HubspotLineItemSnapshot {
   matched_by   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  invoice    HubspotInvoiceSnapshot       @relation(fields: [invoice_id], references: [id])
-  staff      Staff?                       @relation(fields: [staff_id], references: [id])
-  commissions AffiliateCommission[]
-  reviewCases MedAllianceAdminReviewCase[]
+  invoice          HubspotInvoiceSnapshot       @relation(fields: [invoice_id], references: [id])
+  staff            Staff?                       @relation(fields: [staff_id], references: [id])
+  internalLineItem InvoiceLineItem?             @relation(fields: [internal_line_item_id], references: [id], onDelete: SetNull)
+  commissions      AffiliateCommission[]
+  reviewCases      MedAllianceAdminReviewCase[]
+
+  @@unique([invoice_id, internal_line_key], map: "uq_hubspot_line_item_snapshots_internal_key")
 
   @@index([invoice_id], map: "idx_hubspot_line_item_snapshots_invoice_id")
   @@index([staff_id], map: "idx_hubspot_line_item_snapshots_staff_id")
@@ -1062,6 +1083,8 @@ model AffiliateCommission {
   affiliate_profile_id          String
   organization_id               String
   hubspot_invoice_snapshot_id   String
+  // Which billing system the invoice behind this commission came from.
+  source                        InvoiceSource    @default(hubspot)
   // The specific line item (collaborator payment) this commission was computed from.
   // Nullable to preserve legacy pre-per-collaborator rows created under the old invoice-level logic.
   hubspot_line_item_snapshot_id String?
@@ -1100,6 +1123,12 @@ model AffiliateCommission {
   @@index([status], map: "idx_affiliate_commissions_status")
   @@index([staff_id], map: "idx_affiliate_commissions_staff_id")
   @@index([hubspot_invoice_snapshot_id], map: "idx_affiliate_commissions_invoice_snapshot_id")
+  @@index([source], map: "idx_affiliate_commissions_source")
+}
+
+enum InvoiceSource {
+  hubspot
+  internal
 }
 
 model AffiliatePayoutRequest {
@@ -2109,6 +2138,7 @@ model Invoice {
   payments              InvoicePayment[]
   syncs                 InvoiceExternalSync[]
   audits                InvoiceAuditLog[]
+  allianceSnapshot      HubspotInvoiceSnapshot?
 
   @@index([organization_id], map: "idx_invoice_org")
   @@index([status], map: "idx_invoice_status")
@@ -2304,6 +2334,7 @@ model InvoiceLineItem {
   ledger_entries              BillingLedgerEntry[]
   appliedLedgerEntries        BillingLedgerEntry[] @relation("AppliedLedgerLine")
   audits                      InvoiceAuditLog[]
+  allianceLineSnapshots       HubspotLineItemSnapshot[]
 
   @@index([invoice_version_id], map: "idx_line_invoice_version")
   @@index([worker_id], map: "idx_line_worker")

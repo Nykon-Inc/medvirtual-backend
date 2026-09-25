@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { InvoiceService } from './invoice.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -7,6 +8,11 @@ import { MailService } from '../mail/mail.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { InvoiceJobStatus } from '@prisma/client';
 import { UserAuditService } from '../user-audit/user-audit.service';
+
+const allianceSnapshotMock = {
+  safeSync: jest.fn(),
+  safeOnPaid: jest.fn(),
+};
 
 const userAuditServiceMock = {
   log: jest.fn().mockResolvedValue(undefined),
@@ -51,6 +57,10 @@ describe('InvoiceService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StripeService, useValue: {} },
         { provide: MailService, useValue: {} },
+        {
+          provide: InternalInvoiceSnapshotService,
+          useValue: allianceSnapshotMock,
+        },
         { provide: getQueueToken('invoice'), useValue: invoiceQueueMock },
         {
           provide: getQueueToken('invoice-prebill-reconciliation'),
@@ -107,6 +117,63 @@ describe('InvoiceService', () => {
       expect(res.job_id).toBe('job_123');
       expect(prismaMock.invoiceJob.create).toHaveBeenCalled();
       expect(invoiceQueueMock.add).toHaveBeenCalled();
+    });
+  });
+
+  describe('Med Alliance snapshot hooks', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      Object.assign(prismaMock, {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            status: 'published',
+            invoice_number: '00001',
+            current_version_id: 'ver-1',
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            current_version_id: 'ver-1',
+          }),
+        },
+        invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      });
+    });
+
+    it('runs the paid commission flow when an invoice is manually marked as paid', async () => {
+      await service.updateStatus('inv-1', 'paid' as any, 'user-1');
+
+      expect(allianceSnapshotMock.safeOnPaid).toHaveBeenCalledWith('inv-1');
+      expect(allianceSnapshotMock.safeSync).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the snapshot on any other status change', async () => {
+      await service.updateStatus('inv-1', 'under_review' as any, 'user-1');
+
+      expect(allianceSnapshotMock.safeSync).toHaveBeenCalledWith('inv-1');
+      expect(allianceSnapshotMock.safeOnPaid).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the snapshot after a new version is saved', async () => {
+      Object.assign(prismaMock, {
+        invoiceVersion: {
+          findFirst: jest.fn().mockResolvedValue({ version_number: 1 }),
+          create: jest.fn().mockResolvedValue({ id: 'ver-2' }),
+        },
+        invoiceLineItem: { create: jest.fn() },
+      });
+      prismaMock.invoice.findUnique.mockResolvedValue({
+        id: 'inv-1',
+        currentVersion: { status: 'draft' },
+      });
+
+      await service.createVersion(
+        'inv-1',
+        { line_items: [], subtotal: 0, tax_total: 0, total: 0 } as any,
+        'user-1',
+      );
+
+      expect(allianceSnapshotMock.safeSync).toHaveBeenCalledWith('inv-1');
     });
   });
 });

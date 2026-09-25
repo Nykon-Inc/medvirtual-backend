@@ -5,18 +5,21 @@ import { InvoiceIngestionService } from './invoice-ingestion.service';
 import { StaffMatchingService } from './staff-matching.service';
 import { CommissionDetectionService } from './commission-detection.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InternalInvoiceSnapshotService } from './internal-invoice-snapshot.service';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 const mockPrisma = {
   organization: { findUnique: jest.fn() },
+  invoice: { count: jest.fn() },
 };
 
 const mockHubspotMatching = { run: jest.fn() };
 const mockInvoiceIngestion = { run: jest.fn() };
 const mockStaffMatching = { run: jest.fn() };
 const mockCommissionDetection = { run: jest.fn() };
+const mockInternalInvoiceSnapshot = { syncAllForOrganization: jest.fn() };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,11 +68,16 @@ describe('ReferralSyncService', () => {
           provide: CommissionDetectionService,
           useValue: mockCommissionDetection,
         },
+        {
+          provide: InternalInvoiceSnapshotService,
+          useValue: mockInternalInvoiceSnapshot,
+        },
       ],
     }).compile();
 
     service = module.get<ReferralSyncService>(ReferralSyncService);
     mockStaffMatching.run.mockResolvedValue(staffMatchStats());
+    mockPrisma.invoice.count.mockResolvedValue(0);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -159,6 +167,7 @@ describe('ReferralSyncService', () => {
 
     expect(result.phaseB).toEqual({
       invoices: { created: 0, updated: 0, skipped: 0 },
+      internalInvoices: { created: 0, updated: 0, skipped: 0 },
       lineItems: { created: 0, matched: 0, unmatched: 0, ambiguous: 0 },
       commissions: { created: 0, skipped: 0 },
     });
@@ -319,5 +328,117 @@ describe('ReferralSyncService', () => {
     expect(result.phaseB).toBeUndefined();
     // findUnique is called once for the deleted-status pre-check, but never for the Phase B reload
     expect(mockPrisma.organization.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Internal (Stripe/Hubstaff) invoices
+  // -------------------------------------------------------------------------
+  describe('internal invoices', () => {
+    const internalStats = { created: 2, updated: 1, skipped: 0 };
+
+    beforeEach(() => {
+      mockPrisma.invoice.count.mockResolvedValue(3);
+      mockInternalInvoiceSnapshot.syncAllForOrganization.mockResolvedValue(
+        internalStats,
+      );
+      mockCommissionDetection.run.mockResolvedValue(commissionStats());
+    });
+
+    it('should process internal invoices and detect commissions when the org has no hubspot_id', async () => {
+      mockHubspotMatching.run.mockResolvedValue(makeMatchResult('no_match'));
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        hubspot_id: null,
+        med_alliance_block_reason: null,
+      });
+
+      const result = await service.run('org-1');
+
+      expect(mockInvoiceIngestion.run).not.toHaveBeenCalled();
+      expect(
+        mockInternalInvoiceSnapshot.syncAllForOrganization,
+      ).toHaveBeenCalledWith('org-1');
+      expect(mockStaffMatching.run).toHaveBeenCalledWith('org-1');
+      expect(mockCommissionDetection.run).toHaveBeenCalledWith('org-1');
+      expect(result.phaseB!.internalInvoices).toEqual(internalStats);
+      expect(result.phaseB!.invoices).toEqual({
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        lineItems: { created: 0, updated: 0, skipped: 0 },
+      });
+    });
+
+    it('should run both ingestions before staff matching and commission detection', async () => {
+      const callOrder: string[] = [];
+      mockHubspotMatching.run.mockResolvedValue(
+        makeMatchResult('already_matched', 'hs-1'),
+      );
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-1',
+        med_alliance_block_reason: null,
+      });
+      mockInvoiceIngestion.run.mockImplementation(() => {
+        callOrder.push('hubspot');
+        return Promise.resolve(invoiceStats());
+      });
+      mockInternalInvoiceSnapshot.syncAllForOrganization.mockImplementation(
+        () => {
+          callOrder.push('internal');
+          return Promise.resolve(internalStats);
+        },
+      );
+      mockStaffMatching.run.mockImplementation(() => {
+        callOrder.push('matching');
+        return Promise.resolve(staffMatchStats());
+      });
+      mockCommissionDetection.run.mockImplementation(() => {
+        callOrder.push('detection');
+        return Promise.resolve(commissionStats());
+      });
+
+      await service.run('org-1');
+
+      expect(callOrder).toEqual([
+        'hubspot',
+        'internal',
+        'matching',
+        'detection',
+      ]);
+    });
+
+    it('should still process internal invoices when Phase A halts on multiple_matches', async () => {
+      mockHubspotMatching.run.mockResolvedValue(
+        makeMatchResult('multiple_matches'),
+      );
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        hubspot_id: 'hs-1',
+        med_alliance_block_reason: null,
+      });
+
+      const result = await service.run('org-1');
+
+      expect(mockInvoiceIngestion.run).not.toHaveBeenCalled();
+      expect(
+        mockInternalInvoiceSnapshot.syncAllForOrganization,
+      ).toHaveBeenCalledWith('org-1');
+      expect(mockCommissionDetection.run).toHaveBeenCalledWith('org-1');
+      expect(result.phaseB!.internalInvoices).toEqual(internalStats);
+    });
+
+    it('should not process internal invoices for an active-client blocked org', async () => {
+      mockHubspotMatching.run.mockResolvedValue(makeMatchResult('no_match'));
+      mockPrisma.organization.findUnique.mockResolvedValue({
+        hubspot_id: null,
+        med_alliance_block_reason: 'active_client_block: by_email',
+      });
+
+      const result = await service.run('org-1');
+
+      expect(result.phaseB).toBeUndefined();
+      expect(
+        mockInternalInvoiceSnapshot.syncAllForOrganization,
+      ).not.toHaveBeenCalled();
+      expect(mockCommissionDetection.run).not.toHaveBeenCalled();
+    });
   });
 });

@@ -18,7 +18,10 @@ import {
   snapshotUser,
 } from '../../user-audit/user-audit.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { buildCommissionIdempotencyKey } from '../../common/utils/commission-idempotency';
+import {
+  buildCommissionIdempotencyKey,
+  resolveInvoiceIdempotencyRef,
+} from '../../common/utils/commission-idempotency';
 import {
   computeLineItemCommissionEligibility,
   resolveCommissionAnchorDate,
@@ -846,7 +849,12 @@ export class AffiliatesService {
           include: {
             organization: { select: { id: true, name: true } },
             hubspotInvoiceSnapshot: {
-              select: { hubspot_id: true, invoice_number: true },
+              select: {
+                hubspot_id: true,
+                internal_invoice_id: true,
+                source: true,
+                invoice_number: true,
+              },
             },
           },
         }),
@@ -868,6 +876,9 @@ export class AffiliatesService {
         organization_name: c.organization?.name ?? '',
         invoice_number: c.hubspotInvoiceSnapshot?.invoice_number ?? null,
         invoice_hubspot_id: c.hubspotInvoiceSnapshot?.hubspot_id ?? null,
+        invoice_source: c.hubspotInvoiceSnapshot?.source ?? null,
+        invoice_internal_id:
+          c.hubspotInvoiceSnapshot?.internal_invoice_id ?? null,
         base_amount: Number(c.base_amount_snapshot),
         commission_percentage: Number(c.commission_percent_snapshot),
         commission_amount: Number(c.commission_amount),
@@ -932,7 +943,12 @@ export class AffiliatesService {
             organization: { select: { id: true, name: true } },
             hubspot_invoice_snapshot_id: true,
             hubspotInvoiceSnapshot: {
-              select: { hubspot_id: true, invoice_number: true },
+              select: {
+                hubspot_id: true,
+                internal_invoice_id: true,
+                source: true,
+                invoice_number: true,
+              },
             },
           },
           orderBy: { createdAt: 'desc' as const },
@@ -1321,7 +1337,12 @@ export class AffiliatesService {
           organization_id: true,
           organization: { select: { id: true, name: true } },
           hubspotInvoiceSnapshot: {
-            select: { hubspot_id: true, invoice_number: true },
+            select: {
+              hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
+              invoice_number: true,
+            },
           },
         },
       }),
@@ -1345,6 +1366,9 @@ export class AffiliatesService {
         status: c.status,
         date: c.createdAt.toISOString(),
         invoice_id: c.hubspotInvoiceSnapshot?.hubspot_id ?? null,
+        invoice_source: c.hubspotInvoiceSnapshot?.source ?? null,
+        invoice_internal_id:
+          c.hubspotInvoiceSnapshot?.internal_invoice_id ?? null,
         name: c.hubspotInvoiceSnapshot?.invoice_number ?? null,
       })),
     };
@@ -1854,6 +1878,7 @@ export class AffiliatesService {
           match_status: 'matched',
           staff_id: { not: null },
           amount: { gt: 0 },
+          removed_at: null,
         },
         select: {
           id: true,
@@ -1861,7 +1886,13 @@ export class AffiliatesService {
           invoice_id: true,
           staff_id: true,
           invoice: {
-            select: { hubspot_id: true, due_date: true, paid_at: true },
+            select: {
+              hubspot_id: true,
+              internal_invoice_id: true,
+              source: true,
+              due_date: true,
+              paid_at: true,
+            },
           },
           staff: {
             select: {
@@ -1890,7 +1921,7 @@ export class AffiliatesService {
 
       const idempotencyKey = buildCommissionIdempotencyKey({
         affiliateId: affiliateUserId,
-        hubspotInvoiceId: lineItem.invoice.hubspot_id,
+        hubspotInvoiceId: resolveInvoiceIdempotencyRef(lineItem.invoice),
         hubspotLineItemId: lineItem.id,
       });
 
@@ -1909,6 +1940,7 @@ export class AffiliatesService {
             commission_amount: eligibility.commissionAmount!,
             status: commissionStatus as CommissionStatus,
             idempotency_key: idempotencyKey,
+            source: lineItem.invoice.source,
           },
         });
 
@@ -1925,6 +1957,7 @@ export class AffiliatesService {
             metadata: {
               organization_id: organizationId,
               hubspot_invoice_id: lineItem.invoice.hubspot_id,
+              internal_invoice_id: lineItem.invoice.internal_invoice_id,
               hubspot_line_item_snapshot_id: lineItem.id,
               staff_id: lineItem.staff_id,
             } as any,

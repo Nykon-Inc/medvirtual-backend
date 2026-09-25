@@ -26,6 +26,7 @@ import { UpdateInvoiceVersionDto } from './dto/update-invoice-version.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { StripeService } from '../stripe/stripe.service';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { MailService } from '../mail/mail.service';
 import { getInvoiceEmail } from '../common/utils/email-templates/invoice-email';
 import { chromium, Browser as PlaywrightBrowser } from 'playwright';
@@ -81,6 +82,7 @@ export class InvoiceService {
     private readonly stripeService: StripeService,
     private readonly mailService: MailService,
     private readonly userAudit: UserAuditService,
+    private readonly allianceSnapshot: InternalInvoiceSnapshotService,
   ) {}
 
   /**
@@ -585,6 +587,14 @@ export class InvoiceService {
       },
     });
 
+    // Keep the Med Alliance snapshot in step; a manual "paid" (e.g. paid out-of-band) goes
+    // through the same commission flow a Stripe payment does.
+    if (status === InvoiceStatus.paid) {
+      await this.allianceSnapshot.safeOnPaid(id);
+    } else {
+      await this.allianceSnapshot.safeSync(id);
+    }
+
     return updatedInvoice;
   }
 
@@ -804,6 +814,8 @@ export class InvoiceService {
         new_value: { version_number: nextVersionNumber } as any,
       },
     });
+
+    await this.allianceSnapshot.safeSync(id);
 
     return updatedInvoice;
   }

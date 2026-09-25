@@ -22,3 +22,18 @@ export function buildCommissionIdempotencyKey(params: {
 
   return createHash('sha256').update(payload).digest('hex');
 }
+
+/**
+ * The invoice reference that goes into buildCommissionIdempotencyKey's `hubspotInvoiceId`.
+ * HubSpot snapshots keep using their hubspot_id so every existing key stays byte-for-byte
+ * identical; internal (Stripe/Hubstaff) invoices get an `internal:` prefix so the two id
+ * namespaces can never collide.
+ */
+export function resolveInvoiceIdempotencyRef(snapshot: {
+  hubspot_id: string | null;
+  internal_invoice_id?: string | null;
+  id?: string;
+}): string {
+  if (snapshot.hubspot_id) return snapshot.hubspot_id;
+  return `internal:${snapshot.internal_invoice_id ?? snapshot.id}`;
+}

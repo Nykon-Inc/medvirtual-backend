@@ -3,6 +3,7 @@ import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
+import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { InvoiceStatus } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
@@ -41,6 +42,7 @@ export class InvoiceReconciliationWorker
     private readonly configService: ConfigService,
     @InjectQueue('invoice-reconciliation')
     private readonly reconciliationQueue: Queue,
+    private readonly allianceSnapshot: InternalInvoiceSnapshotService,
   ) {
     super();
   }
@@ -218,6 +220,8 @@ export class InvoiceReconciliationWorker
     });
 
     this.logger.log(`Invoice ${invoice.id} voided via reconciliation`);
+
+    await this.allianceSnapshot.safeSync(invoice.id);
   }
 
   /**
@@ -297,6 +301,11 @@ export class InvoiceReconciliationWorker
         `Invoice ${invoice.id} marked as paid via reconciliation`,
       );
     }
+
+    // Idempotent: a payment the webhook already processed creates nothing new here.
+    await this.allianceSnapshot.safeOnPaid(invoice.id, {
+      pdfLink: stripeInvoice.invoice_pdf ?? null,
+    });
   }
 
   /**
