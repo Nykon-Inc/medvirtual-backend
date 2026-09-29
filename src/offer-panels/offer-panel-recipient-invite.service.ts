@@ -32,6 +32,12 @@ import { AddRecipientAsUserDto } from './dto/add-recipient-as-user.dto';
 
 const ORG_USER_ROLES = ['organization_admin', 'organization_super_admin'];
 
+/**
+ * Existing accounts in these states cannot receive offer panels, so the panel
+ * must not be linked to them. Reactivating the user (Client Users) lifts the block.
+ */
+const UNLINKABLE_USER_STATUSES = ['inactive', 'deleted', 'suspended'];
+
 export interface AddAsUserOrganization {
   id: string;
   name: string;
@@ -500,6 +506,7 @@ export class OfferPanelRecipientInviteService {
   private async linkBlockReason(
     user: {
       role: string;
+      status: string;
       organization: {
         business_unit: string | null;
         status: OrganizationStatus;
@@ -509,6 +516,9 @@ export class OfferPanelRecipientInviteService {
   ): Promise<string | null> {
     if (!ORG_USER_ROLES.includes(user.role) || !user.organization) {
       return 'This email belongs to a non-client account (system, finance or affiliate user) and cannot receive offer panels in the app';
+    }
+    if (UNLINKABLE_USER_STATUSES.includes(user.status)) {
+      return `This email already has a user account with status "${user.status}". Reactivate it in Client Users before sending offers to it`;
     }
     if (user.organization.status === OrganizationStatus.deleted) {
       return "This user's organization has been deleted";

@@ -165,6 +165,25 @@ describe('OfferPanelRecipientInviteService', () => {
       expect(mockHubspot.findContactByEmail).not.toHaveBeenCalled();
     });
 
+    it.each(['inactive', 'deleted', 'suspended'])(
+      'returns already_user (not linkable) for a %s org user',
+      async (status) => {
+        mockPrisma.uSER.findFirst.mockResolvedValue({
+          id: 'u1',
+          email: 'john@clinic.com',
+          first_name: 'John',
+          last_name: 'Doe',
+          role: 'organization_admin',
+          status,
+          organization: makeOrg(),
+        });
+        const r = await service.preview('panel-1');
+        expect(r).toMatchObject({ status: 'already_user', can_link: false });
+        expect((r as { reason: string }).reason).toContain(status);
+        expect(mockHubspot.findContactByEmail).not.toHaveBeenCalled();
+      },
+    );
+
     it('returns already_user (not linkable) for a system/affiliate account', async () => {
       mockPrisma.uSER.findFirst.mockResolvedValue({
         id: 'u1',
@@ -438,6 +457,20 @@ describe('OfferPanelRecipientInviteService', () => {
       await expect(service.linkExistingUser('panel-1', admin)).rejects.toThrow(
         /different business unit/,
       );
+    });
+
+    it('refuses an inactive user and does not relink the panel', async () => {
+      mockPrisma.uSER.findFirst.mockResolvedValue({
+        id: 'u1',
+        email: 'john@clinic.com',
+        role: 'organization_admin',
+        status: 'inactive',
+        organization: makeOrg(),
+      });
+      await expect(service.linkExistingUser('panel-1', admin)).rejects.toThrow(
+        /status "inactive"/,
+      );
+      expect(mockPrisma.offerPanel.updateMany).not.toHaveBeenCalled();
     });
 
     it('refuses when the recipient has no account', async () => {
