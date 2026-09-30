@@ -515,7 +515,7 @@ export class OfferPanelRecipientInviteService {
     panelBusinessUnit: string,
   ): Promise<string | null> {
     if (!ORG_USER_ROLES.includes(user.role) || !user.organization) {
-      return 'This email belongs to a non-client account (system, finance or affiliate user) and cannot receive offer panels in the app';
+      return 'This email belongs to a non-client account (system or affiliate user) and cannot added as user';
     }
     if (UNLINKABLE_USER_STATUSES.includes(user.status)) {
       return `This email already has a user account with status "${user.status}". Reactivate it in Client Users before sending offers to it`;
