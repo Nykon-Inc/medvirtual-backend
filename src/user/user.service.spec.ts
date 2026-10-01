@@ -135,12 +135,34 @@ describe('UserService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException when user email already exists', async () => {
-      prismaMock.uSER.findFirst.mockResolvedValue({ id: 'existing-user' });
+    it('should throw BadRequestException when the email already belongs to a user of the same organization', async () => {
+      prismaMock.uSER.findFirst.mockResolvedValue({
+        id: 'existing-user',
+        organization_id: 'org-1',
+      });
 
       await expect(
         service.inviteUserToOrganization('org-1', inviteData, currentUser),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(
+        new BadRequestException(
+          'A user with this email already exists in this organization',
+        ),
+      );
+    });
+
+    it('should throw BadRequestException when the email already belongs to an account outside the organization', async () => {
+      prismaMock.uSER.findFirst.mockResolvedValue({
+        id: 'existing-user',
+        organization_id: 'org-2',
+      });
+
+      await expect(
+        service.inviteUserToOrganization('org-1', inviteData, currentUser),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'This email is already used by another account',
+        ),
+      );
     });
 
     it('should detect an existing user case-insensitively and not create a duplicate', async () => {

@@ -1122,7 +1122,11 @@ export class UserService {
       });
 
       if (existingUser) {
-        throw new BadRequestException('User with this email already exists');
+        throw new BadRequestException(
+          existingUser.organization_id === organizationId
+            ? 'A user with this email already exists in this organization'
+            : 'This email is already used by another account',
+        );
       }
 
       // Get organization details

@@ -24,6 +24,8 @@ import { GetOrganizationsDto } from './dto/getOrganizations.dto';
 import {
   PaginatedOrganizationsResponseDto,
   OrganizationResponseDto,
+  OrganizationContactDto,
+  ContactUserMatch,
 } from './dto/organizationResponse.dto';
 import {
   GetOrganizationStaffDto,
@@ -689,6 +691,10 @@ export class OrganizationService {
         });
       }*/
 
+    const matchContactUser = await this.buildContactUserMatcher(
+      organizationsWithCounts.flatMap((org) => org.contacts),
+    );
+
     // Transform data
     const data: OrganizationResponseDto[] = organizationsWithCounts.map(
       (org) => ({
@@ -738,7 +744,9 @@ export class OrganizationService {
                 last_name: contact.last_name,
                 email: contact.email,
                 phone: contact.phone,
+                hubspot_id: contact.hubspot_id || undefined,
                 user_id: contact.user_id || undefined,
+                ...matchContactUser(contact, org.id),
               }))
             : undefined,
         invoiceConfiguration: org.invoiceConfiguration || undefined,
@@ -771,8 +779,8 @@ export class OrganizationService {
     //}
   }
 
-  async getContactByOrgId(orgId: string) {
-    return this.prisma.contact.findMany({
+  async getContactByOrgId(orgId: string): Promise<OrganizationContactDto[]> {
+    const contacts = await this.prisma.contact.findMany({
       where: { organization_id: orgId },
       select: {
         id: true,
@@ -784,6 +792,82 @@ export class OrganizationService {
         phone: true,
       },
     });
+
+    const matchContactUser = await this.buildContactUserMatcher(contacts);
+
+    return contacts.map((contact) => ({
+      ...contact,
+      ...matchContactUser(contact, orgId),
+    }));
+  }
+
+  /**
+   * Contact.user_id is only written by the "Invite as User" flow, so a contact
+   * whose email already belongs to a USER created any other way (signup, Users
+   * tab invite, offer panel, HubSpot sync) looks unlinked. USER.email is
+   * globally unique, so any match — whatever its status or organization —
+   * means the contact cannot be invited.
+   */
+  private async buildContactUserMatcher(
+    contacts: Array<{ user_id: string | null; email: string | null }>,
+  ): Promise<
+    (
+      contact: { user_id: string | null; email: string | null },
+      organizationId: string,
+    ) => ContactUserMatch
+  > {
+    const normalizeEmail = (email: string | null) =>
+      email?.trim().toLowerCase() || null;
+
+    const userIds = [
+      ...new Set(
+        contacts.map((c) => c.user_id).filter((id): id is string => !!id),
+      ),
+    ];
+    const emails = [
+      ...new Set(
+        contacts
+          .map((c) => normalizeEmail(c.email))
+          .filter((email): email is string => !!email),
+      ),
+    ];
+
+    const users =
+      userIds.length === 0 && emails.length === 0
+        ? []
+        : await this.prisma.uSER.findMany({
+            where: {
+              OR: [
+                { id: { in: userIds } },
+                ...emails.map((email) => ({
+                  email: { equals: email, mode: 'insensitive' as const },
+                })),
+              ],
+            },
+            select: { id: true, email: true, organization_id: true },
+          });
+
+    const usersById = new Map(users.map((u) => [u.id, u]));
+    // Keyed by exact normalized email: an insensitive `equals` is an ILIKE, so
+    // `_` in an address can match a different one.
+    const usersByEmail = new Map(
+      users.map((u) => [normalizeEmail(u.email), u]),
+    );
+
+    return (contact, organizationId) => {
+      const email = normalizeEmail(contact.email);
+      const user =
+        (contact.user_id ? usersById.get(contact.user_id) : undefined) ??
+        (email ? usersByEmail.get(email) : undefined);
+
+      return {
+        email_in_use: !!user,
+        // Only surfaced for the contact's own organization, so an org admin
+        // never receives the id of a user that belongs to another one.
+        existing_user_id:
+          user && user.organization_id === organizationId ? user.id : null,
+      };
+    };
   }
 
   async getById(id: string): Promise<Organization> {

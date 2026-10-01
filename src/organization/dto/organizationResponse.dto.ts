@@ -78,6 +78,72 @@ export class InvoiceConfigurationResponseDto {
   updatedAt: Date;
 }
 
+export class ContactUserMatch {
+  @ApiProperty({
+    description:
+      'Whether a user account (any status, any organization) already uses the contact email. When true the contact cannot be invited as a user.',
+    example: true,
+  })
+  email_in_use: boolean;
+
+  @ApiProperty({
+    description:
+      "ID of the user that already owns the contact email, set only when that user belongs to the contact's organization",
+    required: false,
+    nullable: true,
+    example: 'b3b0c9a4-6d0e-4a8e-9d55-0f6a2f0f7c11',
+  })
+  existing_user_id: string | null;
+}
+
+export class OrganizationContactDto extends ContactUserMatch {
+  @ApiProperty({ description: 'Contact ID' })
+  id: string;
+
+  @ApiProperty({
+    description: 'ID of the user linked to this contact',
+    required: false,
+    nullable: true,
+  })
+  user_id?: string | null;
+
+  @ApiProperty({
+    description: 'ID from hubspot',
+    required: false,
+    nullable: true,
+  })
+  hubspot_id?: string | null;
+
+  @ApiProperty({
+    description: 'Contact first name',
+    required: false,
+    nullable: true,
+  })
+  first_name: string | null;
+
+  @ApiProperty({
+    description: 'Contact last name',
+    required: false,
+    nullable: true,
+  })
+  last_name: string | null;
+
+  @ApiProperty({
+    description: 'Contact email',
+    required: false,
+    nullable: true,
+    example: 'doctor@hospital.com',
+  })
+  email: string | null;
+
+  @ApiProperty({
+    description: 'Contact phone',
+    required: false,
+    nullable: true,
+  })
+  phone: string | null;
+}
+
 export class OrganizationResponseDto {
   @ApiProperty({ description: 'Organization ID' })
   id: string;
@@ -257,6 +323,13 @@ export class OrganizationResponseDto {
 
   @ApiProperty({ description: 'Number of active staff in organization' })
   staffCount: number;
+
+  @ApiProperty({
+    description: 'Contacts of the organization',
+    type: [OrganizationContactDto],
+    required: false,
+  })
+  contacts?: OrganizationContactDto[];
 
   @ApiProperty({
     description: 'Invoice configuration',

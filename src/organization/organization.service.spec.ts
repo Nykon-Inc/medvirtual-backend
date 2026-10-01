@@ -271,6 +271,13 @@ describe('OrganizationService', () => {
         phone: '',
       };
       mockPrismaService.contact.findMany.mockResolvedValue([linkedContact]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([
+        {
+          id: 'user-1',
+          email: 'julia.villaran+lagniappe@medvirtual.ai',
+          organization_id: 'org-1',
+        },
+      ]);
 
       const result = await service.getContactByOrgId('org-1');
 
@@ -286,7 +293,9 @@ describe('OrganizationService', () => {
           phone: true,
         },
       });
-      expect(result).toEqual([linkedContact]);
+      expect(result).toEqual([
+        { ...linkedContact, email_in_use: true, existing_user_id: 'user-1' },
+      ]);
       expect(result[0].user_id).toBe('user-1');
     });
 
@@ -301,10 +310,89 @@ describe('OrganizationService', () => {
         phone: '',
       };
       mockPrismaService.contact.findMany.mockResolvedValue([unlinkedContact]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([]);
 
       const result = await service.getContactByOrgId('org-1');
 
       expect(result[0].user_id).toBeNull();
+      expect(result[0].email_in_use).toBe(false);
+      expect(result[0].existing_user_id).toBeNull();
+    });
+
+    it('should flag an unlinked contact whose email already belongs to a user of the same organization, whatever its status or casing', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([
+        { id: 'contact-3', user_id: null, email: ' John.Doe@MedVirtual.ai ' },
+      ]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([
+        {
+          id: 'user-invited',
+          email: 'john.doe@medvirtual.ai',
+          organization_id: 'org-1',
+        },
+      ]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(mockPrismaService.uSER.findMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { id: { in: [] } },
+            {
+              email: { equals: 'john.doe@medvirtual.ai', mode: 'insensitive' },
+            },
+          ],
+        },
+        select: { id: true, email: true, organization_id: true },
+      });
+      expect(result[0].email_in_use).toBe(true);
+      expect(result[0].existing_user_id).toBe('user-invited');
+    });
+
+    it('should flag the email as in use without exposing the user id when the user belongs to another organization', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([
+        { id: 'contact-4', user_id: null, email: 'shared@medvirtual.ai' },
+      ]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([
+        {
+          id: 'user-other-org',
+          email: 'shared@medvirtual.ai',
+          organization_id: 'org-2',
+        },
+      ]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(result[0].email_in_use).toBe(true);
+      expect(result[0].existing_user_id).toBeNull();
+    });
+
+    it('should ignore a user whose email only matches through an ILIKE wildcard', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([
+        { id: 'contact-5', user_id: null, email: 'john_doe@medvirtual.ai' },
+      ]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([
+        {
+          id: 'user-lookalike',
+          email: 'johnxdoe@medvirtual.ai',
+          organization_id: 'org-1',
+        },
+      ]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(result[0].email_in_use).toBe(false);
+      expect(result[0].existing_user_id).toBeNull();
+    });
+
+    it('should not query users when no contact has an email or a linked user', async () => {
+      mockPrismaService.contact.findMany.mockResolvedValue([
+        { id: 'contact-6', user_id: null, email: null },
+      ]);
+
+      const result = await service.getContactByOrgId('org-1');
+
+      expect(mockPrismaService.uSER.findMany).not.toHaveBeenCalled();
+      expect(result[0].email_in_use).toBe(false);
     });
   });
 
@@ -879,6 +967,68 @@ describe('OrganizationService', () => {
       mockPrismaService.organization.count.mockResolvedValue(1);
       mockPrismaService.organization.findMany.mockResolvedValue([buildRow()]);
       mockPrismaService.sync.findFirst.mockResolvedValue(null);
+    });
+
+    it('should resolve existing users for every contact of the page in a single query', async () => {
+      const user = { ...userfake, role: 'system_admin' };
+      const contact = (overrides: Record<string, any>) => ({
+        id: 'contact-1',
+        first_name: 'Julia',
+        last_name: 'Villaran',
+        email: null,
+        phone: null,
+        user_id: null,
+        hubspot_id: null,
+        ...overrides,
+      });
+      mockPrismaService.organization.findMany.mockResolvedValue([
+        buildRow({
+          id: 'org-1',
+          contacts: [
+            contact({ id: 'contact-1', email: 'Invited@Example.com' }),
+          ],
+        }),
+        buildRow({
+          id: 'org-2',
+          contacts: [
+            contact({ id: 'contact-2', email: 'invited@example.com' }),
+            contact({ id: 'contact-3', email: 'free@example.com' }),
+          ],
+        }),
+      ]);
+      mockPrismaService.uSER.findMany.mockResolvedValue([
+        {
+          id: 'user-invited',
+          email: 'invited@example.com',
+          organization_id: 'org-1',
+        },
+      ]);
+
+      const result = await service.getAllPaginated(
+        user as any,
+        { page: 1, limit: 10 } as any,
+      );
+
+      expect(mockPrismaService.uSER.findMany).toHaveBeenCalledTimes(1);
+      expect((result.data[0] as any).contacts).toEqual([
+        expect.objectContaining({
+          id: 'contact-1',
+          email_in_use: true,
+          existing_user_id: 'user-invited',
+        }),
+      ]);
+      expect((result.data[1] as any).contacts).toEqual([
+        expect.objectContaining({
+          id: 'contact-2',
+          email_in_use: true,
+          existing_user_id: null,
+        }),
+        expect.objectContaining({
+          id: 'contact-3',
+          email_in_use: false,
+          existing_user_id: null,
+        }),
+      ]);
     });
 
     it('should apply admin_id filter for system_admin when admin param is provided', async () => {

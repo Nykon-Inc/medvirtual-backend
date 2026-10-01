@@ -24,7 +24,10 @@ import { UpdateOrganizationDto } from './dto/updateOrganization.dto';
 import { ConvertToClientDto } from './dto/convertToClient.dto';
 import { UpdateInvoiceConfigurationDto } from './dto/updateInvoiceConfiguration.dto';
 import { GetOrganizationsDto } from './dto/getOrganizations.dto';
-import { PaginatedOrganizationsResponseDto } from './dto/organizationResponse.dto';
+import {
+  OrganizationContactDto,
+  PaginatedOrganizationsResponseDto,
+} from './dto/organizationResponse.dto';
 import {
   GetOrganizationStaffDto,
   AdminCreateStaffDto,
@@ -217,8 +220,15 @@ export class OrganizationController {
   @ApiOperation({
     summary: 'Get the main contact associated with an organization',
   })
-  @ApiResponse({ status: 200, description: 'Contact retrieved successfully' })
-  async getContactByOrgId(@Param('id') id: string) {
+  @ApiResponse({
+    status: 200,
+    description: 'Contact retrieved successfully',
+    type: [OrganizationContactDto],
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getContactByOrgId(
+    @Param('id') id: string,
+  ): Promise<OrganizationContactDto[]> {
     return await this.organizationService.getContactByOrgId(id);
   }
 
