@@ -63,6 +63,7 @@ import {
   adminMarkPaidErrorTemplate,
   AdminMarkPaidErrorPayload,
 } from './templates/admin-markpaid-error';
+import { FRONTEND_ROUTES } from '../../common/utils/frontend-routes';
 
 @Injectable()
 export class AllianceNotificationsService {
@@ -324,7 +325,7 @@ export class AllianceNotificationsService {
           '{{totalAmount}}': payload.totalAmount.toFixed(2),
           '{{commissionCount}}': String(payload.commissionCount),
           '{{payoutRequestId}}': payload.payoutRequestId,
-          '{{payoutRequestsUrl}}': `${process.env.FRONTEND_URL}/med-alliance/payout-requests`,
+          '{{payoutRequestsUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPayoutRequests}`,
         },
         resolvedTheme,
       );
@@ -370,7 +371,7 @@ export class AllianceNotificationsService {
           '{{affiliateName}}': payload.affiliateName,
           '{{commissionAmount}}': payload.commissionAmount.toFixed(2),
           '{{commissionId}}': payload.commissionId,
-          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/commissions`,
+          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminCommissions}`,
         },
         resolvedTheme,
       );
@@ -417,7 +418,7 @@ export class AllianceNotificationsService {
           '{{commissionAmount}}': payload.commissionAmount.toFixed(2),
           '{{commissionId}}': payload.commissionId,
           '{{revertedByName}}': payload.revertedByName,
-          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/commissions`,
+          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminCommissions}`,
         },
         resolvedTheme,
       );
@@ -465,7 +466,7 @@ export class AllianceNotificationsService {
           '{{commissionsInPendingPayout}}': String(
             payload.commissionsInPendingPayout,
           ),
-          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/companies-pipeline`,
+          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPipeline}`,
         },
         resolvedTheme,
       );
@@ -509,7 +510,7 @@ export class AllianceNotificationsService {
         {
           '{{organizationName}}': payload.organizationName,
           '{{affiliateName}}': payload.affiliateName,
-          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/companies-pipeline`,
+          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPipeline}`,
         },
         resolvedTheme,
       );
@@ -559,7 +560,7 @@ export class AllianceNotificationsService {
           '{{newOrganizationName}}': payload.newOrganizationName,
           '{{oldAffiliateName}}': payload.oldAffiliateName ?? '',
           '{{newAffiliateName}}': payload.newAffiliateName ?? '',
-          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/companies-pipeline`,
+          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPipeline}`,
         },
         resolvedTheme,
       );
@@ -603,7 +604,7 @@ export class AllianceNotificationsService {
           '{{organizationName}}': payload.organizationName,
           '{{affiliateName}}': payload.affiliateName,
           '{{referredCompanyId}}': payload.referredCompanyId,
-          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/companies-pipeline`,
+          '{{pipelineUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPipeline}`,
         },
         resolvedTheme,
       );
@@ -645,7 +646,7 @@ export class AllianceNotificationsService {
           '{{partnerName}}': payload.partnerName,
           '{{partnerEmail}}': payload.partnerEmail,
           '{{affiliateProfileId}}': payload.affiliateProfileId,
-          '{{partnersUrl}}': `${process.env.FRONTEND_URL}/med-alliance/affiliate-partners`,
+          '{{partnersUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPartners}`,
         },
         resolvedTheme,
       );
@@ -700,7 +701,7 @@ export class AllianceNotificationsService {
                 `- ${c.organizationName} / ${c.affiliateName}: $${c.commissionAmount.toFixed(2)} (${c.commissionId})`,
             )
             .join('\n'),
-          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}/med-alliance/admin/commissions`,
+          '{{commissionsUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminCommissions}`,
         },
         resolvedTheme,
       );
@@ -749,7 +750,7 @@ export class AllianceNotificationsService {
               ? `$${payload.amount.toFixed(2)}`
               : 'N/A',
           '{{errorMessage}}': payload.errorMessage,
-          '{{payoutRequestUrl}}': `${process.env.FRONTEND_URL}/med-alliance/payout-requests/${payload.payoutRequestId}`,
+          '{{payoutRequestUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPayoutRequests}?payout=${payload.payoutRequestId}`,
         },
         resolvedTheme,
       );
@@ -784,7 +785,7 @@ export class AllianceNotificationsService {
           '{{billIds}}': payload.billIds,
           '{{payoutRequestId}}': payload.payoutRequestId,
           '{{errorMsg}}': payload.errorMsg,
-          '{{payoutRequestsUrl}}': `${process.env.FRONTEND_URL}/med-alliance/payout-requests`,
+          '{{payoutRequestsUrl}}': `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPayoutRequests}`,
         },
         resolvedTheme,
       );

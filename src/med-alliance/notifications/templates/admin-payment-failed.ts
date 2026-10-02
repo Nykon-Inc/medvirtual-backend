@@ -4,6 +4,7 @@ import {
   getEmailLogoImg,
 } from '../../../common/utils/email-templates/components';
 import { EmailTheme } from '../../../common/utils/email-templates/theme';
+import { FRONTEND_ROUTES } from '../../../common/utils/frontend-routes';
 
 export interface AdminPaymentFailedPayload {
   partnerName: string;
@@ -22,7 +23,7 @@ export function adminPaymentFailedTemplate(
   const companyName = theme?.companyName || 'MedVirtual';
   const buttonColor = theme?.buttonColor || primaryColor;
   const buttonTextColor = theme?.buttonTextColor || '#ffffff';
-  const ctaLink = `${process.env.FRONTEND_URL}/med-alliance/payout-requests`;
+  const ctaLink = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPayoutRequests}`;
 
   return `
 <!DOCTYPE html>

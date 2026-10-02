@@ -6,6 +6,7 @@ import { EligibilityCheckService } from '../referred-companies/eligibility-check
 import { ReviewCasesService } from '../review-cases/review-cases.service';
 import { EmailTemplatesService } from '../../email-templates/email-templates.service';
 import { getBusinessUnitEmailTheme } from '../../common/utils/email-templates/theme-helper';
+import { FRONTEND_ROUTES } from '../../common/utils/frontend-routes';
 
 export type MatchOutcome =
   | 'already_matched' // hubspot_id was already set — Phase A skipped
@@ -252,7 +253,7 @@ export class HubspotMatchingService {
       ? `${org.referredByAffiliate.first_name} ${org.referredByAffiliate.last_name} (${org.referredByAffiliate.email})`
       : 'Unknown affiliate';
 
-    const reviewLink = `${process.env.FRONTEND_URL ?? ''}/admin/med-alliance/referred-companies/${organizationId}`;
+    const reviewLink = `${process.env.FRONTEND_URL ?? ''}${FRONTEND_ROUTES.allianceAdminPipeline}?company=${organizationId}`;
 
     const fallbackSubject = `[Med Alliance] Multiple HubSpot Matches — Review Required`;
     const fallbackHtml = `

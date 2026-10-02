@@ -4,6 +4,7 @@ import {
   getEmailLogoImg,
 } from '../../../common/utils/email-templates/components';
 import { EmailTheme } from '../../../common/utils/email-templates/theme';
+import { FRONTEND_ROUTES } from '../../../common/utils/frontend-routes';
 
 export interface AdminMarkPaidErrorPayload {
   payoutRequestId: string;
@@ -24,7 +25,7 @@ export function adminMarkPaidErrorTemplate(
   const companyName = theme?.companyName || 'MedVirtual';
   const buttonColor = theme?.buttonColor || primaryColor;
   const buttonTextColor = theme?.buttonTextColor || '#ffffff';
-  const ctaLink = `${process.env.FRONTEND_URL}/med-alliance/payout-requests/${payload.payoutRequestId}`;
+  const ctaLink = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.allianceAdminPayoutRequests}?payout=${payload.payoutRequestId}`;
 
   const orphanBillWarning = payload.billComBillId
     ? `<div style="background-color:#fff3cd;border-left:4px solid #f59f00;padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;color:#664d03;font-size:14px;">

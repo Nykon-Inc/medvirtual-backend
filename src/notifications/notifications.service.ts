@@ -33,6 +33,7 @@ import {
   getEmailLogoImg,
 } from '../common/utils/email-templates/components';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
+import { FRONTEND_ROUTES } from '../common/utils/frontend-routes';
 
 @Injectable()
 export class NotificationsService {
@@ -92,13 +93,15 @@ export class NotificationsService {
   /**
    *
    * Builds the correct ticket detail URL based on user role
-   * Clients (organization admins) use /profile?ticket=, system admins use /tickets?ticket=
+   * Clients (organization admins) open the ticket in their profile, system admins in the tickets board
    */
   private getTicketDetailUrl(ticketId: string, userRole?: string): string {
     const isClient =
       userRole === 'organization_admin' ||
       userRole === 'organization_super_admin';
-    const path = isClient ? '/profile' : '/tickets';
+    const path = isClient
+      ? FRONTEND_ROUTES.profile
+      : FRONTEND_ROUTES.adminTickets;
     return `${process.env.FRONTEND_URL}${path}?ticket=${ticketId}`;
   }
 
@@ -304,7 +307,7 @@ ${getEmailLogoCss()}
     if (!users || users.length === 0 || !users[0].email)
       throw new BadRequestException('Hire request has no assignee email');
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -579,7 +582,7 @@ ${getEmailLogoCss()}
       throw new BadRequestException('Hire request has no assignee email');
 
     const verb = action === 'edited' ? 'edited' : 'canceled';
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
 
     const emailTheme = await getBusinessUnitEmailTheme(
       this.prisma,
@@ -652,7 +655,7 @@ ${getEmailLogoCss()}
       throw new BadRequestException('Hire request has no assignee email');
 
     const verb = action;
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
 
     const emailTheme = await getBusinessUnitEmailTheme(
       this.prisma,
@@ -734,7 +737,7 @@ ${getEmailLogoCss()}
       throw new BadRequestException('Hire request has no assignee email');
 
     const verb = action === 'for_review' ? 'For Review' : action;
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
 
     const emailTheme = await getBusinessUnitEmailTheme(
       this.prisma,
@@ -844,7 +847,7 @@ ${getEmailLogoCss()}
     if (emails.length === 0)
       throw new BadRequestException('No assignee emails found');
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -956,7 +959,7 @@ ${getEmailLogoCss()}
     if (!destin?.email)
       throw new BadRequestException('Hire request has no assignee email');
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -1061,7 +1064,7 @@ ${getEmailLogoCss()}
         'No active organization users found to notify',
       );
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -1154,7 +1157,7 @@ ${getEmailLogoCss()}
     if (!destin?.email)
       throw new BadRequestException('Hire request has no assignee email');
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -1251,7 +1254,7 @@ ${getEmailLogoCss()}
     if (!users || users.length === 0 || !users[0].email)
       throw new BadRequestException('Hire request has no assignee email');
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
 
     const emailTheme = await getBusinessUnitEmailTheme(
       this.prisma,
@@ -1379,7 +1382,7 @@ ${getEmailLogoCss()}
       );
     }
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
 
     const emailTheme = await getBusinessUnitEmailTheme(
       this.prisma,
@@ -1525,7 +1528,7 @@ ${getEmailLogoCss()}
       throw new BadRequestException('No organization admins found to notify');
     }
 
-    const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.hireRequests}?request=${hr.id}`;
     const salaryRange =
       hr.salary_range_from && hr.salary_range_to
         ? `$${hr.salary_range_from} - $${hr.salary_range_to}`
@@ -1661,7 +1664,7 @@ ${getEmailLogoCss()}
 
     //removed on 2025-11-13 asked by Pauli on medvirtual group
     //const detailUrl = `${process.env.FRONTEND_URL}/hire-requests?request=${hr.id}`;
-    const detailUrl = `${process.env.FRONTEND_URL}/interview-panels`;
+    const detailUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.clientInterviewPanels}`;
 
     // Get panel information
     const panel = hr.panels?.[0];
@@ -2637,7 +2640,7 @@ ${getEmailLogoCss()}
           : '',
       ].join('');
 
-      const ctaLink = `${process.env.FRONTEND_URL}/tickets`;
+      const ctaLink = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.adminTickets}`;
 
       const html = this.buildEmail(
         `<h2>New Talent Pool Lead</h2>
@@ -3075,7 +3078,7 @@ ${getEmailLogoCss()}
       this.prisma,
       panel.business_unit,
     );
-    const panelUrl = `${process.env.FRONTEND_URL}/offer-panels?panel=${panel.id}`;
+    const panelUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.adminOfferPanels}?panel=${panel.id}`;
     const orgLabel = panel.recipient_org_name
       ? ` from ${panel.recipient_org_name}`
       : '';
@@ -3130,7 +3133,7 @@ ${getEmailLogoCss()}
       this.prisma,
       panel.business_unit,
     );
-    const panelUrl = `${process.env.FRONTEND_URL}/offer-panels?panel=${panel.id}`;
+    const panelUrl = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.adminOfferPanels}?panel=${panel.id}`;
     const orgLabel = panel.recipient_org_name
       ? ` from ${panel.recipient_org_name}`
       : '';

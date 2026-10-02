@@ -6,6 +6,7 @@ import getResetPasswordTemplate from '../common/utils/email-templates/reset-pass
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailTheme } from '../common/utils/email-templates/theme';
 import scheduleInterview from 'src/common/utils/email-templates/schedule-interview';
+import { FRONTEND_ROUTES } from '../common/utils/frontend-routes';
 
 @Injectable()
 export class EmailTestService {
@@ -153,7 +154,7 @@ export class EmailTestService {
         <li>Status: Completed</li>
       </ul>
       <div style="text-align: left; margin: 30px 0;">
-        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/hire-requests" 
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${FRONTEND_ROUTES.hireRequests}" 
            style="background-color: ${theme?.primaryColor || '#01546B'}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 30px; font-weight: 600; font-size: 16px;">
           View Details
         </a>

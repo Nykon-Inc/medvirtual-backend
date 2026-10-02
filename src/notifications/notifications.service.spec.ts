@@ -1177,7 +1177,7 @@ describe('NotificationsService', () => {
       expect(mockMailService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           html: expect.stringContaining(
-            'https://test.example.com/hire-requests?request=hr1',
+            'https://test.example.com/modules/talent/hire-requests?request=hr1',
           ),
         }),
       );
@@ -1216,7 +1216,7 @@ describe('NotificationsService', () => {
       expect(mockMailService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           html: expect.stringContaining(
-            'https://test.example.com/tickets?ticket=ticket1',
+            'https://test.example.com/modules/talent/admin/tickets?ticket=ticket1',
           ),
         }),
       );
@@ -2926,7 +2926,9 @@ describe('NotificationsService', () => {
         'ticket1',
         'organization_admin',
       );
-      expect(url).toBe('https://test.example.com/profile?ticket=ticket1');
+      expect(url).toBe(
+        'https://test.example.com/modules/profile?ticket=ticket1',
+      );
     });
 
     it('should return /profile URL for organization_super_admin role', () => {
@@ -2934,7 +2936,9 @@ describe('NotificationsService', () => {
         'ticket1',
         'organization_super_admin',
       );
-      expect(url).toBe('https://test.example.com/profile?ticket=ticket1');
+      expect(url).toBe(
+        'https://test.example.com/modules/profile?ticket=ticket1',
+      );
     });
 
     it('should return /tickets URL for system_admin role', () => {
@@ -2942,12 +2946,16 @@ describe('NotificationsService', () => {
         'ticket1',
         'system_admin',
       );
-      expect(url).toBe('https://test.example.com/tickets?ticket=ticket1');
+      expect(url).toBe(
+        'https://test.example.com/modules/talent/admin/tickets?ticket=ticket1',
+      );
     });
 
     it('should return /tickets URL when role is undefined', () => {
       const url = (service as any).getTicketDetailUrl('ticket1', undefined);
-      expect(url).toBe('https://test.example.com/tickets?ticket=ticket1');
+      expect(url).toBe(
+        'https://test.example.com/modules/talent/admin/tickets?ticket=ticket1',
+      );
     });
   });
 

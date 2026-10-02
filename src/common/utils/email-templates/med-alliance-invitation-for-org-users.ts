@@ -1,5 +1,6 @@
 import { getEmailFooter, getEmailLogoCss, getEmailLogoImg } from './components';
 import { EmailTheme } from './theme';
+import { FRONTEND_ROUTES } from '../frontend-routes';
 
 export function MedAllianceInvitationForOrgUsers(
   firstName: string,
@@ -10,7 +11,7 @@ export function MedAllianceInvitationForOrgUsers(
   const companyName = theme?.companyName || 'MedVirtual';
   const buttonColor = theme?.buttonColor || primaryColor;
   const buttonTextColor = theme?.buttonTextColor || '#ffffff';
-  const ctaLink = `${process.env.FRONTEND_URL}/med-alliance`;
+  const ctaLink = `${process.env.FRONTEND_URL}${FRONTEND_ROUTES.alliance}`;
 
   return `
 <!DOCTYPE html>

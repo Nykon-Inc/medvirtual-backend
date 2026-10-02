@@ -284,7 +284,9 @@ describe('HubspotMatchingService', () => {
           '{{orgName}}': 'Acme Corp',
           '{{organizationId}}': 'org-1',
           '{{affiliateName}}': expect.stringContaining('Jane Doe'),
-          '{{reviewLink}}': expect.stringContaining('org-1'),
+          '{{reviewLink}}': expect.stringContaining(
+            '/modules/alliance/admin/pipeline?company=org-1',
+          ),
         }),
         expect.anything(),
       );

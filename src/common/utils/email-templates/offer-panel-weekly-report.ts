@@ -1,6 +1,7 @@
 import { getEmailFooter, getEmailLogoCss, getEmailLogoImg } from './components';
 import { escapeEmailHtml } from './escape';
 import { EmailTheme } from './theme';
+import { FRONTEND_ROUTES } from '../frontend-routes';
 
 export interface OfferPanelReportRow {
   panelId: string;
@@ -142,7 +143,7 @@ export default function offerPanelWeeklyReport(
   const frontendUrl = (
     process.env.FRONTEND_URL || 'https://app.medvirtual.ai'
   ).replace(/\/+$/, '');
-  const ctaLink = `${frontendUrl}/offer-panels`;
+  const ctaLink = `${frontendUrl}${FRONTEND_ROUTES.adminOfferPanels}`;
 
   const { sent, viewed, accepted, declined } = payload.statusTotals;
 
