@@ -3281,6 +3281,9 @@ export class CandidatesService {
           contains: 'http',
         },
         avatar_url: null,
+        pipeline_status: {
+          in: ['261075105', '1087596819'],
+        },
       },
       select: {
         id: true,
