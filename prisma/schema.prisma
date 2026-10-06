@@ -387,6 +387,9 @@ model Candidate {
   tools                      String?
   gender                     String?
   pipeline_status_origin     String?
+  // First time the candidate entered an "available" pipeline stage. Set once and never
+  // overwritten, so returning to the pool (from Endorsed / Lost / Hired) does not count as new.
+  first_available_at         DateTime?
   approved_positions_pairing String[]
   processing_cost            Decimal?         @default(0)
   avatar_url                 String?
@@ -529,6 +532,7 @@ model Candidate {
   offerPanelCandidates   OfferPanelCandidate[]
 
   @@index([deactivated_by_bu], map: "idx_candidates_deactivated_by_bu")
+  @@index([first_available_at], map: "idx_candidates_first_available_at")
 }
 
 model CandidateLanguage {

@@ -117,6 +117,62 @@ describe('HandlerObjectPropertyChange', () => {
     );
   });
 
+  it('should stamp first_available_at the first time a candidate enters an "available" stage', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      pipeline_status: '942502182', // "New Candidates"
+      first_available_at: null,
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '261075105',
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+    expect(updateArgs.data.first_available_at).toBeInstanceOf(Date);
+  });
+
+  it('should NOT move first_available_at when a candidate returns to an "available" stage', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      pipeline_status: '1172847191', // "Endorsed via Platform"
+      pipeline_status_origin: '261075105',
+      first_available_at: new Date('2026-01-10T00:00:00.000Z'),
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '261075105',
+      changeSource: 'CRM_UI',
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+    expect(updateArgs.data).not.toHaveProperty('first_available_at');
+  });
+
+  it('should NOT stamp first_available_at when the new stage is not "available"', async () => {
+    prismaMock.candidate.findUnique.mockResolvedValue({
+      id: 'candidate-1',
+      hubspot_id: 'hs-1',
+      pipeline_status: '942502182',
+      first_available_at: null,
+    });
+
+    await handler.execute({
+      objectId: 'hs-1',
+      propertyName: 'hs_pipeline_stage',
+      propertyValue: '1172847191',
+    });
+
+    const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
+    expect(updateArgs.data).not.toHaveProperty('first_available_at');
+  });
+
   it.each([
     ['full-time to part-time', '261075105', '261075105', '1087596819'],
     ['part-time to full-time', '1087596819', '1087596819', '261075105'],

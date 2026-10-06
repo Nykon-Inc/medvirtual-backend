@@ -32,6 +32,7 @@ import {
   HiredTalentDetailRowDto,
   HireRequestDetailRowDto,
   MetricDetailsResponse,
+  NewAvailableTalentDetailRowDto,
   StaffDetailRowDto,
   TalentDetailRowDto,
 } from './dto/metric-detail-rows.dto';
@@ -275,13 +276,34 @@ export class PanelController {
   }
 
   @MetricDetailsRoute(
+    'details/new-available-candidates',
+    'Candidates behind the Overview "New Available Virtual Assistant" card',
+  )
+  getNewAvailableCandidatesDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<NewAvailableTalentDetailRowDto>> {
+    return this.metricDetails.getNewAvailableCandidates(query);
+  }
+
+  @MetricDetailsRoute(
+    'details/new-staff',
+    'Staff behind the Overview "New Staff" card',
+  )
+  getNewStaffDetails(
+    @Query() query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<StaffDetailRowDto>> {
+    return this.metricDetails.getNewStaff(query);
+  }
+
+  // Former path of `details/new-staff`, kept until the frontend switches over.
+  @MetricDetailsRoute(
     'details/new-available-staff',
-    'Staff behind the Overview "New Available Virtual Assistant" card',
+    'Deprecated alias of details/new-staff',
   )
   getNewAvailableStaffDetails(
     @Query() query: MetricDetailsQueryDto,
   ): Promise<MetricDetailsResponse<StaffDetailRowDto>> {
-    return this.metricDetails.getNewAvailableStaff(query);
+    return this.metricDetails.getNewStaff(query);
   }
 
   @MetricDetailsRoute(

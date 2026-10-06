@@ -47,6 +47,10 @@ export class TalentDetailRowDto {
   @ApiProperty() createdAt: string;
 }
 
+export class NewAvailableTalentDetailRowDto extends TalentDetailRowDto {
+  @ApiProperty({ nullable: true }) firstAvailableAt: string | null;
+}
+
 export class EndorsedTalentDetailRowDto {
   @ApiProperty() id: string;
   @ApiProperty() name: string;

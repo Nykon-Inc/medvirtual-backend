@@ -22,7 +22,8 @@ import {
   clientInvitesAcceptedWhere,
   clientUsersCreatedWhere,
   hrSubmittedByClientWhere,
-  newAvailableStaffWhere,
+  newAvailableCandidatesWhere,
+  newStaffWhere,
   newClientsWithActiveStaffWhere,
   newHireRequestsWhere,
   talentsCreatedWhere,
@@ -468,9 +469,14 @@ export class PanelService {
     result.activeHireRequests = HrCount;
 
     const staffCount = await this.prisma.staff.count({
-      where: newAvailableStaffWhere(metricRange),
+      where: newStaffWhere(metricRange),
     });
     result.activeStaff = staffCount;
+
+    const newAvailableCandidates = await this.prisma.candidate.count({
+      where: newAvailableCandidatesWhere(metricRange),
+    });
+    result.newAvailableCandidates = newAvailableCandidates;
 
     const clientsWithActiveStaff = await this.prisma.organization.count({
       where: newClientsWithActiveStaffWhere(metricRange),

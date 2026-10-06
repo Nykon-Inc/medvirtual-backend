@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 
 import { CandidatesService } from './candidates.service';
+import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { HubspotService } from '../hubspot/hubspot.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../s3/s3.service';
@@ -1122,14 +1123,87 @@ describe('CandidatesService', () => {
 
       expect(mockPrisma.candidate.findUnique).toHaveBeenCalledWith({
         where: { id: '1' },
-        select: { hubspot_id: true, pipeline_status: true },
+        select: {
+          hubspot_id: true,
+          pipeline_status: true,
+          first_available_at: true,
+        },
       });
       expect(mockedAxios.patch).toHaveBeenCalled();
       expect(mockPrisma.candidate.update).toHaveBeenCalledWith({
         where: { id: '1' },
-        data: { pipeline_status: '261075105' }, // stageName do dicionário
+        data: {
+          pipeline_status: '261075105',
+          first_available_at: expect.any(Date),
+        },
       });
       expect(result).toEqual(updatedCandidate);
+    });
+
+    it('should not move first_available_at when the candidate was already in the pool before', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...mockCandidate,
+        first_available_at: new Date('2026-01-10T00:00:00.000Z'),
+      });
+      mockedAxios.patch.mockResolvedValue({ status: 200 } as any);
+      mockPrisma.candidate.update.mockResolvedValue({
+        id: '1',
+        pipeline_status: '261075105',
+      });
+
+      await service.updateStatusHubspot('1', {
+        status: 'Available Candidates',
+      });
+
+      expect(mockPrisma.candidate.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { pipeline_status: '261075105' },
+      });
+    });
+  });
+
+  describe('update — first_available_at', () => {
+    it('should stamp first_available_at the first time the candidate enters the pool', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        pipeline_status: '942502182',
+        first_available_at: null,
+      });
+      mockPrisma.candidate.update.mockResolvedValue({
+        id: '1',
+        pipeline_status: '261075105',
+      });
+
+      await service.update('1', {
+        pipeline_status: 'Available Candidates',
+      } as UpdateCandidateDto);
+
+      expect(mockPrisma.candidate.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: {
+          pipeline_status: '261075105',
+          first_available_at: expect.any(Date),
+        },
+      });
+    });
+
+    it('should not move first_available_at on a return to the pool', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        pipeline_status: '1172847191',
+        first_available_at: new Date('2026-01-10T00:00:00.000Z'),
+      });
+      mockPrisma.candidate.update.mockResolvedValue({
+        id: '1',
+        pipeline_status: '261075105',
+      });
+
+      await service.update('1', {
+        pipeline_status: 'Available Candidates',
+      } as UpdateCandidateDto);
+
+      expect(mockPrisma.candidate.update).toHaveBeenCalledWith({
+        where: { id: '1' },
+        data: { pipeline_status: '261075105' },
+      });
     });
   });
 

@@ -4,9 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   clientInvitesAcceptedWhere,
   hrSubmittedByClientWhere,
-  newAvailableStaffWhere,
+  newAvailableCandidatesWhere,
   newClientsWithActiveStaffWhere,
   newHireRequestsWhere,
+  newStaffWhere,
   talentsCreatedWhere,
   talentsEndorsedWhere,
   talentsHiredWhere,
@@ -109,7 +110,7 @@ describe('PanelMetricDetailsService', () => {
     });
   });
 
-  it('maps available staff with fallbacks', async () => {
+  it('maps new staff with fallbacks', async () => {
     prismaMock.staff.count.mockResolvedValue(1);
     prismaMock.staff.findMany.mockResolvedValue([
       {
@@ -124,10 +125,10 @@ describe('PanelMetricDetailsService', () => {
       },
     ]);
 
-    const result = await service.getNewAvailableStaff(query);
+    const result = await service.getNewStaff(query);
 
     expect(prismaMock.staff.count).toHaveBeenCalledWith({
-      where: newAvailableStaffWhere(range),
+      where: newStaffWhere(range),
     });
     expect(result.data[0]).toEqual({
       id: 'st-1',
@@ -136,6 +137,58 @@ describe('PanelMetricDetailsService', () => {
       companyName: 'HubSpot Co',
       startDate: null,
       createdAt: '2026-01-05T00:00:00.000Z',
+    });
+  });
+
+  describe('new available candidates', () => {
+    it('filters on the first entry into the pool, not the current stage', () => {
+      expect(newAvailableCandidatesWhere(range)).toEqual({
+        first_available_at: range,
+      });
+    });
+
+    it('falls back to the current pool when there is no period', () => {
+      expect(newAvailableCandidatesWhere(undefined)).toEqual({
+        pipeline_status: { in: ['261075105', '1087596819'] },
+      });
+    });
+
+    it('counts and pages candidates by first availability', async () => {
+      prismaMock.candidate.count.mockResolvedValue(1);
+      prismaMock.candidate.findMany.mockResolvedValue([
+        {
+          id: 'c-1',
+          first_name: 'Maria',
+          last_name: 'Silva',
+          name: null,
+          email: 'maria@x.com',
+          country: null,
+          specialization: 'Medical Scribe',
+          createdAt: new Date('2025-11-02T00:00:00.000Z'),
+          first_available_at: new Date('2026-01-15T00:00:00.000Z'),
+        },
+      ]);
+
+      const result = await service.getNewAvailableCandidates(query);
+
+      expect(prismaMock.candidate.count).toHaveBeenCalledWith({
+        where: newAvailableCandidatesWhere(range),
+      });
+      expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: newAvailableCandidatesWhere(range),
+          orderBy: { first_available_at: 'desc' },
+        }),
+      );
+      expect(result.data[0]).toEqual({
+        id: 'c-1',
+        name: 'Maria Silva',
+        email: 'maria@x.com',
+        country: '—',
+        specialization: 'Medical Scribe',
+        createdAt: '2025-11-02T00:00:00.000Z',
+        firstAvailableAt: '2026-01-15T00:00:00.000Z',
+      });
     });
   });
 

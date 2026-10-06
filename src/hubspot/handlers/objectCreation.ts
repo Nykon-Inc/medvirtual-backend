@@ -63,6 +63,7 @@ export class HandlerObjectCreation {
         // candidate gets sent back to when pulled out of a panel/hire request.
         if (isAvailableStage(candidateData.pipeline_status)) {
           candidateData.pipeline_status_origin = candidateData.pipeline_status;
+          candidateData.first_available_at = new Date();
         }
       }
       if (candidateData.employment_type) {

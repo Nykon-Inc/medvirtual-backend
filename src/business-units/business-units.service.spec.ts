@@ -918,6 +918,9 @@ describe('BusinessUnitsService.backfillFromHubspot', () => {
     // touches it for non-available stages.
     expect(availableCall[0].update.pipeline_status_origin).toBe('261075105');
     expect(newCandidateCall[0].update.pipeline_status_origin).toBeUndefined();
+    // First entry into the pool is stamped only for the available candidate.
+    expect(availableCall[0].create.first_available_at).toBeInstanceOf(Date);
+    expect(newCandidateCall[0].create.first_available_at).toBeUndefined();
   });
 
   it('is non-destructive — never calls deleteMany/delete for any of the 4 object types', async () => {

@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import { isInClientOpenPanel } from '../common/constant/panel-availability.constant';
 import {
   dbToStageDictionary,
+  isAvailableStage,
   stageToDbDictionary,
 } from '../common/dictionaries/stage-dictionary';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1987,10 +1988,13 @@ export class CandidatesService {
       changedKeys.length > 0
         ? await this.prisma.candidate.findUnique({
             where: { id },
-            select: changedKeys.reduce<Record<string, true>>((acc, key) => {
-              acc[key] = true;
-              return acc;
-            }, {}),
+            select: changedKeys.reduce<Record<string, true>>(
+              (acc, key) => {
+                acc[key] = true;
+                return acc;
+              },
+              { first_available_at: true },
+            ),
           })
         : null;
 
@@ -1998,6 +2002,10 @@ export class CandidatesService {
       where: { id: id },
       data: {
         ...data,
+        ...(isAvailableStage(data.pipeline_status) &&
+        !(beforeCandidate as Record<string, unknown> | null)?.first_available_at
+          ? { first_available_at: new Date() }
+          : {}),
       },
     });
     if (!updatedCandidate)
@@ -2754,7 +2762,11 @@ export class CandidatesService {
 
     const candidate = await this.prisma.candidate.findUnique({
       where: { id: id },
-      select: { hubspot_id: true, pipeline_status: true },
+      select: {
+        hubspot_id: true,
+        pipeline_status: true,
+        first_available_at: true,
+      },
     });
     if (!candidate) throw new NotFoundException('Candidate not found');
 
@@ -2785,6 +2797,9 @@ export class CandidatesService {
       where: { id: id },
       data: {
         pipeline_status: stageName,
+        ...(isAvailableStage(stageName) && !candidate.first_available_at
+          ? { first_available_at: new Date() }
+          : {}),
       },
     });
     if (!updatedCandidate)

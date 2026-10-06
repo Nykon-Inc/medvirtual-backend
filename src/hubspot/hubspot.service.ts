@@ -856,6 +856,7 @@ export class HubspotService {
 
         if (isAvailableStage(candidateData.pipeline_status)) {
           candidateData.pipeline_status_origin = candidateData.pipeline_status;
+          candidateData.first_available_at = new Date();
         }
 
         if (
@@ -1539,7 +1540,9 @@ export class HubspotService {
    *
    * Errors propagate: callers decide whether "HubSpot unavailable" is fatal.
    */
-  async findContactByEmail(email: string): Promise<HubspotContactSummary | null> {
+  async findContactByEmail(
+    email: string,
+  ): Promise<HubspotContactSummary | null> {
     const normalized = email.toLowerCase().trim();
     if (!normalized) return null;
 
@@ -1589,13 +1592,14 @@ export class HubspotService {
     let after: string | undefined = undefined;
 
     do {
-      const page = await this.hubspotClient.crm.associations.v4.basicApi.getPage(
-        'contacts',
-        contactId,
-        'companies',
-        after,
-        500,
-      );
+      const page =
+        await this.hubspotClient.crm.associations.v4.basicApi.getPage(
+          'contacts',
+          contactId,
+          'companies',
+          after,
+          500,
+        );
       for (const assoc of page.results ?? []) {
         const companyId = String(assoc.toObjectId);
         const isPrimary = (assoc.associationTypes ?? []).some(
@@ -1603,7 +1607,10 @@ export class HubspotService {
             String(t.category) === 'HUBSPOT_DEFINED' &&
             t.typeId === HUBSPOT_PRIMARY_CONTACT_TO_COMPANY_TYPE_ID,
         );
-        byCompany.set(companyId, (byCompany.get(companyId) ?? false) || isPrimary);
+        byCompany.set(
+          companyId,
+          (byCompany.get(companyId) ?? false) || isPrimary,
+        );
       }
       after = page.paging?.next?.after;
     } while (after);

@@ -787,7 +787,7 @@ export class BusinessUnitsService {
       // supplies the "before" diff for the update case.
       const existingCandidate = await this.prisma.candidate.findUnique({
         where: { hubspot_id: hubspotId },
-        select: { id: true },
+        select: { id: true, first_available_at: true },
       });
 
       // Origin must only ever be an "available" stage — it's where the
@@ -796,6 +796,11 @@ export class BusinessUnitsService {
       // reclassification made in HubSpot.
       if (isAvailableStage(candidateData.pipeline_status)) {
         candidateData.pipeline_status_origin = candidateData.pipeline_status;
+        // Stamped once — a re-sync of a candidate already seen in the pool
+        // must not move the date.
+        if (!existingCandidate?.first_available_at) {
+          candidateData.first_available_at = new Date();
+        }
       }
 
       const upsertedCandidate = await this.prisma.candidate.upsert({

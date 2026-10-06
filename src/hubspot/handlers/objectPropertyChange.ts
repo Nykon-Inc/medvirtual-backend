@@ -126,6 +126,16 @@ export class HandlerObjectPropertyChange {
         updateData.pipeline_status_origin = event.propertyValue;
       }
 
+      // Stamped once: a later return to the pool is not a new entry, even when
+      // it arrives as an echo of our own push (hence no changeSource check).
+      if (
+        event.propertyName === 'hs_pipeline_stage' &&
+        isAvailableStage(event.propertyValue) &&
+        !candidate.first_available_at
+      ) {
+        updateData.first_available_at = new Date();
+      }
+
       await this.prisma.candidate.update({
         where: { id: candidate.id },
         data: updateData,

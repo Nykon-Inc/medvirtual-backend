@@ -37,13 +37,24 @@ export function newHireRequestsWhere(
   };
 }
 
-export function newAvailableStaffWhere(
-  range: MetricDateRange,
-): Prisma.StaffWhereInput {
+export function newStaffWhere(range: MetricDateRange): Prisma.StaffWhereInput {
   return {
     ...ACTIVE_PIPELINE_STAFF_WHERE,
     ...(range ? { created_at: range } : {}),
   };
+}
+
+/**
+ * With a period: candidates whose FIRST entry into the available pool falls in
+ * it, whatever stage they are in today — a return to the pool is not counted
+ * again. Without one: the pool as it stands now.
+ */
+export function newAvailableCandidatesWhere(
+  range: MetricDateRange,
+): Prisma.CandidateWhereInput {
+  return range
+    ? { first_available_at: range }
+    : { pipeline_status: { in: AVAILABLE_TALENT_PIPELINE_STATUSES } };
 }
 
 export function newClientsWithActiveStaffWhere(

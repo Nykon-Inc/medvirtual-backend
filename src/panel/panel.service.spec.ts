@@ -134,6 +134,9 @@ describe('PanelService', () => {
     // 8. activeStaff (staff.count)
     (prisma.staff.count as jest.Mock).mockResolvedValueOnce(12);
 
+    // 8a. newAvailableCandidates (candidate.count)
+    (prisma.candidate.count as jest.Mock).mockResolvedValueOnce(9);
+
     // 8b. clientsWithActiveStaff (organization.count)
     (prisma.organization.count as jest.Mock).mockResolvedValueOnce(6);
 
@@ -262,6 +265,7 @@ describe('PanelService', () => {
     expect(result.activeUsers).toBe(20);
     expect(result.activeHireRequests).toBe(5);
     expect(result.activeStaff).toBe(12);
+    expect(result.newAvailableCandidates).toBe(9);
     expect(result.clientsWithActiveStaff).toBe(6);
 
     expect(result.candidatesAvailable).toBe(7);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ACTIVE_PIPELINE_STAFF_WHERE } from '../common/constant/activeDealPipelines';
 import { buildInclusiveDateRange } from '../common/utils/date-range.util';
@@ -10,6 +11,7 @@ import {
   HiredTalentDetailRowDto,
   HireRequestDetailRowDto,
   MetricDetailsResponse,
+  NewAvailableTalentDetailRowDto,
   StaffDetailRowDto,
   TalentDetailRowDto,
 } from './dto/metric-detail-rows.dto';
@@ -18,9 +20,10 @@ import {
   clientUsersCreatedWhere,
   hrSubmittedByClientWhere,
   MetricDateRange,
-  newAvailableStaffWhere,
+  newAvailableCandidatesWhere,
   newClientsWithActiveStaffWhere,
   newHireRequestsWhere,
+  newStaffWhere,
   talentsCreatedWhere,
   talentsEndorsedWhere,
   talentsHiredWhere,
@@ -52,6 +55,36 @@ const CLIENT_USER_DETAIL_SELECT = {
   activatedAt: true,
 } as const;
 
+const TALENT_DETAIL_SELECT = {
+  id: true,
+  first_name: true,
+  last_name: true,
+  name: true,
+  email: true,
+  country: true,
+  specialization: true,
+  createdAt: true,
+} as const;
+
+function toTalentRow(
+  candidate: Prisma.CandidateGetPayload<{
+    select: typeof TALENT_DETAIL_SELECT;
+  }>,
+): TalentDetailRowDto {
+  return {
+    id: candidate.id,
+    name: displayName(
+      candidate.first_name,
+      candidate.last_name,
+      candidate.name,
+    ),
+    email: candidate.email,
+    country: candidate.country ?? '—',
+    specialization: candidate.specialization ?? '—',
+    createdAt: candidate.createdAt.toISOString(),
+  };
+}
+
 /**
  * Drill-down lists for the period-filtered KPI cards of the Operational
  * Dashboard. Each method pages the exact rows its card counts in
@@ -76,10 +109,31 @@ export class PanelMetricDetailsService {
     );
   }
 
-  getNewAvailableStaff(
+  getNewAvailableCandidates(
+    query: MetricDetailsQueryDto,
+  ): Promise<MetricDetailsResponse<NewAvailableTalentDetailRowDto>> {
+    const where = newAvailableCandidatesWhere(this.range(query));
+    return paginateMetricDetails(
+      query,
+      () => this.prisma.candidate.count({ where }),
+      (paging) =>
+        this.prisma.candidate.findMany({
+          where,
+          select: { ...TALENT_DETAIL_SELECT, first_available_at: true },
+          orderBy: { first_available_at: 'desc' },
+          ...paging,
+        }),
+      (candidate) => ({
+        ...toTalentRow(candidate),
+        firstAvailableAt: toIso(candidate.first_available_at),
+      }),
+    );
+  }
+
+  getNewStaff(
     query: MetricDetailsQueryDto,
   ): Promise<MetricDetailsResponse<StaffDetailRowDto>> {
-    const where = newAvailableStaffWhere(this.range(query));
+    const where = newStaffWhere(this.range(query));
     return paginateMetricDetails(
       query,
       () => this.prisma.staff.count({ where }),
@@ -177,31 +231,11 @@ export class PanelMetricDetailsService {
       (paging) =>
         this.prisma.candidate.findMany({
           where,
-          select: {
-            id: true,
-            first_name: true,
-            last_name: true,
-            name: true,
-            email: true,
-            country: true,
-            specialization: true,
-            createdAt: true,
-          },
+          select: TALENT_DETAIL_SELECT,
           orderBy: { createdAt: 'desc' },
           ...paging,
         }),
-      (candidate) => ({
-        id: candidate.id,
-        name: displayName(
-          candidate.first_name,
-          candidate.last_name,
-          candidate.name,
-        ),
-        email: candidate.email,
-        country: candidate.country ?? '—',
-        specialization: candidate.specialization ?? '—',
-        createdAt: candidate.createdAt.toISOString(),
-      }),
+      toTalentRow,
     );
   }
 
