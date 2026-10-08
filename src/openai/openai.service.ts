@@ -25,6 +25,13 @@ if (!globalThis.File) {
   globalThis.File = NodeFile as unknown as typeof File;
 }
 
+// gpt-image-1 shuts down on 2026-10-23; 2.5 models bill per token (USD per 1M).
+const DEFAULT_OPENAI_IMAGE_MODEL = 'gpt-image-2.5-flare';
+const IMAGE_TEXT_INPUT_PER_M = 5;
+const IMAGE_IMAGE_INPUT_PER_M = 8;
+const IMAGE_OUTPUT_PER_M = 30;
+const IMAGE_FALLBACK_COST = 0.02;
+
 @Injectable()
 export class OpenaiService {
   private readonly logger = new Logger(OpenaiService.name);
@@ -463,6 +470,20 @@ export class OpenaiService {
     }
   }
 
+  private estimateImageCost(usage?: {
+    input_tokens_details?: { text_tokens?: number; image_tokens?: number };
+    output_tokens?: number;
+  }): number {
+    if (!usage) return IMAGE_FALLBACK_COST;
+    const details = usage.input_tokens_details;
+    const cost =
+      ((details?.text_tokens ?? 0) * IMAGE_TEXT_INPUT_PER_M +
+        (details?.image_tokens ?? 0) * IMAGE_IMAGE_INPUT_PER_M +
+        (usage.output_tokens ?? 0) * IMAGE_OUTPUT_PER_M) /
+      1_000_000;
+    return cost > 0 ? Number(cost.toFixed(5)) : IMAGE_FALLBACK_COST;
+  }
+
   async generateAvatarWithScreenshoot(
     candidate: any,
     imageDownloaded: any,
@@ -482,15 +503,16 @@ export class OpenaiService {
         const image = fs.createReadStream(imageDownloaded);
 
         const result = await openai.images.edit({
-          model: 'gpt-image-1',
+          model: process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL,
           image: await toFile(image, null, {
             type: 'image/png',
           }),
           prompt,
+          size: '1024x1024',
+          quality: 'medium',
         });
 
-        // gpt-image-1 image edit pricing: $0.04 per 1024x1024 standard quality image
-        const cost = 0.04;
+        const cost = this.estimateImageCost(result.usage);
 
         if (!result.data || !result.data[0] || !result.data[0].b64_json) {
           throw new Error(

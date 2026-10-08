@@ -461,9 +461,34 @@ describe('OpenaiService', () => {
         '/tmp/screenshot.png',
       );
 
-      expect(result.cost).toBe(0.04);
+      expect(result.cost).toBe(0.02);
       expect(result.imagePath).toMatch(/avatarX\.png$/);
       expect(fs.writeFileSync).toHaveBeenCalled();
+      expect(mockImagesEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-image-2.5-flare',
+          size: '1024x1024',
+          quality: 'medium',
+        }),
+      );
+    });
+
+    it('should compute cost from usage tokens', async () => {
+      mockImagesEdit.mockResolvedValueOnce({
+        data: [{ b64_json: 'aW1hZ2VkYXRh' }],
+        usage: {
+          input_tokens_details: { text_tokens: 100, image_tokens: 1000 },
+          output_tokens: 440,
+        },
+      });
+
+      const result = await service.generateAvatarWithScreenshoot(
+        mockCandidate,
+        '/tmp/screenshot.png',
+      );
+
+      // (100*5 + 1000*8 + 440*30) / 1e6
+      expect(result.cost).toBe(0.0217);
     });
 
     it('should throw when result.data is empty or missing b64_json', async () => {
