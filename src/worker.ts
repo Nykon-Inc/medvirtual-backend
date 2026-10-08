@@ -1,4 +1,6 @@
+import './instrument';
 import { NestFactory } from '@nestjs/core';
+import * as Sentry from '@sentry/nestjs';
 import {
   SQSClient,
   ReceiveMessageCommand,
@@ -49,28 +51,41 @@ async function bootstrap() {
         continue;
       }
 
+      const body = message.Body;
+
       try {
-        await consumer.handleMessage(message.Body);
-        await client.send(
-          new DeleteMessageCommand({
-            QueueUrl: queueUrl,
-            ReceiptHandle: message.ReceiptHandle,
-          }),
+        await Sentry.startSpan(
+          { name: 'sqs.deals', op: 'queue.process', forceTransaction: true },
+          async () => {
+            await consumer.handleMessage(body);
+            await client.send(
+              new DeleteMessageCommand({
+                QueueUrl: queueUrl,
+                ReceiptHandle: message.ReceiptHandle,
+              }),
+            );
+          },
         );
       } catch (error) {
         // Message is left on the queue: it becomes visible again after the
         // visibility timeout and retries, eventually landing in the DLQ.
         console.error('Failed to process SQS message:', error);
+        Sentry.captureException(error, {
+          tags: { queue: 'deals', sqs_message_id: message.MessageId },
+        });
       }
     }
   }
 
   console.log('Worker shutting down gracefully');
   await app.close();
+  await Sentry.flush(2000);
   process.exit(0);
 }
 
-bootstrap().catch((error) => {
+bootstrap().catch(async (error) => {
   console.error('Worker failed to start:', error);
+  Sentry.captureException(error);
+  await Sentry.flush(2000);
   process.exit(1);
 });

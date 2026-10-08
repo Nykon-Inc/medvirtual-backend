@@ -25,7 +25,8 @@ import { EmailTestModule } from './email-test/email-test.module';
 import { PanelModule } from './panel/panel.module';
 import { TalentPoolLeadsModule } from './talent-pool-leads/talent-pool-leads.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { SqsModule } from './sqs/sqs.module';
 import { PositionRateConfigModule } from './position-rate-config/position-rate-config.module';
 import { MedAllianceModule } from './med-alliance/med-alliance.module';
@@ -44,6 +45,7 @@ import { SessionActivityModule } from './session-activity/session-activity.modul
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -116,6 +118,12 @@ import { SessionActivityModule } from './session-activity/session-activity.modul
   controllers: [AppController],
   providers: [
     AppService,
+    // Must stay the first filter registered so it sees every unhandled
+    // exception. HttpExceptions (expected 4xx) are passed through unreported.
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

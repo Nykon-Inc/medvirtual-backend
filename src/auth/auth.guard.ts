@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import * as jwt from 'jsonwebtoken';
 import { Request } from 'express';
+import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -52,6 +53,10 @@ export class AuthGuard implements CanActivate {
 
       req['user'] = session.user;
       req['sessionId'] = session.id;
+      // IDs only: never attach email or name to telemetry.
+      Sentry.setUser({ id: String(session.user.id) });
+      Sentry.setTag('organization_id', session.user.organization_id);
+      Sentry.setTag('role', session.user.role);
       return true;
     } catch (error) {
       throw new UnauthorizedException('Invalid or expired token');

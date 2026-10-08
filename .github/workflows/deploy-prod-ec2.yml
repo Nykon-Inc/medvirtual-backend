@@ -35,6 +35,24 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
+      # inject stamps a debug ID into each compiled file so Sentry can match it to
+      # its source map; it must run before packaging because it edits dist/.
+      # Upload is skipped when the secret is absent and never fails the deploy:
+      # a Sentry outage only costs readable stack traces, not a release.
+      - name: Upload source maps to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          npx sentry-cli sourcemaps inject dist
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN not set, skipping source map upload."
+            exit 0
+          fi
+          npx sentry-cli sourcemaps upload --release="$GITHUB_SHA" dist \
+            || echo "::warning::Sentry source map upload failed"
+
       - name: Package release
         run: |
           mkdir -p release/prisma
@@ -74,14 +92,14 @@ jobs:
             npx prisma generate
             npx prisma migrate deploy
             if pm2 describe "${{ env.PM2_APP_NAME }}" > /dev/null 2>&1; then
-              pm2 reload "${{ env.PM2_APP_NAME }}" --update-env
+              SENTRY_RELEASE="${{ github.sha }}" pm2 reload "${{ env.PM2_APP_NAME }}" --update-env
             else
-              pm2 start dist/main.js --name "${{ env.PM2_APP_NAME }}" --cwd "${{ env.DEPLOY_PATH }}"
+              SENTRY_RELEASE="${{ github.sha }}" pm2 start dist/main.js --name "${{ env.PM2_APP_NAME }}" --cwd "${{ env.DEPLOY_PATH }}"
             fi
             if pm2 describe "${{ env.PM2_WORKER_NAME }}" > /dev/null 2>&1; then
-              pm2 reload "${{ env.PM2_WORKER_NAME }}" --update-env
+              SENTRY_RELEASE="${{ github.sha }}" pm2 reload "${{ env.PM2_WORKER_NAME }}" --update-env
             else
-              pm2 start dist/worker.js --name "${{ env.PM2_WORKER_NAME }}" --cwd "${{ env.DEPLOY_PATH }}" --kill-timeout 25000
+              SENTRY_RELEASE="${{ github.sha }}" pm2 start dist/worker.js --name "${{ env.PM2_WORKER_NAME }}" --cwd "${{ env.DEPLOY_PATH }}" --kill-timeout 25000
             fi
             pm2 save
           '
