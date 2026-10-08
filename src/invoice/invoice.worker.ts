@@ -18,6 +18,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { InternalInvoiceSnapshotService } from '../med-alliance/sync/internal-invoice-snapshot.service';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
+import { TraceQueueJob } from '../common/observability/trace-queue-job.decorator';
 import { PositionRateConfigService } from '../position-rate-config/position-rate-config.service';
 import { BusinessUnitContext } from '../business-units/business-unit-context.service';
 import {
@@ -342,6 +343,7 @@ export class InvoiceWorker extends WorkerHost {
    * event) and 'attempt-collection' (scheduled by StripeService.webhookHandler when an
    * invoice's due date arrives, to trigger an automatic charge attempt).
    */
+  @TraceQueueJob('invoice')
   async process(job: Job<any, any, string>): Promise<any> {
     if (!queuesEnabled(this.configService)) {
       this.logger.warn(`LOCAL mode — invoice job '${job.name}' skipped.`);

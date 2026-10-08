@@ -5,6 +5,10 @@
 import 'dotenv/config';
 import * as Sentry from '@sentry/nestjs';
 import { appEnvSync } from './common/app-config';
+import {
+  redactAttributes,
+  redactSensitive,
+} from './common/observability/redact-sensitive';
 
 const DEFAULT_TRACES_SAMPLE_RATE = 0.2;
 
@@ -21,7 +25,20 @@ Sentry.init({
   environment: appEnvSync(),
   release: process.env.SENTRY_RELEASE,
   sendDefaultPii: false,
-  integrations: [Sentry.prismaIntegration()],
+  enableLogs: true,
+  integrations: [
+    Sentry.prismaIntegration(),
+    // console.log is deliberately left out: those calls dump whole records
+    // (contacts, organizations, webhook payloads). Only warn/error leave the host.
+    Sentry.consoleLoggingIntegration({ levels: ['warn', 'error'] }),
+  ],
+  beforeSendLog(log) {
+    return {
+      ...log,
+      message: redactSensitive(String(log.message)),
+      attributes: redactAttributes(log.attributes),
+    };
+  },
   tracesSampler: ({ name }) => {
     // GET /start is polled by the deploy script and the uptime monitor.
     if (name?.endsWith('/start')) return 0;

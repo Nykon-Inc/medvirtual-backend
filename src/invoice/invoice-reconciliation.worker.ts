@@ -8,6 +8,7 @@ import { InvoiceStatus } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
+import { TraceQueueJob } from '../common/observability/trace-queue-job.decorator';
 
 /**
  * Stripe → Internal invoice reconciliation.
@@ -84,6 +85,7 @@ export class InvoiceReconciliationWorker
     );
   }
 
+  @TraceQueueJob('invoice-reconciliation')
   async process(job: Job<any, any, string>): Promise<any> {
     if (!queuesEnabled(this.configService)) {
       this.logger.warn('LOCAL mode — Stripe reconciliation job skipped.');

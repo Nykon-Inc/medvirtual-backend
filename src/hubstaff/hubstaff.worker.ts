@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
+import { TraceQueueJob } from '../common/observability/trace-queue-job.decorator';
 import { HubstaffService } from './hubstaff.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Logger } from '@nestjs/common';
@@ -91,6 +92,7 @@ export class HubstaffWorker extends WorkerHost {
     super();
   }
 
+  @TraceQueueJob('hubstaff-sync')
   async process(job: Job<any, any, string>): Promise<any> {
     switch (job.name) {
       case 'sync-hubstaff-members':

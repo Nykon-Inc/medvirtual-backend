@@ -6,6 +6,7 @@ import { InvoiceStatus, InvoiceVersionStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
+import { TraceQueueJob } from '../common/observability/trace-queue-job.decorator';
 
 /**
  * Recomputes the three billing-rollup tables (BillingCycleStats, OrganizationBillingStats,
@@ -51,6 +52,7 @@ export class InvoiceStatsWorker extends WorkerHost implements OnModuleInit {
     this.logger.log('Scheduled invoice stats computation every 2 hours');
   }
 
+  @TraceQueueJob('invoice-stats')
   async process(job: Job<any, any, string>): Promise<any> {
     if (!queuesEnabled(this.configService)) {
       this.logger.warn('LOCAL mode — invoice stats job skipped.');

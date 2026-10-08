@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { CronService } from './cron.service';
+import * as Sentry from '@sentry/nestjs';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { reRunPipelineDto } from './dto/re-run-pipeline.dto';
 import { SyncOrganizationsDto } from './dto/sync-organizations.dto';
@@ -233,7 +234,19 @@ export class CronController {
     description: 'Daily commission summary sent successfully',
   })
   async dailyCommissionSummary() {
-    const result = await this.cron.dailyCommissionSummary();
+    // Mirrors the EventBridge rule PROD_daily-commission-summary, cron(00 6 * * ? *).
+    // Doubles as the heartbeat for the whole cron-dispatcher -> backend path:
+    // a missed check-in means the dispatcher is not reaching this host.
+    const result = await Sentry.withMonitor(
+      'daily-commission-summary',
+      () => this.cron.dailyCommissionSummary(),
+      {
+        schedule: { type: 'crontab', value: '0 6 * * *' },
+        timezone: 'UTC',
+        checkinMargin: 15,
+        maxRuntime: 10,
+      },
+    );
     return {
       status: 200,
       message: result.sent

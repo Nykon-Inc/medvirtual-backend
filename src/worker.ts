@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-sqs';
 import { AppModule } from './app.module';
 import { DealsQueueConsumerService } from './sqs/deals-queue-consumer.service';
+import { SentryLogger } from './common/observability/sentry-logger';
 
 let shuttingDown = false;
 
@@ -19,7 +20,10 @@ process.on('SIGINT', () => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(new SentryLogger());
   const consumer = app.get(DealsQueueConsumerService);
   const client = new SQSClient({
     region: process.env.AWS_REGION || 'us-east-1',

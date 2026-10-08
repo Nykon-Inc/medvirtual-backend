@@ -5,10 +5,15 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Server } from 'http';
 import { describeAppConfig, isProduction } from './common/app-config';
+import { SentryLogger } from './common/observability/sentry-logger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    bufferLogs: true,
+  });
+  app.useLogger(new SentryLogger());
 
   // Lets providers (e.g. RedisModule) release connections on SIGTERM/SIGINT
   // instead of orphaning them on every restart.

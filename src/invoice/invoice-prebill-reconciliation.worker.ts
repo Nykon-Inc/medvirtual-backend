@@ -13,6 +13,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { queuesEnabled } from '../common/app-config';
+import { TraceQueueJob } from '../common/observability/trace-queue-job.decorator';
 
 // ---------------------------------------------------------------------------
 // Lightweight computed line item (no DB ids, pure in-memory) — the "what SHOULD this
@@ -74,6 +75,7 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
   // Entry point
   // ---------------------------------------------------------------------------
 
+  @TraceQueueJob('invoice-prebill-reconciliation')
   async process(
     job: Job<PrebillReconciliationJobPayload, any, string>,
   ): Promise<any> {
