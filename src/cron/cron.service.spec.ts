@@ -26,7 +26,10 @@ jest.mock('axios');
 describe('CronService', () => {
   let service: CronService;
   let prismaServiceMock: any;
-  let candidatesServiceMock: { processData: jest.Mock };
+  let candidatesServiceMock: {
+    processData: jest.Mock;
+    processAllAvatars: jest.Mock;
+  };
   let handlerObjectCreationMock: { execute: jest.Mock };
   let contactDeletionMock: { execute: jest.Mock };
   let mailServiceMock: { sendMail: jest.Mock };
@@ -115,6 +118,7 @@ describe('CronService', () => {
 
     candidatesServiceMock = {
       processData: jest.fn(),
+      processAllAvatars: jest.fn(),
     };
 
     handlerObjectCreationMock = {
@@ -2131,6 +2135,42 @@ describe('CronService', () => {
       await expect(
         service.weeklyOfferPanelReport('not-a-date'),
       ).rejects.toThrow(/Expected format YYYY-MM-DD/);
+    });
+  });
+
+  describe('generatePendingAvatars', () => {
+    const originalEnvironment = process.env.ENVIRONMENT;
+
+    afterEach(() => {
+      process.env.ENVIRONMENT = originalEnvironment;
+    });
+
+    it('should run a capped avatar sweep in PROD', async () => {
+      process.env.ENVIRONMENT = 'PROD';
+      candidatesServiceMock.processAllAvatars.mockResolvedValue({
+        pending: 14,
+        attempted: 10,
+        generated: 9,
+      });
+
+      const result = await service.generatePendingAvatars();
+
+      expect(candidatesServiceMock.processAllAvatars).toHaveBeenCalledWith(10);
+      expect(result).toEqual({
+        skipped: false,
+        pending: 14,
+        attempted: 10,
+        generated: 9,
+      });
+    });
+
+    it('should not generate avatars outside PROD', async () => {
+      process.env.ENVIRONMENT = 'DEV';
+
+      const result = await service.generatePendingAvatars();
+
+      expect(candidatesServiceMock.processAllAvatars).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(true);
     });
   });
 });

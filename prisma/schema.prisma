@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider          = "postgresql"
-  url               = env("DATABASE_URL") // LOCAL_DATABASE_URL | DATABASE_URL | PROD_DATABASE_URL
+  url               = env("PROD_DATABASE_URL") // LOCAL_DATABASE_URL | DATABASE_URL | PROD_DATABASE_URL
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
@@ -393,6 +393,9 @@ model Candidate {
   approved_positions_pairing String[]
   processing_cost            Decimal?         @default(0)
   avatar_url                 String?
+  // Headshot the current avatar was generated from. Differs from headshot_url when the
+  // headshot changed while the candidate was not available, i.e. the avatar is stale.
+  avatar_headshot_url        String?
   headshot_url               String?
   shift_block                String?
   video_link                 String?

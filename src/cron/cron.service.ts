@@ -1974,6 +1974,23 @@ export class CronService {
     return { updated, skipped, errors, preview };
   }
 
+  // Safety net for the HubSpot webhook trigger: candidates also reach an
+  // available stage through paths that never fire it (platform-side status
+  // updates, returns to the pool, bulk syncs, merges), and a webhook-time
+  // generation can fail. Capped per run to stay inside the request timeout.
+  async generatePendingAvatars(limit = 10): Promise<{
+    skipped: boolean;
+    pending: number;
+    attempted: number;
+    generated: number;
+  }> {
+    if (process.env.ENVIRONMENT !== 'PROD') {
+      return { skipped: true, pending: 0, attempted: 0, generated: 0 };
+    }
+    const result = await this.candidate.processAllAvatars(limit);
+    return { skipped: false, ...result };
+  }
+
   /**
    * Daily cron (Task 05 — Multi Business Unit): reads the HubSpot `business_unit`
    * company property options and reconciles our `BusinessUnit` table against them.

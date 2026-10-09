@@ -414,6 +414,30 @@ export class CronController {
     };
   }
 
+  @Get('generate-pending-avatars')
+  @ApiOperation({
+    summary:
+      'Generate avatars for available candidates that have a headshot but no up-to-date avatar',
+    description:
+      'Avatars are only generated for candidates in an available stage ' +
+      '(full-time or part-time). The HubSpot webhook generates them when a ' +
+      'candidate enters an available stage; this endpoint catches the ones ' +
+      'that became available through any other path or whose generation ' +
+      'failed. Processes a limited batch per run and is a no-op outside PROD.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pending avatar generation completed',
+  })
+  async generatePendingAvatars() {
+    const result = await this.cron.generatePendingAvatars();
+    return {
+      status: 200,
+      message: 'Pending avatar generation completed',
+      data: result,
+    };
+  }
+
   @Get('sync-business-units')
   @ApiOperation({
     summary:

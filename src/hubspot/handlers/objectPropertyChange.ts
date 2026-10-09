@@ -231,8 +231,15 @@ export class HandlerObjectPropertyChange {
         if (event.propertyName === 'resume_link') {
           await this.candidateService.processData(candidate.id);
         }
-        if (event.propertyName === 'headshot_screenshot') {
-          await this.candidateService.processAvatar(candidate.id);
+        // Avatars are only generated for available candidates, and the
+        // headshot usually lands before the candidate becomes available — so
+        // entering an available stage has to trigger generation too.
+        if (
+          event.propertyName === 'headshot_screenshot' ||
+          (event.propertyName === 'hs_pipeline_stage' &&
+            isAvailableStage(event.propertyValue))
+        ) {
+          await this.candidateService.ensureAvatar(candidate.id);
         }
       } else {
         console.log('Environment is not PROD. Skipping re-run of pipelines.');

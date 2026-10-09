@@ -21,7 +21,7 @@ const objectCreationMock = { execute: jest.fn() };
 const candidateServiceMock = {
   removeFromOfferPanels: jest.fn(),
   processData: jest.fn(),
-  processAvatar: jest.fn(),
+  ensureAvatar: jest.fn(),
 };
 const candidateAuditMock = {
   log: jest.fn(),
@@ -272,5 +272,71 @@ describe('HandlerObjectPropertyChange', () => {
     const updateArgs = prismaMock.candidate.update.mock.calls[0][0];
     expect(updateArgs.data.pipeline_status).toBe('942502182');
     expect(updateArgs.data.pipeline_status_origin).toBeUndefined();
+  });
+
+  describe('avatar generation', () => {
+    const originalEnvironment = process.env.ENVIRONMENT;
+
+    beforeEach(() => {
+      process.env.ENVIRONMENT = 'PROD';
+      prismaMock.candidate.findUnique.mockResolvedValue({
+        id: 'candidate-1',
+        hubspot_id: 'hs-1',
+        pipeline_status: '942502182', // "New Candidates"
+      });
+    });
+
+    afterEach(() => {
+      process.env.ENVIRONMENT = originalEnvironment;
+    });
+
+    it.each(['261075105', '1087596819'])(
+      'should ensure the avatar when the candidate enters available stage %s',
+      async (stage) => {
+        await handler.execute({
+          objectId: 'hs-1',
+          propertyName: 'hs_pipeline_stage',
+          propertyValue: stage,
+        });
+
+        expect(candidateServiceMock.ensureAvatar).toHaveBeenCalledWith(
+          'candidate-1',
+        );
+      },
+    );
+
+    it('should ensure the avatar when the headshot changes', async () => {
+      await handler.execute({
+        objectId: 'hs-1',
+        propertyName: 'headshot_screenshot',
+        propertyValue: 'https://drive.google.com/file/d/abc/view',
+      });
+
+      expect(candidateServiceMock.ensureAvatar).toHaveBeenCalledWith(
+        'candidate-1',
+      );
+    });
+
+    it('should NOT ensure the avatar when the candidate moves into a non-available stage', async () => {
+      await handler.execute({
+        objectId: 'hs-1',
+        propertyName: 'hs_pipeline_stage',
+        propertyValue: '966446725', // "For Account Manager Interview"
+      });
+
+      expect(candidateServiceMock.ensureAvatar).not.toHaveBeenCalled();
+    });
+
+    it('should NOT ensure the avatar outside PROD', async () => {
+      process.env.ENVIRONMENT = 'DEV';
+
+      await handler.execute({
+        objectId: 'hs-1',
+        propertyName: 'hs_pipeline_stage',
+        propertyValue: '261075105',
+      });
+
+      expect(candidateServiceMock.ensureAvatar).not.toHaveBeenCalled();
+    });
   });
 });

@@ -110,10 +110,12 @@ const s3Mock = {
 
 const googleMock = {
   downloadFile: jest.fn(),
+  downloadImage: jest.fn(),
 };
 
 const openAIMock = {
   organizeText: jest.fn(),
+  generateAvatarWithScreenshoot: jest.fn(),
 };
 
 const hubspotMock = {
@@ -1563,6 +1565,251 @@ describe('CandidatesService', () => {
 
       const result = await service.processData(candidateId);
       expect(result).toBe(false);
+    });
+  });
+
+  describe('processAvatar', () => {
+    const candidateId = 'avatar-candidate-id';
+    const headshotUrl =
+      'https://drive.google.com/file/d/test-file-id-with-more-than-25-characters-123/view';
+    const availableCandidate = {
+      id: candidateId,
+      hubspot_id: 'hs-avatar',
+      headshot_url: headshotUrl,
+      avatar_url: null,
+      avatar_headshot_url: null,
+      pipeline_status: '261075105',
+      processing_cost: 0,
+    };
+
+    beforeEach(() => {
+      googleMock.downloadImage.mockReset();
+      openAIMock.generateAvatarWithScreenshoot.mockReset();
+      s3Mock.uploadFile.mockReset();
+      mockPrisma.candidate.update.mockReset();
+
+      googleMock.downloadImage.mockResolvedValue('/tmp/headshot.png');
+      openAIMock.generateAvatarWithScreenshoot.mockResolvedValue({
+        imagePath: '/tmp/1_avatarX.png',
+        cost: 0.04,
+      });
+      s3Mock.uploadFile.mockResolvedValue('1_avatarX.png');
+      mockPrisma.candidate.update.mockResolvedValue({
+        avatar_url: '1_avatarX.png',
+        processing_cost: 0.04,
+      });
+    });
+
+    it('should generate the avatar and record its source headshot for an available candidate', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue(availableCandidate);
+
+      const result = await service.processAvatar(candidateId);
+
+      expect(result).toBe(true);
+      expect(openAIMock.generateAvatarWithScreenshoot).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.candidate.update).toHaveBeenCalledWith({
+        where: { id: candidateId },
+        data: {
+          avatar_url: '1_avatarX.png',
+          avatar_headshot_url: headshotUrl,
+          processing_cost: { increment: 0.04 },
+        },
+      });
+    });
+
+    it('should generate for a part-time available candidate', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        pipeline_status: '1087596819',
+      });
+
+      expect(await service.processAvatar(candidateId)).toBe(true);
+    });
+
+    it('should NOT generate when the candidate is not in an available stage', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        pipeline_status: '942502182', // "New Candidates"
+      });
+
+      const result = await service.processAvatar(candidateId);
+
+      expect(result).toBe(false);
+      expect(googleMock.downloadImage).not.toHaveBeenCalled();
+      expect(openAIMock.generateAvatarWithScreenshoot).not.toHaveBeenCalled();
+    });
+
+    it('should NOT generate when the candidate has no headshot', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        headshot_url: null,
+      });
+
+      expect(await service.processAvatar(candidateId)).toBe(false);
+      expect(openAIMock.generateAvatarWithScreenshoot).not.toHaveBeenCalled();
+    });
+
+    it('should NOT regenerate when the avatar already matches the current headshot', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        avatar_url: 'existing.png',
+        avatar_headshot_url: headshotUrl,
+      });
+
+      expect(await service.processAvatar(candidateId)).toBe(false);
+      expect(openAIMock.generateAvatarWithScreenshoot).not.toHaveBeenCalled();
+    });
+
+    it('should regenerate when the headshot changed since the avatar was generated', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        avatar_url: 'existing.png',
+        avatar_headshot_url: 'https://drive.google.com/file/d/old/view',
+      });
+
+      expect(await service.processAvatar(candidateId)).toBe(true);
+      expect(openAIMock.generateAvatarWithScreenshoot).toHaveBeenCalledTimes(1);
+    });
+
+    it('should generate regardless of stage and current avatar when forced', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        pipeline_status: '261214844', // "Hired"
+        avatar_url: 'existing.png',
+        avatar_headshot_url: headshotUrl,
+      });
+
+      expect(await service.processAvatar(candidateId, { force: true })).toBe(
+        true,
+      );
+      expect(openAIMock.generateAvatarWithScreenshoot).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT call the image model when the headshot download fails', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue(availableCandidate);
+      googleMock.downloadImage.mockResolvedValue(null);
+
+      expect(await service.processAvatar(candidateId)).toBe(false);
+      expect(openAIMock.generateAvatarWithScreenshoot).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call the image model when the headshot is not a Drive file link', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue({
+        ...availableCandidate,
+        headshot_url: 'https://example.com/photo',
+      });
+
+      expect(await service.processAvatar(candidateId)).toBe(false);
+      expect(googleMock.downloadImage).not.toHaveBeenCalled();
+    });
+
+    it('should not save an avatar when the S3 upload fails', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue(availableCandidate);
+      s3Mock.uploadFile.mockResolvedValue(null);
+
+      expect(await service.processAvatar(candidateId)).toBe(false);
+      expect(mockPrisma.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw when the candidate does not exist', async () => {
+      mockPrisma.candidate.findUnique.mockResolvedValue(null);
+
+      await expect(service.processAvatar(candidateId)).rejects.toThrow(
+        'Candidate not found',
+      );
+    });
+
+    it('should throw when no id is given', async () => {
+      await expect(service.processAvatar('')).rejects.toThrow(
+        'Candidate ID is required',
+      );
+    });
+
+    describe('ensureAvatar', () => {
+      it('should return false instead of throwing when generation fails', async () => {
+        mockPrisma.candidate.findUnique.mockResolvedValue(availableCandidate);
+        openAIMock.generateAvatarWithScreenshoot.mockRejectedValue(
+          new Error('insufficient_quota'),
+        );
+
+        await expect(service.ensureAvatar(candidateId)).resolves.toBe(false);
+      });
+
+      it('should return true when the avatar is generated', async () => {
+        mockPrisma.candidate.findUnique.mockResolvedValue(availableCandidate);
+
+        await expect(service.ensureAvatar(candidateId)).resolves.toBe(true);
+      });
+    });
+
+    describe('processAllAvatars', () => {
+      const upToDate = {
+        ...availableCandidate,
+        id: 'up-to-date',
+        avatar_url: 'existing.png',
+        avatar_headshot_url: headshotUrl,
+      };
+      const stale = {
+        ...availableCandidate,
+        id: 'stale',
+        avatar_url: 'existing.png',
+        avatar_headshot_url: 'https://drive.google.com/file/d/old/view',
+      };
+      const missing = { ...availableCandidate, id: 'missing' };
+
+      it('should only query available candidates with a headshot', async () => {
+        mockPrisma.candidate.findMany.mockResolvedValue([]);
+
+        const result = await service.processAllAvatars();
+
+        expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              headshot_url: { contains: 'http' },
+              pipeline_status: { in: ['261075105', '1087596819'] },
+            },
+          }),
+        );
+        expect(result).toEqual({ pending: 0, attempted: 0, generated: 0 });
+      });
+
+      it('should process candidates with a missing or stale avatar and skip up-to-date ones', async () => {
+        mockPrisma.candidate.findMany.mockResolvedValue([
+          upToDate,
+          stale,
+          missing,
+        ]);
+        const ensureAvatar = jest
+          .spyOn(service, 'ensureAvatar')
+          .mockResolvedValueOnce(true)
+          .mockResolvedValueOnce(false);
+
+        const result = await service.processAllAvatars();
+
+        expect(ensureAvatar.mock.calls.map(([id]) => id)).toEqual([
+          'stale',
+          'missing',
+        ]);
+        expect(result).toEqual({ pending: 2, attempted: 2, generated: 1 });
+        ensureAvatar.mockRestore();
+      });
+
+      it('should attempt at most `limit` candidates per run', async () => {
+        mockPrisma.candidate.findMany.mockResolvedValue([
+          stale,
+          missing,
+          { ...missing, id: 'missing-2' },
+        ]);
+        const ensureAvatar = jest
+          .spyOn(service, 'ensureAvatar')
+          .mockResolvedValue(true);
+
+        const result = await service.processAllAvatars(2);
+
+        expect(ensureAvatar).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({ pending: 3, attempted: 2, generated: 2 });
+        ensureAvatar.mockRestore();
+      });
     });
   });
 

@@ -19,6 +19,7 @@ import * as fs from 'fs';
 
 import { isInClientOpenPanel } from '../common/constant/panel-availability.constant';
 import {
+  availableStages,
   dbToStageDictionary,
   isAvailableStage,
   stageToDbDictionary,
@@ -2168,8 +2169,28 @@ export class CandidatesService {
     return true;
   }
 
-  async processAvatar(id: string): Promise<boolean> {
-    console.log('starting process Avatar for candidate ID:', id);
+  // Avatar generation is billed per image, so it only runs for candidates
+  // clients can actually see: in an available stage, with a real headshot, and
+  // whose avatar is missing or was generated from a previous headshot.
+  private needsAvatar(candidate: {
+    pipeline_status: string | null;
+    headshot_url: string | null;
+    avatar_url: string | null;
+    avatar_headshot_url: string | null;
+  }): boolean {
+    return (
+      isAvailableStage(candidate.pipeline_status) &&
+      !!candidate.headshot_url?.includes('http') &&
+      (!candidate.avatar_url ||
+        candidate.avatar_headshot_url !== candidate.headshot_url)
+    );
+  }
+
+  // `force` bypasses the availability/up-to-date gate (manual admin re-run).
+  async processAvatar(
+    id: string,
+    options: { force?: boolean } = {},
+  ): Promise<boolean> {
     if (!id) throw new BadRequestException('Candidate ID is required');
 
     const candidate = await this.prisma.candidate.findUnique({
@@ -2181,85 +2202,105 @@ export class CandidatesService {
         headshot_url: true,
         hubspot_id: true,
         avatar_url: true,
+        avatar_headshot_url: true,
+        pipeline_status: true,
         processing_cost: true,
       },
     });
     if (!candidate) throw new BadRequestException('Candidate not found');
 
-    if (
-      candidate &&
-      candidate.headshot_url &&
-      candidate.headshot_url.includes('http')
-    ) {
-      const idImage = extractDriveFileId(candidate.headshot_url);
-      if (!idImage) {
-        console.log('Error in extracting image ID from URL');
-        return false;
-      }
+    if (!candidate.headshot_url || !candidate.headshot_url.includes('http')) {
+      return false;
+    }
 
-      const imageName = `${candidate.id}__image.png`;
-      const downloadDir = path.resolve(__dirname, '/tmp');
-
-      const imageDownloaded = await this.google.downloadImage(
-        idImage,
-        imageName,
-        downloadDir,
-      );
-      if (!imageDownloaded) {
-        console.log(
-          'Failed to download image from Google Drive:',
-          imageDownloaded,
-        );
-      }
+    if (!options.force && !this.needsAvatar(candidate)) {
       console.log(
-        'Image downloaded successfully from Google Drive',
+        `Skipping avatar generation for candidate ID ${id}: not available or avatar already up to date`,
+      );
+      return false;
+    }
+
+    console.log('starting process Avatar for candidate ID:', id);
+    const idImage = extractDriveFileId(candidate.headshot_url);
+    if (!idImage) {
+      console.log('Error in extracting image ID from URL');
+      return false;
+    }
+
+    const imageName = `${candidate.id}__image.png`;
+    const downloadDir = path.resolve(__dirname, '/tmp');
+
+    const imageDownloaded = await this.google.downloadImage(
+      idImage,
+      imageName,
+      downloadDir,
+    );
+    if (!imageDownloaded) {
+      console.log('Failed to download image from Google Drive');
+      return false;
+    }
+    console.log(
+      'Image downloaded successfully from Google Drive',
+      imageDownloaded,
+    );
+    const { imagePath: avatarImage, cost: avatarCost } =
+      await this.openai.generateAvatarWithScreenshoot(
+        candidate,
         imageDownloaded,
       );
-      const { imagePath: avatarImage, cost: avatarCost } =
-        await this.openai.generateAvatarWithScreenshoot(
-          candidate,
-          imageDownloaded,
-        );
-      console.log('Avatar generated successfully: ', avatarImage);
+    console.log('Avatar generated successfully: ', avatarImage);
 
-      const bucketFile = await this.s3.uploadFile(
-        avatarImage,
-        path.basename(avatarImage),
-        'medvirtual-avatar',
-      );
-      if (!bucketFile) {
-        console.log('Failed to upload avatar to S3');
-        return false;
-      }
-      console.log('Avatar uploaded successfully to S3:', bucketFile);
-      //Save Avatar on S3 and update candidate database
-
-      //update database with new avatar URL
-      const updatedCandidate = await this.prisma.candidate.update({
-        where: { id: id },
-        data: {
-          avatar_url: bucketFile,
-          processing_cost: { increment: avatarCost },
-        },
-      });
-
-      void this.candidateAudit.log({
-        candidateId: id,
-        hubspotId: candidate.hubspot_id,
-        event: CANDIDATE_AUDIT_EVENTS.AVATAR_GENERATED,
-        fieldGroup: CandidateAuditFieldGroup.profile,
-        before: {
-          avatar_url: candidate.avatar_url,
-          processing_cost: candidate.processing_cost,
-        },
-        after: {
-          avatar_url: updatedCandidate.avatar_url,
-          processing_cost: updatedCandidate.processing_cost,
-        },
-        source: CandidateAuditSource.system,
-      });
+    const bucketFile = await this.s3.uploadFile(
+      avatarImage,
+      path.basename(avatarImage),
+      'medvirtual-avatar',
+    );
+    if (!bucketFile) {
+      console.log('Failed to upload avatar to S3');
+      return false;
     }
+    console.log('Avatar uploaded successfully to S3:', bucketFile);
+
+    const updatedCandidate = await this.prisma.candidate.update({
+      where: { id: id },
+      data: {
+        avatar_url: bucketFile,
+        avatar_headshot_url: candidate.headshot_url,
+        processing_cost: { increment: avatarCost },
+      },
+    });
+
+    void this.candidateAudit.log({
+      candidateId: id,
+      hubspotId: candidate.hubspot_id,
+      event: CANDIDATE_AUDIT_EVENTS.AVATAR_GENERATED,
+      fieldGroup: CandidateAuditFieldGroup.profile,
+      before: {
+        avatar_url: candidate.avatar_url,
+        processing_cost: candidate.processing_cost,
+      },
+      after: {
+        avatar_url: updatedCandidate.avatar_url,
+        processing_cost: updatedCandidate.processing_cost,
+      },
+      source: CandidateAuditSource.system,
+    });
     return true;
+  }
+
+  // Never throws: callers are webhook handlers whose own work (already
+  // persisted) must not be reported as failed because image generation did.
+  // Anything missed here is picked up by processAllAvatars().
+  async ensureAvatar(id: string): Promise<boolean> {
+    try {
+      return await this.processAvatar(id);
+    } catch (error) {
+      console.error(
+        `Avatar generation failed for candidate ID ${id}:`,
+        error?.message,
+      );
+      return false;
+    }
   }
 
   async processData(id: string): Promise<boolean> {
@@ -3289,50 +3330,51 @@ export class CandidatesService {
     }
   }
 
-  async processAllAvatars(): Promise<boolean> {
-    const candidates = await this.prisma.candidate.findMany({
+  async processAllAvatars(
+    limit?: number,
+  ): Promise<{ pending: number; attempted: number; generated: number }> {
+    const availableWithHeadshot = await this.prisma.candidate.findMany({
       where: {
         headshot_url: {
           contains: 'http',
         },
-        avatar_url: null,
         pipeline_status: {
-          in: ['261075105', '1087596819'],
+          in: availableStages,
         },
       },
       select: {
         id: true,
+        pipeline_status: true,
         headshot_url: true,
+        avatar_url: true,
+        avatar_headshot_url: true,
       },
     });
-    if (!candidates || candidates.length === 0) {
-      console.log(
-        'No candidates found with headshot_url and without avatar_url',
-      );
-      return true;
+    const pending = availableWithHeadshot.filter((candidate) =>
+      this.needsAvatar(candidate),
+    );
+    if (pending.length === 0) {
+      console.log('No available candidates pending avatar generation');
+      return { pending: 0, attempted: 0, generated: 0 };
     }
 
-    for (const candidate of candidates) {
-      console.log(`Processing avatar for candidate ID: ${candidate.id}`);
-      try {
-        const result = await this.processAvatar(candidate.id);
-        if (result) {
-          console.log(
-            `Successfully processed avatar for candidate ID: ${candidate.id}`,
-          );
-        } else {
-          console.log(
-            `Failed to process avatar for candidate ID: ${candidate.id}`,
-          );
-        }
-      } catch (error) {
-        console.error(
-          `Error processing avatar for candidate ID: ${candidate.id}`,
-          error,
+    // Shuffled so candidates that keep failing (broken Drive link, rejected
+    // image) cannot permanently occupy a limited run and starve the rest.
+    const batch = limit
+      ? [...pending].sort(() => Math.random() - 0.5).slice(0, limit)
+      : pending;
+
+    let generated = 0;
+    for (const candidate of batch) {
+      if (await this.ensureAvatar(candidate.id)) {
+        generated++;
+      } else {
+        console.log(
+          `Failed to process avatar for candidate ID: ${candidate.id}`,
         );
       }
     }
-    return true;
+    return { pending: pending.length, attempted: batch.length, generated };
   }
 
   async getRandomTalentPoolCandidates(business_unit: string): Promise<any> {

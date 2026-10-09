@@ -437,7 +437,9 @@ export class CandidatesController {
   @ApiResponse({ status: 400, description: 'Candidate ID is required' })
   @UseGuards(AuthGuard)
   async processAvatar(@Param('id') id: string) {
-    const result = await this.candidatesService.processAvatar(id);
+    const result = await this.candidatesService.processAvatar(id, {
+      force: true,
+    });
     return {
       status: 200,
       message: 'Candidate Avatar processed successfully',
