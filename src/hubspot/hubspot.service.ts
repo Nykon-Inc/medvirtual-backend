@@ -946,6 +946,7 @@ export class HubspotService {
         first_name: true,
         resume_url: true,
         hubspot_id: true,
+        first_available_at: true,
       },
     });
     // console.log('Candidates to process:', candidates);
@@ -1013,7 +1014,14 @@ export class HubspotService {
         where: {
           id: candidate.id,
         },
-        data: candidateData,
+        data: {
+          ...candidateData,
+          // Stamped once, outside candidateData so it stays out of the audit diff.
+          ...(isAvailableStage(candidateData.pipeline_status) &&
+          !candidate.first_available_at
+            ? { first_available_at: new Date() }
+            : {}),
+        },
         //data: {
         //    video_link: candidateData.video_link,
         //}

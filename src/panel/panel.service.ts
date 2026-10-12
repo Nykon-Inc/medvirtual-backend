@@ -722,11 +722,9 @@ export class PanelService {
       const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
       const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 1);
 
+      // Same definition as the Talents "Created" card (talentsCreatedWhere).
       const candidatesCreated = await this.prisma.candidate.count({
-        where: {
-          createdAt: { gte: monthStart, lt: monthEnd },
-          pipeline_status: { in: ['261075105', '1087596819'] },
-        },
+        where: { first_available_at: { gte: monthStart, lt: monthEnd } },
       });
 
       const hireRequestsCreated = await this.prisma.hireRequest.count({

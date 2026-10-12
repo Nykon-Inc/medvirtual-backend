@@ -239,6 +239,21 @@ describe('PanelMetricDetailsService', () => {
     expect(prismaMock.candidate.count).toHaveBeenCalledWith({
       where: talentsCreatedWhere(range),
     });
+    expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: talentsCreatedWhere(range),
+        orderBy: { first_available_at: 'desc' },
+      }),
+    );
+  });
+
+  it('counts talents created exactly like new available candidates', () => {
+    expect(talentsCreatedWhere(range)).toEqual(
+      newAvailableCandidatesWhere(range),
+    );
+    expect(talentsCreatedWhere(undefined)).toEqual(
+      newAvailableCandidatesWhere(undefined),
+    );
   });
 
   it('pages endorsed talents over distinct candidates', async () => {

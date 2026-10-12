@@ -232,7 +232,7 @@ export class PanelMetricDetailsService {
         this.prisma.candidate.findMany({
           where,
           select: TALENT_DETAIL_SELECT,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { first_available_at: 'desc' },
           ...paging,
         }),
       toTalentRow,

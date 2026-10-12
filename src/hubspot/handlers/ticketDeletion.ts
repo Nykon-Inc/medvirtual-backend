@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { HubspotService } from '../hubspot.service';
 import { CandidateAuditFieldGroup, CandidateAuditSource } from '@prisma/client';
+import { isAvailableStage } from '../../common/dictionaries/stage-dictionary';
 import {
   CANDIDATE_AUDIT_EVENTS,
   CandidateAuditService,
@@ -39,6 +40,7 @@ export class HandlerTicketDeletion {
                       id: true,
                       pipeline_status: true,
                       pipeline_status_origin: true,
+                      first_available_at: true,
                       hubspot_id: true,
                     },
                   },
@@ -64,6 +66,9 @@ export class HandlerTicketDeletion {
             where: { id: c.id },
             data: {
               pipeline_status: newPipelineStatus,
+              ...(isAvailableStage(newPipelineStatus) && !c.first_available_at
+                ? { first_available_at: new Date() }
+                : {}),
             },
           });
           await this.hubspot.updateOneCandidateFromHireRequest(

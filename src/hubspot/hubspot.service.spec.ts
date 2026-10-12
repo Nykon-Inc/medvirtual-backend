@@ -1904,6 +1904,90 @@ describe('HubspotService => updateCandidates', () => {
     await svc2.updateCandidates('stage1');
     expect(fakePrisma.candidate.update).not.toHaveBeenCalled();
   });
+
+  describe('first_available_at stamping', () => {
+    const buildServiceWithStage = async (stage: string) => {
+      const localDoSearch = jest.fn().mockResolvedValue({
+        results: [
+          {
+            properties: {
+              hs_object_id: '111',
+              name: 'Test VA',
+              // mapHubspotToDb is mocked as identity in this spec.
+              pipeline_status: stage,
+            },
+          },
+        ],
+      });
+      const { Client } = jest.requireMock('@hubspot/api-client');
+      Client.mockImplementation(() => ({
+        crm: {
+          objects: {
+            searchApi: { doSearch: localDoSearch },
+            batchApi: { update: jest.fn() },
+            basicApi: { update: jest.fn() },
+          },
+        },
+      }));
+
+      const stageModule: TestingModule = await Test.createTestingModule({
+        providers: [
+          { provide: UserAuditService, useValue: userAuditServiceMock },
+          ...buildProviders().filter((p) => p.provide !== PrismaService),
+          { provide: PrismaService, useValue: fakePrisma },
+        ],
+      }).compile();
+      return stageModule.get<HubspotService>(HubspotService);
+    };
+
+    const candidateRow = (first_available_at: Date | null) => ({
+      id: 'c1',
+      first_name: 'Test',
+      hubspot_id: '111',
+      resume_url: null,
+      first_available_at,
+    });
+
+    it('should stamp it when a re-sync moves the candidate into an available stage', async () => {
+      const svc = await buildServiceWithStage('261075105');
+      fakePrisma.candidate.findMany.mockResolvedValue([candidateRow(null)]);
+      fakePrisma.candidate.update.mockResolvedValue({});
+
+      await svc.updateCandidates('stage1');
+
+      expect(fakePrisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            first_available_at: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('should not overwrite an existing stamp', async () => {
+      const svc = await buildServiceWithStage('261075105');
+      fakePrisma.candidate.findMany.mockResolvedValue([
+        candidateRow(new Date('2026-01-15T00:00:00.000Z')),
+      ]);
+      fakePrisma.candidate.update.mockResolvedValue({});
+
+      await svc.updateCandidates('stage1');
+
+      const { data } = fakePrisma.candidate.update.mock.calls[0][0];
+      expect(data).not.toHaveProperty('first_available_at');
+    });
+
+    it('should not stamp it for a non-available stage', async () => {
+      const svc = await buildServiceWithStage('999');
+      fakePrisma.candidate.findMany.mockResolvedValue([candidateRow(null)]);
+      fakePrisma.candidate.update.mockResolvedValue({});
+
+      await svc.updateCandidates('stage1');
+
+      const { data } = fakePrisma.candidate.update.mock.calls[0][0];
+      expect(data).not.toHaveProperty('first_available_at');
+    });
+  });
 });
 
 // ─── alignOwners ──────────────────────────────────────────────────────────────

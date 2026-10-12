@@ -87,15 +87,11 @@ export function clientInvitesAcceptedWhere(
   };
 }
 
+/** Same population as the Overview "New Available Virtual Assistant" card. */
 export function talentsCreatedWhere(
   range: MetricDateRange,
 ): Prisma.CandidateWhereInput {
-  return {
-    OR: AVAILABLE_TALENT_PIPELINE_STATUSES.map((pipeline_status) => ({
-      pipeline_status,
-    })),
-    ...(range ? { createdAt: range } : {}),
-  };
+  return newAvailableCandidatesWhere(range);
 }
 
 /** Rows must be de-duplicated by `candidate_id` (webhook retries can double-log). */
