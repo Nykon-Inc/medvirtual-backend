@@ -1189,7 +1189,9 @@ export class InvoiceWorker extends WorkerHost {
             // with one extra rule — a salaried worker who fell noticeably short of their
             // expected hours (deficit > 10) gets billed hourly for what they actually
             // worked instead of the flat salary, rather than being paid in full for time
-            // not worked.
+            // not worked. Within the tolerance it's the reverse: the flat salary is
+            // billed AND the line reports the full baseline hours, since that's the
+            // period the salary covers.
             if (staff && staff.salary) {
               const monthlySalary = Number(staff.salary);
               const prorationRate = monthlySalary / 176;
@@ -1215,28 +1217,31 @@ export class InvoiceWorker extends WorkerHost {
                   ((startDay === 1 && endDay === 15) ||
                     (startDay === 16 && endDay === daysInMonth));
 
-                if (isFullMonth) {
-                  const baseSalary = monthlySalary;
+                if (isFullMonth || isHalfMonth) {
+                  const baseSalary = isFullMonth
+                    ? monthlySalary
+                    : monthlySalary / 2;
                   const deficit = requiredHours - actualHours;
                   if (deficit > 10) {
+                    // Short enough to break the flat-salary arrangement: bill the
+                    // hours actually worked, and report those same hours.
                     lineTotal = hours.mul(prorationHourlyDecimal);
+                    hourlyRate = prorationHourlyDecimal;
                   } else {
+                    // The flat salary buys the period's whole baseline, so the line
+                    // reports requiredHours rather than the hours tracked — same as
+                    // the overtime branch above, which also caps the primary line at
+                    // the baseline. Dividing by the tracked hours instead would print
+                    // an inflated rate (a half-month 1760 over 80hrs reads as $22/hr
+                    // when the real proration rate is $20/hr) and would make the
+                    // prebill reconciliation show a deficit the invoice never billed.
                     lineTotal = new Decimal(baseSalary);
+                    primaryHours = requiredHours;
+                    hourlyRate =
+                      requiredHours > 0
+                        ? lineTotal.div(new Decimal(requiredHours))
+                        : new Decimal(0);
                   }
-                  hourlyRate = hours.gt(0)
-                    ? lineTotal.div(hours)
-                    : new Decimal(0);
-                } else if (isHalfMonth) {
-                  const baseSalary = monthlySalary / 2;
-                  const deficit = requiredHours - actualHours;
-                  if (deficit > 10) {
-                    lineTotal = hours.mul(prorationHourlyDecimal);
-                  } else {
-                    lineTotal = new Decimal(baseSalary);
-                  }
-                  hourlyRate = hours.gt(0)
-                    ? lineTotal.div(hours)
-                    : new Decimal(0);
                 } else {
                   // Not a full month and not a half month -> Prorate based on hours
                   lineTotal = hours.mul(prorationHourlyDecimal);
