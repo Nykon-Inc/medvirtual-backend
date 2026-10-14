@@ -1034,4 +1034,158 @@ describe('InvoiceWorker', () => {
       );
     });
   });
+
+  describe('salaried flat-pay hour reporting', () => {
+    const org = {
+      id: 'org_id',
+      invoiceConfiguration: {
+        hubstaff_id: 'hubstaff_project_id',
+        billing_currency: 'USD',
+      },
+    };
+
+    const USER_ID = 123;
+    // 3520 / 176 = $20/hr proration rate, so a half-month flat salary is $1760.
+    const MONTHLY_SALARY = 3520;
+    const PRORATION_RATE = MONTHLY_SALARY / 176;
+    const HALF_MONTH_SALARY = MONTHLY_SALARY / 2;
+    // Sep 16-30 2026 is 11 weekdays with no observed holiday: 11 * 8 = 88hrs expected.
+    const WORKDAYS = [
+      '2026-09-16',
+      '2026-09-17',
+      '2026-09-18',
+      '2026-09-21',
+      '2026-09-22',
+      '2026-09-23',
+      '2026-09-24',
+      '2026-09-25',
+      '2026-09-28',
+      '2026-09-29',
+      '2026-09-30',
+    ];
+    const REQUIRED_HOURS = WORKDAYS.length * 8;
+
+    /** One Hubstaff daily-activity row per entry in `hoursPerDay`, in workday order. */
+    const activities = (hoursPerDay: number[]) =>
+      hoursPerDay
+        .map((hours, i) => ({
+          user_id: USER_ID,
+          user_name: 'John Doe',
+          day: WORKDAYS[i],
+          total_time_logged: hours * 3600,
+          overall: hours * 3600,
+        }))
+        .filter((a) => a.total_time_logged > 0);
+
+    /** `total` hours spread 8hrs/day across as many workdays as it takes. */
+    const spread = (total: number) => {
+      const days: number[] = [];
+      let left = total;
+      for (let i = 0; i < WORKDAYS.length; i++) {
+        const today = Math.min(8, left);
+        days.push(today);
+        left -= today;
+      }
+      return days;
+    };
+
+    const generateHalfMonth = () =>
+      (worker as any).generateInvoiceRecord(org, {
+        organization_id: 'org_id',
+        billing_start_date: '2026-09-16',
+        billing_end_date: '2026-09-30',
+        created_by: 'user_1',
+      });
+
+    const primaryLine = () =>
+      prismaMock.invoiceLineItem.create.mock.calls.find(
+        (c: any) => c[0].data.category === 'hourly_service',
+      )?.[0].data;
+
+    beforeEach(() => {
+      hubstaffMock.getProjectMembers.mockResolvedValue([
+        { user_id: USER_ID, name: 'John Doe' },
+      ]);
+      prismaMock.staff.findMany.mockResolvedValue([
+        {
+          id: 'staff_1',
+          candidate: { hubstaff_id: String(USER_ID) },
+          salary: String(MONTHLY_SALARY),
+          hubspot_deployment_type: 'Full-Time',
+          status: 'active',
+          organization_id: 'org_id',
+          tickets: [],
+        },
+      ]);
+    });
+
+    it('reports the full expected hours when a small deficit still bills the flat salary', async () => {
+      // 80 of 88hrs — a deficit of 8, inside the 10hr tolerance — so the client is
+      // billed the whole half-month salary. The line item must then show the 88
+      // baseline hours it actually paid for, not the 80 the VA tracked, or the
+      // printed rate comes out as 1760/80 = $22/hr instead of the real $20/hr.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        activities(spread(80)),
+      );
+
+      await generateHalfMonth();
+
+      const primary = primaryLine();
+      expect(primary.service_amount.toNumber()).toBeCloseTo(
+        HALF_MONTH_SALARY,
+        2,
+      );
+      expect(primary.effective_worked_hours.toNumber()).toBe(REQUIRED_HOURS);
+      expect(primary.total_hours_payable.toNumber()).toBe(REQUIRED_HOURS);
+      expect(primary.hourly_rate.toNumber()).toBeCloseTo(PRORATION_RATE, 2);
+    });
+
+    it('keeps total_hours_worked at the hours actually tracked', async () => {
+      // The billing fields above move to the baseline, but the factual snapshot the
+      // stats rollup reads must still say the VA tracked 80hrs.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        activities(spread(80)),
+      );
+
+      await generateHalfMonth();
+
+      expect(primaryLine().total_hours_worked.toNumber()).toBeCloseTo(80, 2);
+    });
+
+    it('still bills the flat salary at a deficit of exactly 10 hours', async () => {
+      // Pins the boundary: the prorating rule is deficit > 10, so 78 of 88 is paid
+      // in full and reported as the full 88 baseline hours.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        activities(spread(78)),
+      );
+
+      await generateHalfMonth();
+
+      const primary = primaryLine();
+      expect(primary.service_amount.toNumber()).toBeCloseTo(
+        HALF_MONTH_SALARY,
+        2,
+      );
+      expect(primary.effective_worked_hours.toNumber()).toBe(REQUIRED_HOURS);
+    });
+
+    it('prorates against hours actually worked once the deficit passes 10 hours', async () => {
+      // 70 of 88 — a deficit of 18 — drops out of flat-salary billing entirely, so
+      // the line reports the 70hrs worked at the prorated rate rather than the
+      // baseline.
+      hubstaffMock.getHubstaffDailyActivityForInvoice.mockResolvedValue(
+        activities(spread(70)),
+      );
+
+      await generateHalfMonth();
+
+      const primary = primaryLine();
+      expect(primary.service_amount.toNumber()).toBeCloseTo(
+        70 * PRORATION_RATE,
+        2,
+      );
+      expect(primary.effective_worked_hours.toNumber()).toBeCloseTo(70, 2);
+      expect(primary.hourly_rate.toNumber()).toBeCloseTo(PRORATION_RATE, 2);
+    });
+  });
 });

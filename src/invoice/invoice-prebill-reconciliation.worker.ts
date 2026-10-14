@@ -687,17 +687,23 @@ export class InvoicePrebillReconciliationWorker extends WorkerHost {
               diffInDays >= 27 ? monthlySalary : monthlySalary / 2;
             const deficit = requiredHours - actualHours;
             if (deficit > 10) {
+              // Short enough to break the flat-salary arrangement: cost the hours
+              // actually worked, and report those same hours.
               const prorationRate = monthlySalary / 176;
-              lineTotal = new Decimal(totalPayableHours).mul(
-                new Decimal(prorationRate),
-              );
+              hourlyRate = new Decimal(prorationRate);
+              lineTotal = new Decimal(totalPayableHours).mul(hourlyRate);
             } else {
+              // The flat salary covers the period's whole baseline. primaryHours has
+              // to match what the generator wrote on the invoice (see InvoiceWorker's
+              // matching branch), or reconciliation reports an hours delta on an
+              // invoice that was never short.
               lineTotal = new Decimal(baseSalary);
+              primaryHours = requiredHours;
+              hourlyRate =
+                requiredHours > 0
+                  ? lineTotal.div(new Decimal(requiredHours))
+                  : new Decimal(0);
             }
-            hourlyRate =
-              totalPayableHours > 0
-                ? lineTotal.div(new Decimal(totalPayableHours))
-                : new Decimal(0);
           } else {
             const prorationRate = monthlySalary / 176;
             hourlyRate = new Decimal(prorationRate);
