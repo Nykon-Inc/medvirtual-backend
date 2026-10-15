@@ -381,65 +381,130 @@ describe('OpenaiService', () => {
   describe('generateTextSummary', () => {
     const mockDescription =
       'Looking for a senior medical assistant for a busy clinic.';
-
-    it('should throw BadRequestException if OPENAI_API_KEY is not set', async () => {
-      delete process.env.OPENAI_API_KEY;
-      await expect(
-        service.generateTextSummary(mockDescription),
-      ).rejects.toThrow(
-        'OPENAI_API_KEY is not defined in environment variables',
-      );
+    const openRouterResult = (data = 'An OpenRouter summary.') => ({
+      data,
+      cost: 0,
+      model: 'openrouter/free',
+      latencyMs: 900,
     });
 
-    it('should return summary string when OpenAI responds with content', async () => {
-      mockChatCreate.mockResolvedValueOnce({
-        choices: [{ message: { content: 'Senior medical assistant role.' } }],
+    describe('with OpenRouter enabled', () => {
+      beforeEach(() => {
+        process.env.OPENROUTER_API_KEY = 'or-key';
+        mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
       });
 
-      const result = await service.generateTextSummary(mockDescription);
-      expect(result).toBe('Senior medical assistant role.');
-    });
+      it('should use OpenRouter first and not call OpenAI', async () => {
+        mockOpenrouterService.chatText.mockResolvedValueOnce(
+          openRouterResult('  An OpenRouter summary.  '),
+        );
 
-    it('should throw on insufficient_quota error', async () => {
-      mockChatCreate.mockRejectedValueOnce({ type: 'insufficient_quota' });
-      await expect(
-        service.generateTextSummary(mockDescription),
-      ).rejects.toThrow('You dont have credits. Check your plan/billing.');
-    });
+        const result = await service.generateTextSummary(mockDescription);
 
-    it('should throw on a rate limit without falling back', async () => {
-      mockChatCreate.mockRejectedValueOnce({
-        status: 429,
-        code: 'rate_limit_exceeded',
-      });
-      await expect(
-        service.generateTextSummary(mockDescription),
-      ).rejects.toThrow('Rate limit exceeded. Please try again later.');
-      expect(mockOpenrouterService.chatText).not.toHaveBeenCalled();
-    });
-
-    it('should throw BadRequestException on unexpected error', async () => {
-      mockChatCreate.mockRejectedValueOnce(new Error('Network failure'));
-      await expect(
-        service.generateTextSummary(mockDescription),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should fall back to OpenRouter on insufficient quota', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockChatCreate.mockRejectedValueOnce(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockOpenrouterService.chatText.mockResolvedValue({
-        data: 'A fallback summary.',
-        cost: 0,
-        model: 'openrouter/free',
-        latencyMs: 900,
+        expect(result).toBe('An OpenRouter summary.');
+        expect(mockChatCreate).not.toHaveBeenCalled();
       });
 
-      const result = await service.generateTextSummary(mockDescription);
+      it('should fall back to OpenAI when OpenRouter fails', async () => {
+        mockOpenrouterService.chatText.mockRejectedValueOnce(
+          new Error('all free models failed'),
+        );
+        mockChatCreate.mockResolvedValueOnce({
+          choices: [{ message: { content: 'OpenAI fallback summary.' } }],
+        });
 
-      expect(result).toBe('A fallback summary.');
-      expect(mockOpenrouterService.chatText).toHaveBeenCalled();
+        const result = await service.generateTextSummary(mockDescription);
+
+        expect(result).toBe('OpenAI fallback summary.');
+        expect(mockChatCreate).toHaveBeenCalledTimes(1);
+      });
+
+      it('should fall back to OpenAI when OpenRouter returns an empty summary', async () => {
+        mockOpenrouterService.chatText.mockResolvedValueOnce(
+          openRouterResult('   '),
+        );
+        mockChatCreate.mockResolvedValueOnce({
+          choices: [{ message: { content: 'OpenAI fallback summary.' } }],
+        });
+
+        const result = await service.generateTextSummary(mockDescription);
+
+        expect(result).toBe('OpenAI fallback summary.');
+      });
+
+      it('should use the model from OPENAI_MODEL_TO_TEXT on fallback', async () => {
+        process.env.OPENAI_MODEL_TO_TEXT = 'custom-text-model';
+        mockOpenrouterService.chatText.mockRejectedValueOnce(new Error('down'));
+        mockChatCreate.mockResolvedValueOnce({
+          choices: [{ message: { content: 'ok' } }],
+        });
+
+        await service.generateTextSummary(mockDescription);
+
+        expect(mockChatCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ model: 'custom-text-model' }),
+        );
+        delete process.env.OPENAI_MODEL_TO_TEXT;
+      });
+
+      it('should use the default model when OPENAI_MODEL_TO_TEXT is unset', async () => {
+        delete process.env.OPENAI_MODEL_TO_TEXT;
+        mockOpenrouterService.chatText.mockRejectedValueOnce(new Error('down'));
+        mockChatCreate.mockResolvedValueOnce({
+          choices: [{ message: { content: 'ok' } }],
+        });
+
+        await service.generateTextSummary(mockDescription);
+
+        expect(mockChatCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ model: 'gpt-4o-mini' }),
+        );
+      });
+
+      it('should throw when both providers fail', async () => {
+        mockOpenrouterService.chatText.mockRejectedValueOnce(new Error('down'));
+        mockChatCreate.mockRejectedValueOnce(new Error('Network failure'));
+
+        await expect(
+          service.generateTextSummary(mockDescription),
+        ).rejects.toThrow('Network failure');
+      });
+
+      it('should throw when OpenRouter fails and OpenAI returns no content', async () => {
+        mockOpenrouterService.chatText.mockRejectedValueOnce(new Error('down'));
+        mockChatCreate.mockResolvedValueOnce({ choices: [] });
+
+        await expect(
+          service.generateTextSummary(mockDescription),
+        ).rejects.toThrow('OpenAI did not return a valid summary.');
+      });
+    });
+
+    describe('with OpenRouter disabled', () => {
+      beforeEach(() => {
+        delete process.env.OPENROUTER_API_KEY;
+      });
+
+      it('should throw BadRequestException if OPENAI_API_KEY is not set', async () => {
+        delete process.env.OPENAI_API_KEY;
+        await expect(
+          service.generateTextSummary(mockDescription),
+        ).rejects.toThrow(
+          'OPENAI_API_KEY is not defined in environment variables',
+        );
+        expect(mockOpenrouterService.chatText).not.toHaveBeenCalled();
+      });
+
+      it('should go straight to OpenAI', async () => {
+        mockChatCreate.mockResolvedValueOnce({
+          choices: [{ message: { content: 'Senior medical assistant role.' } }],
+        });
+
+        const result = await service.generateTextSummary(mockDescription);
+
+        expect(result).toBe('Senior medical assistant role.');
+        expect(mockOpenrouterService.chatText).not.toHaveBeenCalled();
+      });
     });
   });
 

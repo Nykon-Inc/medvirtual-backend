@@ -21,6 +21,7 @@ import {
 import path from 'path';
 
 import { File as NodeFile } from 'node:buffer';
+import { getOpenAiTextModel } from './openai.config';
 if (!globalThis.File) {
   globalThis.File = NodeFile as unknown as typeof File;
 }
@@ -160,7 +161,8 @@ export class OpenaiService {
    *   produced unsatisfactory avatar quality in production, so OpenAI stays
    *   primary here even though it's the paid option — see
    *   `openrouter.config.ts` for that history.
-   * - Resume extraction (`extractDataFromResumeImages`) → OpenRouter first,
+   * - Resume extraction (`extractDataFromResumeImages`) and text summaries
+   *   (`generateTextSummary`) → OpenRouter first,
    *   OpenAI as fallback (`withOpenRouterFirst`, on ANY OpenRouter error).
    *   OpenRouter's free models are good enough for structured text
    *   extraction, so they run first to avoid OpenAI cost; OpenAI is the paid
@@ -374,7 +376,7 @@ export class OpenaiService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: getOpenAiTextModel(),
         messages: [
           {
             role: 'system',
@@ -537,21 +539,36 @@ export class OpenaiService {
   }
 
   async generateTextSummary(text: string): Promise<string> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new BadRequestException(
-        'OPENAI_API_KEY is not defined in environment variables',
-      );
-    }
-
     const prompt = buildTextSummaryPrompt(text);
 
-    return this.withQuotaFallback(
+    return this.withOpenRouterFirst(
       'generateTextSummary',
       async () => {
+        const result = await this.openrouter.chatText(prompt, {
+          temperature: 0.3,
+          maxTokens: 300,
+          systemPrompt: TEXT_SUMMARY_SYSTEM_PROMPT,
+        });
+        const summary = result.data?.trim();
+        if (!summary) {
+          throw new BadRequestException(
+            'OpenRouter did not return a valid summary.',
+          );
+        }
+        this.logger.warn(`[OpenRouter] text summary served by ${result.model}`);
+        return summary;
+      },
+      async () => {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new BadRequestException(
+            'OPENAI_API_KEY is not defined in environment variables',
+          );
+        }
+
         const openai = new OpenAI({ apiKey });
         const response = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: getOpenAiTextModel(),
           messages: [
             { role: 'system', content: TEXT_SUMMARY_SYSTEM_PROMPT },
             { role: 'user', content: prompt },
@@ -567,15 +584,6 @@ export class OpenaiService {
           );
         }
         return content;
-      },
-      async () => {
-        const result = await this.openrouter.chatText(prompt, {
-          temperature: 0.3,
-          maxTokens: 300,
-          systemPrompt: TEXT_SUMMARY_SYSTEM_PROMPT,
-        });
-        this.logger.warn(`[OpenRouter] text summary served by ${result.model}`);
-        return result.data.trim();
       },
     );
   }
@@ -630,7 +638,7 @@ export class OpenaiService {
 
         const openai = new OpenAI({ apiKey });
         const response = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: getOpenAiTextModel(),
           messages: [{ role: 'user', content: contentPayload as any }],
           max_tokens: 4500,
           temperature: 0.1,

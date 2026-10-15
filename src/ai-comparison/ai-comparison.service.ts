@@ -9,6 +9,7 @@ import OpenAI from 'openai';
 import path from 'path';
 import { extractDriveFileId } from '../common/utils/hubspot.util';
 import { GoogledriveService } from '../googledrive/googledrive.service';
+import { getOpenAiTextModel } from '../openai/openai.config';
 import {
   buildResumeExtractionPayload,
   buildTextSummaryPrompt,
@@ -306,7 +307,7 @@ export class AiComparisonService {
       );
     }
 
-    const model = 'gpt-4o-mini';
+    const model = getOpenAiTextModel();
     const startedAt = Date.now();
     const openai = new OpenAI({ apiKey });
 
@@ -342,7 +343,7 @@ export class AiComparisonService {
       );
     }
 
-    const model = 'gpt-4o-mini';
+    const model = getOpenAiTextModel();
     const startedAt = Date.now();
     const openai = new OpenAI({ apiKey });
 
