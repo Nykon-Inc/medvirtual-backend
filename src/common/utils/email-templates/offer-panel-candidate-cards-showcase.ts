@@ -67,7 +67,9 @@ import { EmailTheme } from './theme';
  * rather than duplicated, so a fix to either lands in both cards.
  *
  * The brand appears once, in the white footer's right-hand cell (`cardFooter`),
- * and never on the coloured band. `EmailBranding.logo_url` points at a logo
+ * and never on the coloured band. That logo is the candidate's own BU
+ * (`brand_logo_url`), falling back to the theme's — everything else on the card
+ * follows the panel's theme. `EmailBranding.logo_url` points at a logo
  * drawn IN the brand colour — Berry's is coral, MedVirtual's is teal — so on
  * the band it would be coral-on-coral. There is no upload pipeline to produce a
  * knocked-out white copy (the field is a URL an admin pastes), and the usual
@@ -266,9 +268,14 @@ function cardFooter(
     toNumber(c.bill_rate_monthly) ?? (hourly !== null ? hourly * 176 : null);
   const hasRate = monthly !== null && monthly > 0;
 
+  // The logo names the candidate's own BU, not the panel's — a mixed panel
+  // must not stamp every card with the panel's brand.
+  const logoUrl = c.brand_logo_url || t.logoUrl;
+  const logoAlt = c.brand_name || t.companyName;
+
   // Nothing to attribute and nothing to price — skip the strip entirely rather
   // than drawing an empty rule across the card.
-  if (!hasRate && !t.logoUrl) return '';
+  if (!hasRate && !logoUrl) return '';
 
   // A promo must never present as a price increase, so the original is struck
   // only when it is actually above the advertised price.
@@ -288,8 +295,8 @@ function cardFooter(
     ? `${caption}${struck}<div style="line-height:1.15;"><span style="font-size:24px;font-weight:800;color:${t.rateInk};letter-spacing:-0.5px;">${usd.format(shown as number)}</span><span style="font-size:12px;font-weight:600;color:#7a7973;">&nbsp;/month</span></div>`
     : '';
 
-  const logo = t.logoUrl
-    ? `<img src="${esc(t.logoUrl)}" alt="${esc(t.companyName)}" width="${BRAND_LOGO_PX}" style="width:${BRAND_LOGO_PX}px;height:auto;max-height:28px;display:block;border:0;outline:none;text-decoration:none;" />`
+  const logo = logoUrl
+    ? `<img src="${esc(logoUrl)}" alt="${esc(logoAlt)}" width="${BRAND_LOGO_PX}" style="width:${BRAND_LOGO_PX}px;height:auto;max-height:28px;display:block;border:0;outline:none;text-decoration:none;" />`
     : '';
 
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;margin-top:16px;"><tr><td align="left" valign="bottom" style="padding:14px 0 0;border-top:1px solid #f0efec;text-align:left;">${price}</td>${

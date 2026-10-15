@@ -3469,4 +3469,52 @@ describe('NotificationsService', () => {
       });
     });
   });
+
+  describe('loadOfferPanelEmailCandidates', () => {
+    // A mixed panel (MedVirtual + Berry) is themed by the panel's BU, but each
+    // card's logo must follow the candidate's own BU.
+    it("resolves each candidate's logo from its own business unit", async () => {
+      (mockPrismaService as any).emailBranding = {
+        findUnique: jest.fn(({ where }) =>
+          Promise.resolve({
+            business_unit: where.business_unit,
+            primary_color: '#01546B',
+            secondary_color: null,
+            logo_url: `https://cdn.example.com/${where.business_unit}.png`,
+            company_name:
+              where.business_unit === 'berry-virtual'
+                ? 'Berry Virtual'
+                : 'MedVirtual',
+            button_color: null,
+            button_text_color: null,
+            layout_preset: 'default',
+          }),
+        ),
+      };
+      mockPrismaService.candidate.findMany.mockResolvedValueOnce([
+        { id: 'c1', first_name: 'Ana', business_unit: 'MedVirtual' },
+        { id: 'c2', first_name: 'Bia', business_unit: 'Berry Virtual' },
+      ]);
+
+      const result = await (service as any).loadOfferPanelEmailCandidates([
+        'c1',
+        'c2',
+      ]);
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: 'c1',
+          brand_logo_url: 'https://cdn.example.com/medvirtual.png',
+          brand_name: 'MedVirtual',
+        }),
+        expect.objectContaining({
+          id: 'c2',
+          brand_logo_url: 'https://cdn.example.com/berry-virtual.png',
+          brand_name: 'Berry Virtual',
+        }),
+      ]);
+
+      delete (mockPrismaService as any).emailBranding;
+    });
+  });
 });

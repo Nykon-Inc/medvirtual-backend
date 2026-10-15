@@ -2840,6 +2840,21 @@ ${getEmailLogoCss()}
       );
       const poolMap = new Map(poolEntries);
 
+      // A panel can mix candidates from several BUs, while the email itself is
+      // themed by the panel's BU. Each card's logo must name the BU the
+      // candidate actually belongs to, so it is resolved per candidate BU here
+      // through the same EmailBranding path the panel theme uses.
+      const brandEntries = await Promise.all(
+        distinctBUs.map(
+          async (bu) =>
+            [bu, await getBusinessUnitEmailTheme(this.prisma, bu)] as [
+              string,
+              EmailTheme,
+            ],
+        ),
+      );
+      const brandMap = new Map(brandEntries);
+
       // Preserve the order the panel stores them in.
       const byId = new Map(candidates.map((c) => [c.id, c]));
 
@@ -2855,6 +2870,7 @@ ${getEmailLogoCss()}
             configMap,
             poolMap.get(candidate.business_unit ?? '') ?? 'medical',
           );
+          const brand = brandMap.get(candidate.business_unit ?? '');
 
           return {
             id: candidate.id,
@@ -2877,6 +2893,8 @@ ${getEmailLogoCss()}
             languages: candidate.languages,
             bill_rate_monthly: rates.bill_rate_monthly,
             bill_rate_hourly: rates.bill_rate_hourly,
+            brand_logo_url: brand?.logoUrl ?? null,
+            brand_name: brand?.companyName ?? null,
           };
         });
     } catch (err) {

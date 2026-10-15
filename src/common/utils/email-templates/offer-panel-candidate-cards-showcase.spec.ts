@@ -341,6 +341,43 @@ describe('renderOfferPanelCandidateCardsShowcase', () => {
       expect(html).not.toContain('border-top:1px solid #f0efec');
       expect(html).toContain('Ana S.');
     });
+
+    // A panel can mix BUs while the email is themed by the panel's BU: each
+    // card's logo must name the candidate's own BU, not the panel's.
+    it("uses each candidate's own BU logo in a mixed panel", () => {
+      const html = renderOfferPanelCandidateCardsShowcase(
+        [
+          makeCandidate({
+            id: 'med',
+            brand_logo_url: 'https://cdn.example.com/medvirtual.png',
+            brand_name: 'MedVirtual',
+          }),
+          makeCandidate({
+            id: 'berry',
+            first_name: 'Bia',
+            brand_logo_url: 'https://cdn.example.com/berry.png',
+            brand_name: 'Berry Virtual',
+          }),
+        ],
+        makeTheme({ logoUrl: 'https://cdn.example.com/medvirtual.png' }),
+        false,
+      );
+
+      expect(html).toContain('src="https://cdn.example.com/medvirtual.png"');
+      expect(html).toContain('src="https://cdn.example.com/berry.png"');
+      expect(html).toContain('alt="Berry Virtual"');
+    });
+
+    it('falls back to the theme logo when the candidate has no BU logo', () => {
+      const html = renderOfferPanelCandidateCardsShowcase(
+        [makeCandidate({ brand_logo_url: null, brand_name: null })],
+        makeTheme({ logoUrl: 'https://staging.medvirtual.ai/logo.png' }),
+        false,
+      );
+
+      expect(html).toContain('src="https://staging.medvirtual.ai/logo.png"');
+      expect(html).toContain('alt="MedVirtual"');
+    });
   });
 
   describe('rate', () => {

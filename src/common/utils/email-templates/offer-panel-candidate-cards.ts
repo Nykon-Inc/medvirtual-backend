@@ -58,6 +58,13 @@ export interface OfferPanelEmailCandidate {
   languages?: { name?: string | null }[] | null;
   bill_rate_monthly?: number | string | null;
   bill_rate_hourly?: number | string | null;
+  /**
+   * Logo and name of the candidate's OWN business unit. A panel can mix
+   * candidates from several BUs while the email is themed by the panel's BU,
+   * so the card's logo comes from here; absent, it falls back to the theme.
+   */
+  brand_logo_url?: string | null;
+  brand_name?: string | null;
 }
 
 // ─── Colour derivation ───────────────────────────────────────────────────────
@@ -324,10 +331,12 @@ const BRAND_BADGE_PX = 64;
  * off to the side where it reads as branding instead of competing with the
  * content. Plain <img> with width/height renders in every client.
  */
-function brandBadge(t: CardTheme): string {
-  if (!t.logoUrl) return '';
+function brandBadge(c: OfferPanelEmailCandidate, t: CardTheme): string {
+  const logoUrl = c.brand_logo_url || t.logoUrl;
+  if (!logoUrl) return '';
+  const logoAlt = c.brand_name || t.companyName;
 
-  return `<img src="${esc(t.logoUrl)}" alt="${esc(t.companyName)}" width="${BRAND_BADGE_PX}" style="width:${BRAND_BADGE_PX}px;height:auto;max-height:26px;display:block;border:0;outline:none;text-decoration:none;" />`;
+  return `<img src="${esc(logoUrl)}" alt="${esc(logoAlt)}" width="${BRAND_BADGE_PX}" style="width:${BRAND_BADGE_PX}px;height:auto;max-height:26px;display:block;border:0;outline:none;text-decoration:none;" />`;
 }
 
 /**
@@ -384,7 +393,7 @@ function card(
   const employment = (c.employment_type ?? '').trim();
   const rate = rateBlock(c, t, promoEnabled);
 
-  const badge = brandBadge(t);
+  const badge = brandBadge(c, t);
 
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:separate;background:#ffffff;border:1px solid #ebebeb;border-radius:12px;margin-bottom:14px;">
