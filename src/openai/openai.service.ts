@@ -6,10 +6,6 @@ import openrouter_fallback_failed from '../common/utils/email-templates/openrout
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isOpenRouterEnabled } from '../openrouter/openrouter.config';
-import {
-  isInsufficientQuotaError,
-  isRateLimitError,
-} from '../openrouter/openrouter.errors';
 import { OpenrouterService } from '../openrouter/openrouter.service';
 import { parseJsonLoose } from '../openrouter/openrouter.service';
 import {
@@ -42,48 +38,6 @@ export class OpenaiService {
     private readonly prisma: PrismaService,
     private readonly openrouter: OpenrouterService,
   ) {}
-
-  /**
-   * Sends the quota alert at most once per day. Failures here must never stop
-   * the fallback from running, so everything is swallowed.
-   */
-  private async notifyInsufficientQuota(): Promise<void> {
-    try {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-      end.setHours(23, 59, 59, 999);
-
-      const existingMail = await this.prisma.mail_Settings.findFirst({
-        where: {
-          title: 'insufficient_quota',
-          created_at: { gte: start, lt: end },
-        },
-      });
-      if (existingMail) return;
-
-      const mailSent = await this.mailService.sendMail({
-        from: 'MedVirtual <noreply@medvirtual.ai>',
-        to: 'shayan@regenta.ai',
-        cc: 'paulo@regenta.ai',
-        subject: 'Insufficient Quota from OpenAI',
-        html: insufficient_quota(),
-      });
-      if (!mailSent) {
-        this.logger.warn(
-          'Failed to send insufficient quota email notification.',
-        );
-      }
-
-      await this.prisma.mail_Settings.create({
-        data: { title: 'insufficient_quota' },
-      });
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to record insufficient quota notification: ${error?.message}`,
-      );
-    }
-  }
 
   /**
    * Alerts when OpenAI is out of credit AND the OpenRouter fallback failed too,
@@ -153,90 +107,21 @@ export class OpenaiService {
   }
 
   /**
-   * Provider order is deliberately NOT the same for every pipeline:
+   * Every OpenAI-backed pipeline (avatar generation, resume extraction, text
+   * summaries) runs OpenRouter first and falls back to OpenAI on ANY OpenRouter
+   * failure via `withOpenRouterFirst`.
    *
-   * - Avatar generation (`generateAvatarWithScreenshoot`) → OpenAI first,
-   *   OpenRouter as fallback (`withQuotaFallback`, only on insufficient_quota).
-   *   OpenRouter's cheapest working image model was tried as primary and
-   *   produced unsatisfactory avatar quality in production, so OpenAI stays
-   *   primary here even though it's the paid option — see
-   *   `openrouter.config.ts` for that history.
-   * - Resume extraction (`extractDataFromResumeImages`) and text summaries
-   *   (`generateTextSummary`) → OpenRouter first,
-   *   OpenAI as fallback (`withOpenRouterFirst`, on ANY OpenRouter error).
-   *   OpenRouter's free models are good enough for structured text
-   *   extraction, so they run first to avoid OpenAI cost; OpenAI is the paid
-   *   safety net when every free model in the cascade fails.
-   *
-   * Do not merge these into one helper — the two use opposite primaries and
-   * opposite error-classification strictness (narrow quota-only vs. any
-   * error), so a shared implementation would have to smuggle that difference
-   * back in via a flag anyway.
+   * Avatar generation used to be OpenAI-first because OpenRouter's cheapest
+   * image model produced unsatisfactory avatars in production — see
+   * `openrouter.config.ts`. The order was inverted on purpose; OpenAI is now
+   * the safety net for that pipeline too.
    */
-
-  /**
-   * Runs `primary` against OpenAI and, only when the account is out of credit,
-   * retries through OpenRouter. Rate limits and every other error keep their
-   * existing behaviour — the fallback is deliberately narrow.
-   */
-  private async withQuotaFallback<T>(
-    label: string,
-    primary: () => Promise<T>,
-    fallback: () => Promise<T>,
-  ): Promise<T> {
-    try {
-      return await primary();
-    } catch (error: any) {
-      if (isRateLimitError(error)) {
-        this.logger.warn(`[OpenAI] rate limit on ${label}`);
-        throw new BadRequestException(
-          'Rate limit exceeded. Please try again later.',
-        );
-      }
-
-      if (!isInsufficientQuotaError(error)) {
-        this.logger.error(
-          `[OpenAI] unexpected error on ${label}: ${error?.message}`,
-        );
-        throw new BadRequestException(
-          `Unexpected error requesting OpenAI on ${label}.`,
-        );
-      }
-
-      this.logger.error(
-        `[OpenAI] insufficient_quota on ${label} — engaging OpenRouter fallback`,
-      );
-      await this.notifyInsufficientQuota();
-
-      if (!isOpenRouterEnabled()) {
-        throw new BadRequestException(
-          'You dont have credits. Check your plan/billing.',
-        );
-      }
-
-      try {
-        const result = await fallback();
-        this.logger.warn(`[OpenRouter] fallback succeeded for ${label}`);
-        return result;
-      } catch (fallbackError: any) {
-        this.logger.error(
-          `[OpenRouter] fallback failed for ${label}: ${this.describeOpenRouterError(fallbackError)}`,
-        );
-        await this.notifyFallbackFailed(label, fallbackError);
-        throw new BadRequestException(
-          'You dont have credits. Check your plan/billing.',
-        );
-      }
-    }
-  }
 
   /**
    * Runs `primary` against OpenRouter first — it's free — and falls back to
-   * OpenAI on ANY failure, not just quota errors. Unlike `withQuotaFallback`,
-   * this is used where OpenRouter is the preferred provider and OpenAI is the
-   * paid safety net, so the error classification is intentionally broad: a
-   * free model timing out, returning malformed JSON, or OpenRouter itself
-   * being down must all still produce a result via OpenAI.
+   * OpenAI on ANY failure, not just quota errors: a model timing out,
+   * returning malformed output, or OpenRouter itself being down must all still
+   * produce a result via OpenAI.
    */
   private async withOpenRouterFirst<T>(
     label: string,
@@ -498,8 +383,15 @@ export class OpenaiService {
         The avatar result need to be on format 1024x1024 pixels.
         `;
 
-    return this.withQuotaFallback(
+    return this.withOpenRouterFirst(
       'generateAvatarWithScreenshoot',
+      async () => {
+        const result = await this.openrouter.editImage(imageDownloaded, prompt);
+        this.logger.warn(
+          `[OpenRouter] avatar served by ${result.model} at $${result.cost}`,
+        );
+        return { imagePath: result.imagePath, cost: result.cost };
+      },
       async () => {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const image = fs.createReadStream(imageDownloaded);
@@ -527,13 +419,6 @@ export class OpenaiService {
         fs.writeFileSync(outputPath, Buffer.from(imageBase64, 'base64'));
 
         return { imagePath: outputPath, cost };
-      },
-      async () => {
-        const result = await this.openrouter.editImage(imageDownloaded, prompt);
-        this.logger.warn(
-          `[OpenRouter] avatar served by ${result.model} at $${result.cost}`,
-        );
-        return { imagePath: result.imagePath, cost: result.cost };
       },
     );
   }

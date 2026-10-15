@@ -40,14 +40,6 @@ const mockOpenrouterService = {
   editImage: jest.fn(),
 };
 
-/** Shape thrown by the OpenAI SDK v5 when the account is out of credit. */
-const quotaError = () =>
-  Object.assign(new Error('You exceeded your current quota'), {
-    status: 429,
-    code: 'insufficient_quota',
-    error: { type: 'insufficient_quota' },
-  });
-
 const mockPrismaService = {
   user: {
     findUnique: jest.fn(),
@@ -516,78 +508,125 @@ describe('OpenaiService', () => {
       (fs.writeFileSync as jest.Mock).mockReturnValue(undefined);
     });
 
-    it('should generate avatar and return imagePath and cost', async () => {
-      mockImagesEdit.mockResolvedValueOnce({
-        data: [{ b64_json: 'aW1hZ2VkYXRh' }],
+    const openRouterAvatar = {
+      imagePath: '/tmp/123_avatarOR.png',
+      cost: 0.0392,
+      model: 'google/gemini-2.5-flash-image',
+      latencyMs: 3000,
+    };
+
+    describe('with OpenRouter enabled', () => {
+      beforeEach(() => {
+        process.env.OPENROUTER_API_KEY = 'or-key';
+        mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
       });
 
-      const result = await service.generateAvatarWithScreenshoot(
-        mockCandidate,
-        '/tmp/screenshot.png',
-      );
+      it('should use OpenRouter first and not call OpenAI', async () => {
+        mockOpenrouterService.editImage.mockResolvedValueOnce(openRouterAvatar);
 
-      expect(result.cost).toBe(0.02);
-      expect(result.imagePath).toMatch(/avatarX\.png$/);
-      expect(fs.writeFileSync).toHaveBeenCalled();
-      expect(mockImagesEdit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model: 'gpt-image-2.5-flare',
-          size: '1024x1024',
-          quality: 'medium',
-        }),
-      );
-    });
-
-    it('should compute cost from usage tokens', async () => {
-      mockImagesEdit.mockResolvedValueOnce({
-        data: [{ b64_json: 'aW1hZ2VkYXRh' }],
-        usage: {
-          input_tokens_details: { text_tokens: 100, image_tokens: 1000 },
-          output_tokens: 440,
-        },
-      });
-
-      const result = await service.generateAvatarWithScreenshoot(
-        mockCandidate,
-        '/tmp/screenshot.png',
-      );
-
-      // (100*5 + 1000*8 + 440*30) / 1e6
-      expect(result.cost).toBe(0.0217);
-    });
-
-    it('should throw when result.data is empty or missing b64_json', async () => {
-      mockImagesEdit.mockResolvedValueOnce({ data: [] });
-
-      await expect(
-        service.generateAvatarWithScreenshoot(
+        const result = await service.generateAvatarWithScreenshoot(
           mockCandidate,
           '/tmp/screenshot.png',
-        ),
-      ).rejects.toThrow(BadRequestException);
+        );
+
+        expect(result).toEqual({
+          imagePath: '/tmp/123_avatarOR.png',
+          cost: 0.0392,
+        });
+        expect(mockImagesEdit).not.toHaveBeenCalled();
+      });
+
+      it('should fall back to OpenAI when OpenRouter fails', async () => {
+        mockOpenrouterService.editImage.mockRejectedValueOnce(
+          new Error('image model unavailable'),
+        );
+        mockImagesEdit.mockResolvedValueOnce({
+          data: [{ b64_json: 'aW1hZ2VkYXRh' }],
+        });
+
+        const result = await service.generateAvatarWithScreenshoot(
+          mockCandidate,
+          '/tmp/screenshot.png',
+        );
+
+        expect(result.imagePath).toMatch(/avatarX\.png$/);
+        expect(mockImagesEdit).toHaveBeenCalledWith(
+          expect.objectContaining({ model: 'gpt-image-2.5-flare' }),
+        );
+      });
+
+      it('should throw when both providers fail', async () => {
+        mockOpenrouterService.editImage.mockRejectedValueOnce(
+          new Error('openrouter down'),
+        );
+        mockImagesEdit.mockRejectedValueOnce(new Error('openai down'));
+
+        await expect(
+          service.generateAvatarWithScreenshoot(
+            mockCandidate,
+            '/tmp/screenshot.png',
+          ),
+        ).rejects.toThrow('openai down');
+      });
     });
 
-    it('should fall back to OpenRouter on insufficient quota', async () => {
-      process.env.OPENROUTER_API_KEY = 'or-key';
-      mockImagesEdit.mockRejectedValueOnce(quotaError());
-      mockPrismaService.mail_Settings.findFirst.mockResolvedValue(null);
-      mockOpenrouterService.editImage.mockResolvedValue({
-        imagePath: '/tmp/123_avatarOR.png',
-        cost: 0.0392,
-        model: 'google/gemini-2.5-flash-image',
-        latencyMs: 3000,
+    describe('with OpenRouter disabled', () => {
+      beforeEach(() => {
+        delete process.env.OPENROUTER_API_KEY;
       });
 
-      const result = await service.generateAvatarWithScreenshoot(
-        mockCandidate,
-        '/tmp/screenshot.png',
-      );
+      it('should generate avatar and return imagePath and cost', async () => {
+        mockImagesEdit.mockResolvedValueOnce({
+          data: [{ b64_json: 'aW1hZ2VkYXRh' }],
+        });
 
-      expect(result).toEqual({
-        imagePath: '/tmp/123_avatarOR.png',
-        cost: 0.0392,
+        const result = await service.generateAvatarWithScreenshoot(
+          mockCandidate,
+          '/tmp/screenshot.png',
+        );
+
+        expect(result.cost).toBe(0.02);
+        expect(result.imagePath).toMatch(/avatarX\.png$/);
+        expect(fs.writeFileSync).toHaveBeenCalled();
+        expect(mockImagesEdit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            model: 'gpt-image-2.5-flare',
+            size: '1024x1024',
+            quality: 'medium',
+          }),
+        );
       });
-      expect(mockOpenrouterService.editImage).toHaveBeenCalled();
+
+      it('should compute cost from usage tokens', async () => {
+        mockImagesEdit.mockResolvedValueOnce({
+          data: [{ b64_json: 'aW1hZ2VkYXRh' }],
+          usage: {
+            input_tokens_details: { text_tokens: 100, image_tokens: 1000 },
+            output_tokens: 440,
+          },
+        });
+
+        const result = await service.generateAvatarWithScreenshoot(
+          mockCandidate,
+          '/tmp/screenshot.png',
+        );
+
+        // (100*5 + 1000*8 + 440*30) / 1e6
+        expect(result.cost).toBe(0.0217);
+      });
+
+      it('should throw when result.data is empty or missing b64_json', async () => {
+        mockImagesEdit.mockResolvedValueOnce({ data: [] });
+
+        await expect(
+          service.generateAvatarWithScreenshoot(
+            mockCandidate,
+            '/tmp/screenshot.png',
+          ),
+        ).rejects.toThrow(
+          'The OpenAI API response did not contain the expected image data.',
+        );
+      });
     });
   });
 });

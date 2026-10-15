@@ -23,7 +23,8 @@ export const DEFAULT_TEXT_MODELS = [...DEFAULT_VISION_MODELS];
  * produced unsatisfactory avatar quality — reverted to this one, ~$0.04/image
  * (image_output is billed per token, not per image: OpenRouter's own
  * /models pricing lists $0.00003/token, and a 1024x1024 edit runs ~1300
- * output tokens), about 3x the OpenAI primary (gpt-image-2.5-flare, ~$0.013/image at medium).
+ * output tokens), about 3x the OpenAI model (gpt-image-2.5-flare, ~$0.013/image at medium).
+ * Avatar generation now runs this model first and OpenAI as fallback.
  */
 export const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
 export const IMAGE_MODEL_COST = 0.0392;
