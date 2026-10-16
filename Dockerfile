@@ -1,7 +1,11 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# Retries absorb transient registry ECONNRESETs seen on GitHub-hosted runners.
+RUN npm ci --no-audit --no-fund \
+    --fetch-retries=5 \
+    --fetch-retry-mintimeout=20000 \
+    --fetch-retry-maxtimeout=120000
 COPY . .
 RUN npm run prisma:generate
 ENV NODE_OPTIONS=--max-old-space-size=4096
