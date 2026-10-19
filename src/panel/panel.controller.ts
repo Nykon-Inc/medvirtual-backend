@@ -242,6 +242,49 @@ export class PanelController {
     return this.panelService.getHireRequestsByClients(query);
   }
 
+  @Get('hire-requests-by-admins')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_super_admin', 'system_admin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Hire requests created by system admin users, with creator and organization details, with optional full-result export',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Hire requests submitted by admins retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied: insufficient permissions',
+  })
+  async getHireRequestsByAdmins(
+    @Query() query: HireRequestsByClientsQueryDto,
+  ): Promise<HireRequestsByClientsResponseDto> {
+    return this.panelService.getHireRequestsByAdmins(query);
+  }
+
+  @Get('hire-requests-by-creator-monthly')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('system_super_admin', 'system_admin')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Monthly count (last 6 months) of hire requests created by clients vs by admins',
+  })
+  @ApiResponse({ status: 200, description: 'Series retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied: insufficient permissions',
+  })
+  async getHireRequestsByCreatorMonthly(): Promise<{
+    data: { month: string; byClients: number; byAdmins: number }[];
+  }> {
+    return this.panelService.getHireRequestsByCreatorMonthly();
+  }
+
   @Get('talent-aging')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('system_super_admin', 'system_admin')

@@ -5,6 +5,7 @@ import {
   OrganizationStatus,
   PanelCandidateStatus,
   PanelStatus,
+  Prisma,
 } from '@prisma/client';
 import {
   buildConfigMap,
@@ -22,6 +23,8 @@ import {
   clientInvitesAcceptedWhere,
   clientUsersCreatedWhere,
   hrSubmittedByClientWhere,
+  hrSubmittedByAdminWhere,
+  type MetricDateRange,
   newAvailableCandidatesWhere,
   newStaffWhere,
   newClientsWithActiveStaffWhere,
@@ -1559,27 +1562,65 @@ export class PanelService {
   async getHireRequestsByClients(
     query: HireRequestsByClientsQueryDto,
   ): Promise<HireRequestsByClientsResponseDto> {
+    return this.getHireRequestsByCreator(query, hrSubmittedByClientWhere);
+  }
+
+  /** Same list as getHireRequestsByClients, for admin (system) creators. */
+  async getHireRequestsByAdmins(
+    query: HireRequestsByClientsQueryDto,
+  ): Promise<HireRequestsByClientsResponseDto> {
+    return this.getHireRequestsByCreator(query, hrSubmittedByAdminWhere);
+  }
+
+  /** Last 6 calendar months (oldest first) of HRs created by clients vs admins. */
+  async getHireRequestsByCreatorMonthly(): Promise<{
+    data: { month: string; byClients: number; byAdmins: number }[];
+  }> {
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, idx) => {
+      const i = 5 - idx;
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      return { start, end };
+    });
+    const data = await Promise.all(
+      months.map(async ({ start, end }) => {
+        const range = { gte: start, lt: end };
+        const [byClients, byAdmins] = await Promise.all([
+          this.prisma.hireRequest.count({
+            where: hrSubmittedByClientWhere(range),
+          }),
+          this.prisma.hireRequest.count({
+            where: hrSubmittedByAdminWhere(range),
+          }),
+        ]);
+        return {
+          month: `${start.toLocaleString('en-US', { month: 'short' })} ${String(start.getFullYear()).slice(-2)}`,
+          byClients,
+          byAdmins,
+        };
+      }),
+    );
+    return { data };
+  }
+
+  private async getHireRequestsByCreator(
+    query: HireRequestsByClientsQueryDto,
+    buildWhere: (range: MetricDateRange) => Prisma.HireRequestWhereInput,
+  ): Promise<HireRequestsByClientsResponseDto> {
     const page = query.page ?? 1;
     const perPage = query.perPage ?? 10;
     const sortBy = query.sortBy ?? 'createdAt';
     const sortOrder = query.sortOrder ?? 'desc';
 
-    const where = {
-      createdBy: {
-        role: { in: ['organization_admin', 'organization_super_admin'] },
-      },
-      status: {
-        not: { in: [HireRequestStatus.deleted, HireRequestStatus.cancelled] },
-      },
-      ...(query.dateFrom || query.dateTo
+    const range: MetricDateRange =
+      query.dateFrom || query.dateTo
         ? {
-            createdAt: {
-              ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
-              ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
-            },
+            ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+            ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
           }
-        : {}),
-    };
+        : undefined;
+    const where = buildWhere(range);
 
     const hireRequests = await this.prisma.hireRequest.findMany({
       where,

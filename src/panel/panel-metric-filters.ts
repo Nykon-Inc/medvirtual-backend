@@ -25,6 +25,8 @@ export const CLIENT_USER_ROLES = [
   'organization_super_admin',
 ];
 
+export const ADMIN_USER_ROLES = ['system_super_admin', 'system_admin'];
+
 // Talent pipeline stages counted as "available" on the Talents tab.
 export const AVAILABLE_TALENT_PIPELINE_STATUSES = ['261075105', '1087596819'];
 
@@ -119,6 +121,18 @@ export function hrSubmittedByClientWhere(
 ): Prisma.HireRequestWhereInput {
   return {
     createdBy: { role: { in: CLIENT_USER_ROLES } },
+    status: {
+      notIn: [HireRequestStatus.deleted, HireRequestStatus.cancelled],
+    },
+    ...(range ? { createdAt: range } : {}),
+  };
+}
+
+export function hrSubmittedByAdminWhere(
+  range: MetricDateRange,
+): Prisma.HireRequestWhereInput {
+  return {
+    createdBy: { role: { in: ADMIN_USER_ROLES } },
     status: {
       notIn: [HireRequestStatus.deleted, HireRequestStatus.cancelled],
     },

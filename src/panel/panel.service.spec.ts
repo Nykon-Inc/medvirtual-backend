@@ -1460,7 +1460,50 @@ describe('PanelService', () => {
         'organization_admin',
         'organization_super_admin',
       ]);
-      expect(call.where.status.not.in).toEqual(['deleted', 'cancelled']);
+      expect(call.where.status.notIn).toEqual(['deleted', 'cancelled']);
+    });
+
+    it('lists hire requests created by admin users (system roles, excluding deleted/cancelled)', async () => {
+      (prisma.hireRequest.findMany as jest.Mock).mockResolvedValueOnce([
+        mockHireRequest('hr-9'),
+      ]);
+
+      const result = await service.getHireRequestsByAdmins({
+        page: 1,
+        perPage: 10,
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.meta?.total).toBe(1);
+      const call = (prisma.hireRequest.findMany as jest.Mock).mock.calls.at(
+        -1,
+      )[0];
+      expect(call.where.createdBy.role.in).toEqual([
+        'system_super_admin',
+        'system_admin',
+      ]);
+      expect(call.where.status.notIn).toEqual(['deleted', 'cancelled']);
+    });
+
+    it('builds a 6-month client vs admin series, oldest first', async () => {
+      (prisma.hireRequest.count as jest.Mock).mockImplementation(
+        ({ where }: { where: { createdBy: { role: { in: string[] } } } }) =>
+          Promise.resolve(
+            where.createdBy.role.in.includes('system_admin') ? 2 : 5,
+          ),
+      );
+
+      const result = await service.getHireRequestsByCreatorMonthly();
+
+      expect(result.data).toHaveLength(6);
+      expect(
+        result.data.every((m) => m.byClients === 5 && m.byAdmins === 2),
+      ).toBe(true);
+      const calls = (prisma.hireRequest.count as jest.Mock).mock.calls;
+      expect(
+        calls[0][0].where.createdAt.gte <
+          calls[calls.length - 1][0].where.createdAt.gte,
+      ).toBe(true);
     });
 
     it('falls back to a placeholder when creator or organization is missing', async () => {
